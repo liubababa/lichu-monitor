@@ -47,9 +47,9 @@ window.APP_CONFIG = {
   },
 
   /* MQTT 接入参数默认值；页面「数据源」面板配置后持久化到 localStorage（键：dianzhan.mqtt.cfg）
-     生产环境：服务器部署 EMQX 后，nginx 将 wss://域名/mqtt 反代到 EMQX 8083(WS) 端口，详见 部署指南.md */
+     生产环境：EMQX Cloud Serverless（杭州），网页走 wss 8084 端口，详见 部署指南.md */
   mqtt: {
-    url: 'wss://ykdesign.top/mqtt', port: '', username: '', password: '',
+    url: 'wss://<broker-hosts-placeholder>:8084/mqtt', port: '', username: '', password: '',
     sn: '', stationName: ''
   },
 

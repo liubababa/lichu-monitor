@@ -130,13 +130,17 @@ window.MqttService = (function () {
 
     client.on('connect', function () {
       sys('Broker 连接成功，订阅上行 Topic');
-      /* PostRsp 是平台发给 EMS 的应答，平台不应订阅（否则会收到自己的回声造成循环） */
+      /* 订阅说明：
+         · PostRsp 是平台发给 EMS 的应答，平台不订阅（否则收到自己的回声会造成循环）
+         · 应答 Topic 段数不一致：GetRsp/UserInfor 是 3 段（无 SN），
+           GetRsp/DevData/SN、GetRsp/DeviceInfor/SN、SetRsp/EmsSet/SN 是 4 段，
+           必须用 # 才能收全（单个 + 只匹配一段，会漏掉 4 段式的应答）
+         · EMQX Cloud Serverless 单客户端最多 10 个订阅，这里收敛为 4 个 */
       [
         'zhhn/Post/Login/+',
         'zhhn/Post/PeriodReport/+',
-        'zhhn/GetRsp/+',
-        'zhhn/GetRsp/UserInfor',
-        'zhhn/SetRsp/+'
+        'zhhn/GetRsp/#',
+        'zhhn/SetRsp/#'
       ].forEach(t => client.subscribe(t, { qos: 0 }, function (err) {
         if (err) sys('订阅失败 ' + t + '：' + (err.message || err));
       }));

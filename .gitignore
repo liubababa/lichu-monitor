@@ -19,3 +19,5 @@ desktop.ini
 
 # 智能体工具缓存
 .commandcode/
+dist/  
+.wrangler/  
