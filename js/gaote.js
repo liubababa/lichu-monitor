@@ -339,6 +339,7 @@ window.GaoteService = (function () {
     DataService.mqttReport(rep);
     if (window.OverviewUI) OverviewUI.update(DataService.mqttTags(), 'mqtt');
     if (window.GaoteView) GaoteView.update();
+    if (window.GaoteScene3D) GaoteScene3D.update();
     emit('data', rep);
   }
 
