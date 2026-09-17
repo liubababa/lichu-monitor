@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>力储未来远程监控平台</title>
-<link rel="stylesheet" href="css/style.css"/>
+<link rel="stylesheet" href="css/style.css?v=20260917c"/>
 <script>
 /* 加载期错误收集（便于排查依赖/脚本问题） */
 window.__loadErrs = [];
@@ -89,7 +89,6 @@ window.addEventListener('error', function (e) {
         <div class="sh-right">
           <div class="seg" id="modeSeg">
             <button class="active" data-mode="realtime">实时状态</button>
-            <button data-mode="history">历史数据</button>
           </div>
           <button class="ghost-btn" id="btnMqttLog" title="MQTT 收发报文日志">报文</button>
           <button class="ghost-btn active" id="btnLabels" title="显示 / 隐藏设备标签">标签</button>
@@ -163,19 +162,27 @@ window.addEventListener('error', function (e) {
 <!-- ===== MQTT 接入配置面板 ===== -->
 <aside id="mqttPanel" class="hidden">
   <div class="mq-head">
-    <b>MQTT 接入配置 · 晶农EMS 北向协议</b>
+    <b>MQTT 接入配置 · 高特 CCU / 晶农EMS</b>
     <button class="mq-x" id="mqClose" title="关闭">×</button>
   </div>
   <div class="mq-body">
+    <div class="mq-sec">接入协议</div>
+    <label class="mq-row"><span>协议</span>
+      <select id="mqProtocol">
+        <option value="gaote">高特 CCU（本项目）</option>
+        <option value="zhhn">晶农EMS 北向协议</option>
+      </select>
+    </label>
     <div class="mq-sec">Broker 接入</div>
     <label class="mq-row"><span>Broker 地址</span><input id="mqUrl" placeholder="ws://192.168.1.100 或 wss://域名"/></label>
     <label class="mq-row"><span>端口</span><input id="mqPort" placeholder="如 8083（留空按地址解析）"/></label>
     <label class="mq-row"><span>用户名</span><input id="mqUser" placeholder="可留空"/></label>
     <label class="mq-row"><span>密码</span><input id="mqPass" type="password" placeholder="可留空"/></label>
     <div class="mq-sec">电站 / 设备</div>
-    <label class="mq-row"><span>设备 SN</span><input id="mqSn" placeholder="EMS 设备序列号（Topic 末段）"/></label>
+    <label class="mq-row"><span>ProductSN</span><input id="mqPsn" placeholder="高特平台产品号，默认 kp23bhcpmt91n2v8"/></label>
+    <label class="mq-row"><span>设备 SN</span><input id="mqSn" placeholder="设备序列号（高特协议即 DeviceSN）"/></label>
     <label class="mq-row"><span>电站名称</span><input id="mqStation" placeholder="如：力储未来储能电站"/></label>
-    <div class="mq-hint">Topic 规则 zhhn/{动作}/{功能}/{SN}；EMS 主动上报 Login / PeriodReport，平台需回 PostRsp(Login)。配置自动保存到浏览器 localStorage。</div>
+    <div class="mq-hint" id="mqHint">高特协议：主题 /{ProductSN}/{DeviceSN}/rtg/data|status/{维度}/…，30 秒周期上报，点位按项目协议文档解析。配置自动保存到浏览器 localStorage。</div>
     <div class="mq-btns">
       <button class="mq-btn primary" id="mqConnect">连接</button>
       <button class="mq-btn" id="mqDisconnect">断开</button>
@@ -214,6 +221,19 @@ window.addEventListener('error', function (e) {
     </div>
   </div>
   <div class="ov-body"><div id="overviewGrid" class="ov-grid"></div></div>
+</section>
+
+<!-- ===== 高特 CCU 监控视图（协议=高特时显示） ===== -->
+<section id="gaoteView" class="hidden">
+  <div class="ov-bar">
+    <div class="tv-title">设备总览 <em>· 高特 CCU 协议（按项目协议文档解析）</em></div>
+    <div class="ov-bar-r">
+      <span class="ov-src" id="gaoteStats">—</span>
+      <button class="mq-btn" id="gaoteRefresh">刷新</button>
+    </div>
+  </div>
+  <div class="gv-alarm alarm ok" id="gaoteAlarmBar">当前无告警</div>
+  <div class="ov-body"><div id="gaoteBody" class="ov-grid"></div></div>
 </section>
 
 <!-- ===== Tab 视图：充放电策略 / 电芯健康 ===== -->
@@ -257,6 +277,10 @@ window.addEventListener('error', function (e) {
 <script src="js/data.js"></script>
 <script src="js/points.js"></script>
 <script src="js/mqtt.js"></script>
+<script src="js/gaote-points.js"></script>
+<script src="js/gaote.js"></script>
+<script src="js/gaote-view.js"></script>
+<script src="js/gaote-strategy.js"></script>
 <script src="js/overview.js"></script>
 <script src="js/mqtt-ui.js"></script>
 <script src="js/scene3d.js"></script>
