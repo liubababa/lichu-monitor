@@ -30,7 +30,7 @@ window.MqttUI = (function () {
   function loadCfg() {
     let saved = {};
     try { saved = JSON.parse(localStorage.getItem(LS_KEY) || '{}') || {}; } catch (_) { saved = {}; }
-    return Object.assign({ url: '', port: '', username: '', password: '', sn: '', stationName: '', deviceTag: 'EMS' },
+    return Object.assign({ url: '', port: '', username: '', password: '', sn: '', stationName: '', deviceTag: 'EMS', protocol: 'gaote', psn: '' },
       (window.APP_CONFIG && APP_CONFIG.mqtt) || {}, saved);
   }
   let CFG = loadCfg();
@@ -131,6 +131,22 @@ window.MqttUI = (function () {
     MqttService.on('setrsp', onSetRsp);
     MqttService.on('devinfor', onDevInfor);
     MqttService.on('userinfor', onUserInfor);
+
+    /* 高特 CCU 协议：连接状态与报文日志接入同一套面板 */
+    if (typeof GaoteService !== 'undefined') {
+      GaoteService.on('conn', function (s) {
+        if (s.state === 'connected') { setConn('connected', STATE.gotData ? '' : '等待上报'); toast('MQTT 已连接：' + (s.url || '')); }
+        else if (s.state === 'error') { setConn('error', s.error || ''); toast('MQTT 错误：' + (s.error || '')); }
+        else if (s.state === 'connecting') setConn('connecting');
+        else setConn(s.state);
+      });
+      GaoteService.on('log', function (d) { logRow(d.dir, d.topic, d.text, d.note); });
+      GaoteService.on('data', function () {
+        STATE.gotData = true;
+        STATE.lastReportAt = Date.now();
+        if (STATE.conn === 'connected') setConn('connected');
+      });
+    }
   }
 
   /* 周期上报 / 召测应答 → 标准快照 */
@@ -149,15 +165,17 @@ window.MqttUI = (function () {
 
   /* ============================ 配置面板 ============================ */
   function fillInputs() {
-    const map = { mqUrl: CFG.url, mqPort: CFG.port, mqUser: CFG.username, mqPass: CFG.password, mqSn: CFG.sn, mqStation: CFG.stationName };
+    const map = { mqUrl: CFG.url, mqPort: CFG.port, mqUser: CFG.username, mqPass: CFG.password, mqSn: CFG.sn, mqStation: CFG.stationName, mqPsn: CFG.psn };
     Object.keys(map).forEach(function (id) { const el = byId(id); if (el) el.value = map[id] == null ? '' : map[id]; });
     const tag = byId('mqDeviceTag'); if (tag) tag.value = CFG.deviceTag || 'EMS';
+    const proto = byId('mqProtocol'); if (proto) proto.value = CFG.protocol || 'gaote';
   }
   function readInputs() {
     const v = id => { const el = byId(id); return el ? el.value.trim() : ''; };
     return {
       url: v('mqUrl'), port: v('mqPort'), username: v('mqUser'), password: v('mqPass'),
-      sn: v('mqSn'), stationName: v('mqStation'), deviceTag: v('mqDeviceTag') || 'EMS'
+      sn: v('mqSn'), stationName: v('mqStation'), deviceTag: v('mqDeviceTag') || 'EMS',
+      protocol: v('mqProtocol') || 'gaote', psn: v('mqPsn')
     };
   }
   function persist(showToast) {
@@ -170,17 +188,48 @@ window.MqttUI = (function () {
     if (showToast) toast(LS_OK ? '配置已保存到浏览器（localStorage）' : '配置已生效（当前环境不允许 localStorage 持久化）');
   }
 
+  /* 按协议显示/隐藏对应功能：高特协议下晶农专用按钮无意义，直接隐藏 */
+  const ZHHN_ONLY = ['mqPoll', 'mqDevList', 'mqUserInfo'];
+  const HINT = {
+    gaote: '高特协议：主题 /{ProductSN}/{DeviceSN}/rtg/data|status/{维度}/…，30 秒周期上报，点位按项目协议文档解析。配置自动保存到浏览器 localStorage。',
+    zhhn: '晶农协议：Topic 规则 zhhn/{动作}/{功能}/{SN}；EMS 上报 Login / PeriodReport，平台需回 PostRsp(Login)。'
+  };
+  function syncProtocolUI() {
+    const gaote = CFG.protocol !== 'zhhn';
+    ZHHN_ONLY.forEach(function (id) { const b = byId(id); if (b) b.classList.toggle('hidden', gaote); });
+    const hint = byId('mqHint');
+    if (hint) hint.textContent = gaote ? HINT.gaote : HINT.zhhn;
+    /* 电芯健康页签是为晶农点位设计的，高特协议下用设备总览里的单体电芯面板，隐藏该页签 */
+    const healthTab = document.querySelector('#mainTabs .tab[data-tab="health"]');
+    if (healthTab) healthTab.classList.toggle('hidden', gaote);
+    const stBox = byId('strategyView');
+    if (stBox) stBox.classList.toggle('hidden', false);
+  }
+
   function bindPanel() {
     byId('dsChip').addEventListener('click', () => togglePanel(true));
     byId('mqClose').addEventListener('click', () => togglePanel(false));
-    byId('mqSave').addEventListener('click', () => persist(true));
+    byId('mqSave').addEventListener('click', () => { persist(true); syncProtocolUI(); });
+    const proto = byId('mqProtocol');
+    if (proto) proto.addEventListener('change', function () { CFG.protocol = proto.value; persist(false); syncProtocolUI(); });
 
     byId('mqConnect').addEventListener('click', function () {
       persist(false);
-      if (typeof MqttService === 'undefined') { toast('MqttService 未加载'); return; }
       if (!CFG.url) { toast('请填写 Broker 地址（ws:// 或 wss://）'); return; }
-      if (!CFG.sn) toast('提示：未填写设备 SN，上报/下发 Topic 将不完整');
       setConn('connecting');
+      if (CFG.protocol === 'gaote') {
+        if (typeof GaoteService === 'undefined') { toast('GaoteService 未加载'); setConn('error', '模块未加载'); return; }
+        GaoteService.connect({
+          url: GaoteService.normUrl(CFG.url, CFG.port),
+          username: CFG.username, password: CFG.password,
+          productSN: CFG.psn || 'kp23bhcpmt91n2v8', deviceSN: CFG.sn
+        });
+        if (window.GaoteView) GaoteView.open();
+        toast('正在连接 Broker（高特协议）…');
+        return;
+      }
+      if (typeof MqttService === 'undefined') { toast('MqttService 未加载'); return; }
+      if (!CFG.sn) toast('提示：未填写设备 SN，上报/下发 Topic 将不完整');
       MqttService.connect({
         url: MqttService.normUrl(CFG.url, CFG.port),
         username: CFG.username, password: CFG.password, sn: CFG.sn
@@ -189,9 +238,8 @@ window.MqttUI = (function () {
     });
 
     byId('mqDisconnect').addEventListener('click', function () {
-      if (typeof MqttService === 'undefined') return;
-      stopPoll('已停止召测');
-      MqttService.disconnect();
+      if (typeof GaoteService !== 'undefined' && GaoteService.isConnected()) GaoteService.disconnect();
+      if (typeof MqttService !== 'undefined') MqttService.disconnect();
       toast('已断开 MQTT');
     });
 
@@ -582,10 +630,13 @@ window.MqttUI = (function () {
     const view = byId('tabView');
     const ov = byId('overviewView');
     if (!view || !ov) return;
-    ov.classList.toggle('hidden', name !== 'overview');
+    /* 高特协议用独立监控视图（按协议文档的维度组织） */
+    const gaote = CFG.protocol === 'gaote' && window.GaoteView;
+    if (name !== 'overview') { if (gaote) GaoteView.hide(); ov.classList.toggle('hidden', true); }
     if (name === 'overview') {
       view.classList.add('hidden');
-      if (window.OverviewUI) OverviewUI.update(STATE.lastTags, 'force');
+      if (gaote) GaoteView.open();
+      else { if (window.OverviewUI) OverviewUI.update(STATE.lastTags, 'force'); ov.classList.remove('hidden'); }
       return;
     }
     if (name === 'monitor') { view.classList.add('hidden'); return; }
@@ -600,6 +651,11 @@ window.MqttUI = (function () {
       if (src) src.textContent = (DataService.getSource() === 'mqtt')
         ? '当前数据源：厂家 MQTT（' + (CFG.sn || '未填 SN') + '）'
         : '当前为本地演示数据，下发前请先接入厂家 MQTT';
+      /* 高特协议：用协议文档自动生成的下发表单 */
+      if (CFG.protocol === 'gaote' && typeof GaoteStrategy !== 'undefined') {
+        byId('tvTitle').textContent = '充放电策略 · 高特 CCU 下发（cmd/set）';
+        GaoteStrategy.init();
+      }
     }
   }
   function bindTabs() {
@@ -648,6 +704,7 @@ window.MqttUI = (function () {
     bindModal();
     fillInputs();
     applyVendor();
+    syncProtocolUI();
     setConn('mock');
 
     byId('logClear').addEventListener('click', clearLog);
