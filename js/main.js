@@ -93,6 +93,12 @@
     tick(); setInterval(tick, 500);
   }
 
+  /* 场景实现按协议切换：高特协议用 5 个储能堆的模型，晶农协议用原场景 */
+  function S3D() {
+    const gaote = window.MqttUI && MqttUI.protocol && MqttUI.protocol() === 'gaote';
+    return (gaote && window.GaoteScene3D) ? window.GaoteScene3D : window.Scene3D;
+  }
+
   /* ---------- 数据渲染 ---------- */
   function renderKpis(d) {
     tweenNum(byId('kpiStorageVal'), d.kpis.chargeToday);
@@ -116,7 +122,7 @@
   function onData(d) {
     renderKpis(d);
     Charts.applyData(d);
-    Scene3D.update(d);
+    S3D().update(d);
     renderAlarm(d.alarms);
     if (window.OverviewUI && DataService.getSource() !== 'mqtt') OverviewUI.update(null);
   }
@@ -140,15 +146,15 @@
     });
     // 场景按钮
     byId('btnLabels').addEventListener('click', () => {
-      const on = Scene3D.toggleLabels();
+      const on = S3D().toggleLabels();
       byId('btnLabels').classList.toggle('active', on);
     });
     byId('btnRotate').addEventListener('click', () => {
-      const on = Scene3D.toggleRotate();
+      const on = S3D().toggleRotate();
       byId('btnRotate').classList.toggle('active', on);
     });
-    Scene3D.setRotateSync(on => byId('btnRotate').classList.toggle('active', on));
-    byId('btnReset').addEventListener('click', () => { Scene3D.resetView(); toast('视角已重置'); });
+    S3D().setRotateSync(on => byId('btnRotate').classList.toggle('active', on));
+    byId('btnReset').addEventListener('click', () => { S3D().resetView(); toast('视角已重置'); });
     // 全屏
     byId('btnFullscreen').addEventListener('click', () => {
       if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => {});
@@ -157,7 +163,7 @@
     // 天气文案
     document.querySelector('#weatherChip span').textContent = APP_CONFIG.weather;
     // 窗口尺寸
-    window.addEventListener('resize', () => { Charts.resize(); Scene3D.resize(); });
+    window.addEventListener('resize', () => { Charts.resize(); S3D().resize(); });
   }
 
   /* ---------- 启动 ---------- */
@@ -171,7 +177,7 @@
     byId('sceneTitle').textContent = APP_CONFIG.stationName + '运行监测图';
 
     try { Charts.init(); } catch (e) { console.error(e); }
-    try { Scene3D.init(byId('scene3d')); } catch (e) {
+    try { S3D().init(byId('scene3d')); } catch (e) {
       console.error(e);
       toast('3D 场景初始化失败（WebGL 不可用？），图表功能不受影响');
     }

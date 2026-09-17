@@ -737,5 +737,5 @@ window.MqttUI = (function () {
     logRow('•', '-', '晶农EMS 北向协议接入就绪：' + (APP_CONFIG.vendor ? APP_CONFIG.vendor.company + ' · ' + APP_CONFIG.vendor.product : ''));
   }
 
-  return { init, openTab, setConn, logRow, panel: togglePanel, modal: toggleModal };
+  return { init, openTab, setConn, logRow, panel: togglePanel, modal: toggleModal, protocol: () => CFG.protocol };
 })();
