@@ -3,10 +3,12 @@
 """
 生成《晶农EMS 接入参数》Word 文档（发给厂家）。
 
-用法：python tools/make-vendor-docx.py
+用法：python tools/make-vendor-docx.py <broker地址> <端口> <用户名> <密码>
+     密码等敏感信息通过命令行传入，不写进代码，避免随仓库泄露。
 输出：给厂家的接入参数.docx（项目根目录）
 """
 import os
+import sys
 from docx import Document
 from docx.shared import Pt, Cm, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -15,6 +17,11 @@ from docx.oxml.ns import qn
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '给厂家的接入参数.docx')
 BODY = '宋体'
 HEAD = '黑体'
+
+BROKER_HOST = sys.argv[1] if len(sys.argv) > 1 else '<broker地址>'
+BROKER_PORT = sys.argv[2] if len(sys.argv) > 2 else '8883'
+EMS_USER = sys.argv[3] if len(sys.argv) > 3 else '<用户名>'
+EMS_PASS = sys.argv[4] if len(sys.argv) > 4 else '<密码>'
 
 
 def run(p, text, size=11, bold=False, font=BODY):
@@ -66,10 +73,10 @@ def main():
 
     # 参数表（朴素样式）
     rows = [
-        ('服务器地址', '<broker-hosts-placeholder>'),
-        ('端口', '8883（TLS 加密）'),
-        ('用户名', 'zhhn_ems'),
-        ('密码', '***REMOVED***'),
+        ('服务器地址', BROKER_HOST),
+        ('端口', BROKER_PORT + '（TLS 加密）'),
+        ('用户名', EMS_USER),
+        ('密码', EMS_PASS),
         ('QoS', '0 或 1 都可以'),
         ('Keepalive', '60 秒'),
         ('ClientId', '填 EMS 自己的 SN 即可'),

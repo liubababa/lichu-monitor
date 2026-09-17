@@ -47,11 +47,8 @@ window.APP_CONFIG = {
   },
 
   /* MQTT 接入参数默认值；页面「数据源」面板配置后持久化到 localStorage（键：dianzhan.mqtt.cfg）
-     生产环境：EMQX Cloud Serverless（杭州），网页走 wss 8084 端口，详见 部署指南.md */
-  mqtt: {
-    url: 'wss://<broker-hosts-placeholder>:8084/mqtt', port: '', username: '', password: '',
-    sn: '', stationName: ''
-  },
+     接入地址不写进代码（避免随仓库泄露），部署时通过页面上填写或按需在本地覆盖 */
+  mqtt: { url: '', port: '', username: '', password: '', sn: '', stationName: '' },
 
   http: { url: 'http://your-api/realtime', interval: 5000 },
   ws:   { url: 'ws://your-api/realtime' }

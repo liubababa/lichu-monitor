@@ -1,7 +1,13 @@
 'use strict';
-/* 实测 EMQX Cloud Serverless 部署连通性（TLS 8883 / WSS 8084） */
+/* 实测 MQTT broker 连通性（TLS 8883 / WSS 8084）
+   用法：node probe-emqx.js <broker地址> [用户名] [密码] */
 const mqtt = require('mqtt');
-const HOST = process.argv[2] || '<broker-hosts-placeholder>';
+const HOST = process.argv[2];
+if (!HOST) {
+  console.log('用法：node probe-emqx.js <broker地址> [用户名] [密码]');
+  console.log('例如：node probe-emqx.js xxxx.ala.cn-hangzhou.emqxsl.cn lichu_web <密码>');
+  process.exit(1);
+}
 const USER = process.argv[3] || '';
 const PASS = process.argv[4] || '';
 

@@ -19,5 +19,9 @@ desktop.ini
 
 # 智能体工具缓存
 .commandcode/
-dist/  
-.wrangler/  
+dist/
+.wrangler/
+
+# 含接入凭据的文件（不进仓库）
+给厂家的接入参数.md
+给厂家的接入参数.docx
