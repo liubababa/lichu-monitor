@@ -44,9 +44,18 @@ window.GaoteService = (function () {
     if (r.kind === 'rtg' || r.kind === 'history') {
       r.cls = seg[3];                                   // data | status
       let i = 4;
-      if (seg[i] === 'meter') {                          // 电表：两段维度
-        r.dim = 'meter-' + seg[i + 1] + '-' + seg[i + 2];
-        i += 3;
+      if (seg[i] === 'meter') {                          // 电表：两段维度 meter/{aems|mems|lems}/{storage|...}
+        if (['aems', 'mems', 'lems'].indexOf(seg[i + 1]) >= 0) {
+          r.dim = 'meter-' + seg[i + 1] + '-' + seg[i + 2];
+          i += 3;
+        } else {                                          // 手册示例的简写形式 /meter/{arr}/{clu}/{dev}
+          r.dim = 'meter';
+          r.legacyMeter = true;
+          i += 1;
+        }
+      } else if (seg[i] === 'arr' || seg[i] === 'clu') {  // 手册示例里的简写：arr / clu
+        r.dim = seg[i] === 'arr' ? 'array' : 'cluster';
+        i += 1;
       } else {
         r.dim = seg[i];
         i += 1;
