@@ -61,13 +61,23 @@ window.VendorView = (function () {
     bar.appendChild(btn);
     host.appendChild(bar);
 
+    /* 总充/放电量：接口未给时用分时电量合计（与厂家页面 194.8MWh / 178MWh 一致） */
+    function touSumAll(obj) {
+      if (!obj) return null;
+      let s = 0, has = false;
+      ['sharp', 'peak', 'flat', 'valley', 'deepValley', 'kz6', 'kz7', 'kz8'].forEach(function (k) {
+        if (obj[k] !== undefined) { s += toKwh(obj[k], obj[k + 'Unit']); has = true; }
+      });
+      return has ? s : null;
+    }
+
     /* KPI 行（照搬：装机功率/容量 + 充放电量 + 收益） */
     const kpis = el('div', 'dt-kpis');
     [
       ['总装机功率', power, 'kW', ''],
       ['总装机容量', cap, 'kWh', ''],
-      ['总充电量', r.totalChargeCapacity != null ? r.totalChargeCapacity : null, r.totalChargeCapacityUnit || '', ''],
-      ['总放电量', r.totalDisChargeCapacity != null ? r.totalDisChargeCapacity : null, r.totalDisChargeCapacityUnit || '', ''],
+      ['总充电量', r.totalChargeCapacity != null ? r.totalChargeCapacity : touSumAll(r.cumulativeCharge), r.totalChargeCapacityUnit || 'kWh', ''],
+      ['总放电量', r.totalDisChargeCapacity != null ? r.totalDisChargeCapacity : touSumAll(r.cumulativeDisCharge), r.totalDisChargeCapacityUnit || 'kWh', ''],
       ['今日充电量', r.dayChargeCapacity != null ? r.dayChargeCapacity : (d.electric && d.electric.data && d.electric.data.list ? Number(d.electric.data.list[d.electric.data.list.length - 1].cha) : null), 'kWh', ''],
       ['今日放电量', r.dayDisChargeCapacity != null ? r.dayDisChargeCapacity : (d.electric && d.electric.data && d.electric.data.list ? Number(d.electric.data.list[d.electric.data.list.length - 1].disCha) : null), 'kWh', ''],
       ['累计收益', r.totalEarnings, r.totalEarningsUnit || '万元', 'money']
@@ -246,6 +256,10 @@ window.VendorView = (function () {
     const tab = byId('tabView'); if (tab) tab.classList.add('hidden');
     render();
     inited = true;
+    /* 图表：立即画一次，再补两次（等 ECharts 加载/容器完成布局） */
+    drawCharts();
+    setTimeout(drawCharts, 500);
+    setTimeout(function () { drawCharts(); resize(); }, 1500);
   }
   function hide() { const v = byId('vendorView'); if (v) v.classList.add('hidden'); }
   function resize() { Object.keys(charts).forEach(k => { try { charts[k].resize(); } catch (_) {} }); }
