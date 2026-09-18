@@ -634,6 +634,12 @@ window.MqttUI = (function () {
     const gaote = CFG.protocol === 'gaote' && window.GaoteView;
     if (name !== 'overview') { if (gaote) GaoteView.hide(); ov.classList.toggle('hidden', true); }
     if (name !== 'detail' && window.GaoteDetail) GaoteDetail.hide();
+    if (name !== 'vendor' && window.VendorView) VendorView.hide();
+    if (name === 'vendor') {
+      view.classList.add('hidden');
+      if (window.VendorView) VendorView.open();
+      return;
+    }
     if (name === 'detail') {
       view.classList.add('hidden');
       if (window.GaoteDetail) GaoteDetail.open();

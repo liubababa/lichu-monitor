@@ -44,6 +44,10 @@ window.addEventListener('error', function (e) {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19V5M4 19h16"/><path d="M8 16V9M12 16v-4M16 16v-7"/></svg>
         <span>详细信息</span><i>▾</i>
       </button>
+      <button class="tab" data-tab="vendor">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h18M3 12h18M3 17h10"/></svg>
+        <span>厂家数据</span><i>▾</i>
+      </button>
       <button class="tab" data-tab="strategy">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v4h-4"/></svg>
         <span>充放电策略</span><i>▾</i>
@@ -253,6 +257,17 @@ window.addEventListener('error', function (e) {
   <div class="ov-body"><div id="detailBody" class="dt-body"></div></div>
 </section>
 
+<!-- ===== 厂家平台数据（照搬 ess-ds.com 站点详情页内容） ===== -->
+<section id="vendorView" class="hidden">
+  <div class="ov-bar">
+    <div class="tv-title">厂家平台数据 <em>· 内容照搬中和汇能集控平台（ess-ds.com）</em></div>
+    <div class="ov-bar-r">
+      <span class="ov-src mock" id="vdSrc">数据快照</span>
+    </div>
+  </div>
+  <div class="ov-body"><div id="vendorBody" class="dt-body"></div></div>
+</section>
+
 <!-- ===== Tab 视图：充放电策略 / 电芯健康 ===== -->
 <section id="tabView" class="hidden">
   <div class="tv-bar">
@@ -301,6 +316,8 @@ window.addEventListener('error', function (e) {
 <script src="js/gaote-detail.js?v=20260917j"></script>
 <script src="js/gaote-scene3d.js?v=20260917e"></script>
 <script src="js/gaote-strategy.js?v=20260917d"></script>
+<script src="js/vendor-data.js?v=20260918a"></script>
+<script src="js/vendor-view.js?v=20260918a"></script>
 <script src="js/overview.js?v=20260917d"></script>
 <script src="js/mqtt-ui.js?v=20260917d"></script>
 <script src="js/scene3d.js?v=20260917d"></script>
