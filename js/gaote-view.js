@@ -386,6 +386,23 @@ window.GaoteView = (function () {
     inited = true;
     const btn = byId('gaoteRefresh');
     if (btn && !btn.__bound) { btn.__bound = true; btn.addEventListener('click', function () { render(); }); }
+    /* 离线演示：不连 broker、不装环境也能看完整数据 */
+    const dbtn = byId('gaoteDemo');
+    if (dbtn && !dbtn.__bound) {
+      dbtn.__bound = true;
+      dbtn.addEventListener('click', function () {
+        if (window.GaoteDemo && GaoteDemo.isOn()) {
+          GaoteDemo.stop(); dbtn.classList.remove('active'); dbtn.textContent = '离线演示';
+          setTimeout(function () { render(); }, 100);
+        } else if (window.GaoteDemo) {
+          GaoteDemo.start(); dbtn.classList.add('active'); dbtn.textContent = '退出演示';
+        }
+      });
+    }
+    if (/[?&]demo=1/.test(location.search) && window.GaoteDemo && !GaoteDemo.isOn()) {
+      GaoteDemo.start();
+      if (dbtn) { dbtn.classList.add('active'); dbtn.textContent = '退出演示'; }
+    }
     render();
   }
   function update() { if (inited && openState) render(); }
