@@ -717,11 +717,16 @@ window.MqttUI = (function () {
     fillInputs();
     applyVendor();
     syncProtocolUI();
-    /* 高特协议：默认以三维电站为主视图（页面打开即见 3D + 右侧数据面板） */
+    /* 高特协议：默认以三维电站为主视图；设备未接入时改以「厂家数据」为主，避免空界面 */
     if (CFG.protocol === 'gaote') {
       if (window.GaoteView) GaoteView.hide();
       const ov = byId('overviewView'); if (ov) ov.classList.add('hidden');
-      document.querySelectorAll('#mainTabs .tab').forEach(function (b) { b.classList.toggle('active', b.dataset.tab === 'monitor'); });
+      const hasLive = window.GaoteService && Object.keys(GaoteService.state || {}).length > 0;
+      const useVendor = !hasLive && window.VendorView && window.VENDOR_DATA;
+      if (useVendor) VendorView.open();
+      document.querySelectorAll('#mainTabs .tab').forEach(function (b) {
+        b.classList.toggle('active', b.dataset.tab === (useVendor ? 'vendor' : 'monitor'));
+      });
     }
     setConn('mock');
 
