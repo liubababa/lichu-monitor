@@ -241,16 +241,7 @@ button{font-family:inherit;cursor:pointer;background:none;border:none;color:inhe
    ============================================================ */
 .hidden{display:none!important}
 
-/* ---------- 顶栏：厂家信息 / 数据源状态 ---------- */
-.vendor-chip{
-  display:flex;align-items:center;gap:7px;padding:6px 12px;font-size:11px;
-  border:1px solid rgba(255,176,32,.28);border-radius:16px;background:rgba(255,176,32,.06);
-  color:#e6d6b8;white-space:nowrap;max-width:320px;
-}
-.vendor-chip svg{width:14px;height:14px;color:var(--amber);flex:none}
-.vendor-chip b{font-weight:normal;color:#ffd79a;overflow:hidden;text-overflow:ellipsis;max-width:170px;display:inline-block;vertical-align:bottom}
-.vendor-chip i{font-style:normal;color:var(--dim);padding:0 3px}
-.vendor-chip em{font-style:normal;color:var(--teal)}
+/* ---------- 顶栏：数据源状态 ---------- */
 .ds-chip{
   display:flex;align-items:center;gap:7px;padding:6px 13px;font-size:12px;border-radius:16px;
   border:1px solid var(--teal-soft);background:rgba(46,230,200,.05);color:var(--text);
@@ -267,8 +258,6 @@ button{font-family:inherit;cursor:pointer;background:none;border:none;color:inhe
 .ds-chip.disconnected{color:#9fb8b3}
 .ds-chip.error{border-color:rgba(255,110,80,.55);color:#ffa08c}
 .ds-chip.error::before{background:#ff6e50;box-shadow:0 0 8px #ff6e50}
-@media (max-width:1500px){ .vendor-chip b{max-width:96px} }
-@media (max-width:1320px){ .vendor-chip{display:none} }
 @media (max-width:1420px){ .site-title span{display:none} }
 
 /* ---------- MQTT 接入配置面板 ---------- */
