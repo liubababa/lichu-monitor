@@ -633,6 +633,12 @@ window.MqttUI = (function () {
     /* 高特协议用独立监控视图（按协议文档的维度组织） */
     const gaote = CFG.protocol === 'gaote' && window.GaoteView;
     if (name !== 'overview') { if (gaote) GaoteView.hide(); ov.classList.toggle('hidden', true); }
+    if (name !== 'detail' && window.GaoteDetail) GaoteDetail.hide();
+    if (name === 'detail') {
+      view.classList.add('hidden');
+      if (window.GaoteDetail) GaoteDetail.open();
+      return;
+    }
     if (name === 'overview') {
       view.classList.add('hidden');
       if (gaote) GaoteView.open();
@@ -705,6 +711,12 @@ window.MqttUI = (function () {
     fillInputs();
     applyVendor();
     syncProtocolUI();
+    /* 高特协议：默认以三维电站为主视图（页面打开即见 3D + 右侧数据面板） */
+    if (CFG.protocol === 'gaote') {
+      if (window.GaoteView) GaoteView.hide();
+      const ov = byId('overviewView'); if (ov) ov.classList.add('hidden');
+      document.querySelectorAll('#mainTabs .tab').forEach(function (b) { b.classList.toggle('active', b.dataset.tab === 'monitor'); });
+    }
     setConn('mock');
 
     byId('logClear').addEventListener('click', clearLog);
