@@ -1,0 +1,7 @@
+网页 MQTT 心跳 30s → 120s：后台标签页不再被心跳超时踢掉
+
+浏览器会限制后台标签页的定时器（约 1 分钟一次），30 秒的 MQTT 心跳发不出去，
+broker 判定超时后断开，页面反复重连（日志里表现为 40~60 秒一次 closed / New client connected）。
+心跳放宽到 120 秒后，后台标签页也能稳定长连。
+
+Co-authored-by: CommandCodeBot <noreply@commandcode.ai>

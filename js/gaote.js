@@ -375,7 +375,7 @@ window.GaoteService = (function () {
     cfg.productSN = cfg.productSN || DEFAULT_PSN;
     emit('conn', { state: 'connecting', url: url });
     sys('连接 Broker：' + url + '　ProductSN=' + cfg.productSN);
-    const opts = { reconnectPeriod: 5000, connectTimeout: 10000, keepalive: 30, clean: true, clientId: 'gaote-web-' + Math.random().toString(16).slice(2, 10) };
+    const opts = { reconnectPeriod: 5000, connectTimeout: 10000, keepalive: 120, clean: true, clientId: 'gaote-web-' + Math.random().toString(16).slice(2, 10) };
     if (cfg.username) opts.username = cfg.username;
     if (cfg.password) opts.password = cfg.password;
     try { client = mqtt.connect(url, opts); } catch (e) { sys('连接异常：' + e.message); emit('conn', { state: 'error', error: e.message }); return; }
