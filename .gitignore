@@ -27,3 +27,20 @@ dist/
 给厂家的接入参数.docx
 refs/  
 logs/  
+
+# 部署/联调脚本（内置服务器登录密码或 broker 账号）
+tools/deploy-remote.sh
+tools/remote-run.js
+tools/ssh-probe.js
+tools/test-remote-broker.js
+tools/test-wss.js
+tools/test-gaote-ccu.js
+tools/test-8883.js
+tools/old-emqx-listen.js
+tools/audit.js
+tools/test-wildcard.js
+tools/check-emqx.js
+
+# 网关配置（含 broker / 网页账号密码）
+tools/gateway.config.json
+tools/gateway.config.server.json

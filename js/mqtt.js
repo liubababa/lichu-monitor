@@ -8,10 +8,10 @@
  *             zhhn/Get/DeviceInfor/{SN}, zhhn/Get/UserInfor/{SN}
  *   应答:     zhhn/PostRsp/…, zhhn/GetRsp/…, zhhn/SetRsp/…
  *
- * 平台职责：
- *   1. 订阅全部上行 Topic；收到 Login 必须回 PostRsp（result=1），否则 EMS 不继续通信
+ * 页面职责（broker 连接、账号与登录应答都在后端网关 tools/gateway.js）：
+ *   1. 经网关收上行 Topic 报文并渲染（网关地址即"Broker 地址"，由网关转发到厂家 broker）
  *   2. 解析 PeriodReport / GetRsp 数据帧（payload 标识符可能统一为 "PeriodReport"）
- *   3. 下发 EmsSet 并等待 SetRsp（result + errormsg）
+ *   3. 下发 EmsSet 并等待 SetRsp（result + errormsg）；登录应答由网关负责，页面不再回
  * ============================================================ */
 window.MqttService = (function () {
   'use strict';
@@ -53,7 +53,6 @@ window.MqttService = (function () {
 
   const T = {
     login:         sn => 'zhhn/Post/Login/' + sn,
-    loginRsp:      sn => 'zhhn/PostRsp/Login/' + sn,
     period:        sn => 'zhhn/Post/PeriodReport/' + sn,
     devdata:       sn => 'zhhn/Get/DevData/' + sn,
     devdataRsp:    sn => 'zhhn/GetRsp/DevData/' + sn,
@@ -93,9 +92,8 @@ window.MqttService = (function () {
 
     switch (biz) {
       case 'login':
+        /* 登录应答由后端网关统一回复（页面关着也不掉线），这里只做展示 */
         emit('login', { sn: sn || p.SN || '', payload: p });
-        /* 平台作为 broker 侧应答登录，登录成功 EMS 才继续通信 */
-        pub(T.loginRsp(sn), { identifier: 'Login', result: 1, time: now() }, '登录应答');
         break;
       case 'period':  emit('data', { sn: sn || p.SN || '', report: p }); break;
       case 'devdata': emit('devdata', { sn: sn || p.SN || '', report: p }); break;
