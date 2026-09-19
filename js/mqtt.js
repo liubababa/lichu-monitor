@@ -118,7 +118,7 @@ window.MqttService = (function () {
     emit('conn', { state: 'connecting', url: url });
     sys('开始连接 Broker：' + url);
     const opts = {
-      reconnectPeriod: 5000, connectTimeout: 10000, keepalive: 30, clean: true,
+      reconnectPeriod: 5000, connectTimeout: 10000, keepalive: 120, clean: true,
       clientId: 'zhhn-web-' + Math.random().toString(16).slice(2, 10)
     };
     if (c.username) opts.username = c.username;
