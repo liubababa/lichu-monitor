@@ -1,0 +1,26 @@
+{
+  "_说明": "复制为 gateway.config.json 后填写。该文件含密码，已在 .gitignore 中排除，不要提交。",
+
+  "listen": 8083,
+  "path": "/mqtt",
+
+  "upstream": {
+    "url": "mqtt://127.0.0.1:1883",
+    "username": "lichu_gateway",
+    "password": "改成网关账号密码",
+    "filters": ["#"],
+    "qos": 1
+  },
+
+  "autoLoginReply": true,
+  "retainLast": true,
+
+  "allowAnonymous": true,
+  "anonymousPublish": false,
+  "users": {
+    "lichu_web": "改成网页下发账号密码"
+  },
+
+  "logFile": "",
+  "logMessages": false
+}

@@ -60,8 +60,8 @@ window.addEventListener('error', function (e) {
 
     <div class="tb-right">
       <!-- 数据源状态指示 -->
-      <button class="ds-chip mock" id="dsChip" title="数据源状态（点击打开 MQTT 接入配置）">
-        <span>演示数据</span>
+      <button class="ds-chip idle" id="dsChip" title="数据源状态（点击打开 MQTT 接入配置）">
+        <span>未连接</span>
       </button>
       <div class="weather" id="weatherChip">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4 12H2M22 12h-2M5 5l1.5 1.5M17.5 17.5 19 19M19 5l-1.5 1.5M6.5 17.5 5 19"/></svg>
@@ -107,7 +107,7 @@ window.addEventListener('error', function (e) {
     <!-- 右侧：数据面板 -->
     <aside id="right">
       <div class="panel">
-        <div class="panel-title"><span>系统概况</span><em id="dataModeTag">演示数据</em></div>
+        <div class="panel-title"><span>系统概况</span><em id="dataModeTag">未连接</em></div>
         <div class="kpi-grid">
           <div class="kpi">
             <div class="kpi-icon">
@@ -176,22 +176,21 @@ window.addEventListener('error', function (e) {
         <option value="zhhn">晶农EMS 北向协议</option>
       </select>
     </label>
-    <div class="mq-sec">Broker 接入</div>
-    <label class="mq-row"><span>Broker 地址</span><input id="mqUrl" placeholder="ws://192.168.1.100 或 wss://域名"/></label>
+    <div class="mq-sec">网关接入</div>
+    <label class="mq-row"><span>网关地址</span><input id="mqUrl" placeholder="ws://127.0.0.1:9001/mqtt 或 wss://mqtt.ykdesign.top/mqtt"/></label>
     <label class="mq-row"><span>端口</span><input id="mqPort" placeholder="如 8083（留空按地址解析）"/></label>
-    <label class="mq-row"><span>用户名</span><input id="mqUser" placeholder="可留空"/></label>
-    <label class="mq-row"><span>密码</span><input id="mqPass" type="password" placeholder="可留空"/></label>
+    <label class="mq-row"><span>网关账号</span><input id="mqUser" placeholder="留空 = 只读（不下发）"/></label>
+    <label class="mq-row"><span>网关密码</span><input id="mqPass" type="password" placeholder="留空 = 只读（不下发）"/></label>
     <div class="mq-sec">电站 / 设备</div>
     <label class="mq-row"><span>ProductSN</span><input id="mqPsn" placeholder="高特平台产品号，默认 kp23bhcpmt91n2v8"/></label>
     <label class="mq-row"><span>设备 SN</span><input id="mqSn" placeholder="设备序列号（高特协议即 DeviceSN）"/></label>
     <label class="mq-row"><span>电站名称</span><input id="mqStation" placeholder="如：力储未来储能电站"/></label>
-    <div class="mq-hint" id="mqHint">高特协议：主题 /{ProductSN}/{DeviceSN}/rtg/data|status/{维度}/…，30 秒周期上报，点位按项目协议文档解析。配置自动保存到浏览器 localStorage。</div>
+    <div class="mq-hint" id="mqHint">填入 broker 地址（如 wss://mqtt.ykdesign.top/mqtt）与账号密码后点「连接」；未填账号则只读，不能下发。</div>
     <div class="mq-btns">
       <button class="mq-btn primary" id="mqConnect">连接</button>
       <button class="mq-btn" id="mqDisconnect">断开</button>
       <button class="mq-btn" id="mqPoll">实时召测（60 帧）</button>
       <button class="mq-btn" id="mqSave">保存配置</button>
-      <button class="mq-btn" id="mqMock">切回演示数据</button>
       <button class="mq-btn" id="mqDevList">设备清单</button>
       <button class="mq-btn" id="mqUserInfo">查询用户/电站信息</button>
     </div>
@@ -219,7 +218,7 @@ window.addEventListener('error', function (e) {
   <div class="ov-bar">
     <div class="tv-title">设备总览 <em>· 晶农EMS 点表实时数据</em></div>
     <div class="ov-bar-r">
-      <span class="ov-src mock" id="ovSrc">演示数据</span>
+      <span class="ov-src" id="ovSrc">未连接</span>
       <button class="mq-btn" id="ovRefresh">刷新</button>
     </div>
   </div>
@@ -232,7 +231,6 @@ window.addEventListener('error', function (e) {
     <div class="tv-title">设备总览 <em>· 高特 CCU 协议（按项目协议文档解析）</em></div>
     <div class="ov-bar-r">
       <span class="ov-src" id="gaoteStats">—</span>
-      <button class="mq-btn" id="gaoteDemo">离线演示</button>
       <button class="mq-btn" id="gaoteRefresh">刷新</button>
     </div>
   </div>
@@ -301,20 +299,19 @@ window.addEventListener('error', function (e) {
   </div>
 </div>
 
-<script src="js/data.js?v=20260917d"></script>
+<script src="js/data.js?v=20260919b"></script>
 <script src="js/points.js?v=20260917d"></script>
-<script src="js/mqtt.js?v=20260917d"></script>
+<script src="js/mqtt.js?v=20260919a"></script>
 <script src="js/gaote-points.js?v=20260917d"></script>
-<script src="js/gaote.js?v=20260917d"></script>
-<script src="js/gaote-view.js?v=20260917e"></script>
-<script src="js/gaote-demo.js?v=20260917i"></script>
+<script src="js/gaote.js?v=20260919b"></script>
+<script src="js/gaote-view.js?v=20260919b"></script>
 <script src="js/gaote-detail.js?v=20260917j"></script>
 <script src="js/gaote-scene3d.js?v=20260917e"></script>
 <script src="js/gaote-strategy.js?v=20260917d"></script>
 <script src="js/vendor-data.js?v=20260918a"></script>
 <script src="js/vendor-view.js?v=20260918b"></script>
-<script src="js/overview.js?v=20260917d"></script>
-<script src="js/mqtt-ui.js?v=20260918c"></script>
+<script src="js/overview.js?v=20260919b"></script>
+<script src="js/mqtt-ui.js?v=20260919b"></script>
 <script src="js/scene3d.js?v=20260917d"></script>
 <script src="js/charts.js?v=20260917d"></script>
 <script src="js/main.js?v=20260917d"></script>
