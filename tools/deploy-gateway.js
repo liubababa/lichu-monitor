@@ -24,7 +24,7 @@ const { Client } = require('ssh2');
 
 const HOST = process.env.SRV_HOST || '43.129.27.206';
 const USER = process.env.SRV_USER || 'ubuntu';
-const PASS = process.env.SRV_PASS || 'Lyk872373!';
+const PASS = process.env.SRV_PASS || '';   // 服务器密码只用环境变量传入，不写进代码
 
 const GW_DIR = '/opt/mqtt-gateway';
 const GW_PORT = 8090;

@@ -18,9 +18,9 @@ OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '给厂家�
 BODY = '宋体'
 HEAD = '黑体'
 
-BROKER_HOST = sys.argv[1] if len(sys.argv) > 1 else '<broker地址>'
-BROKER_PORT = sys.argv[2] if len(sys.argv) > 2 else '8883'
-EMS_USER = sys.argv[3] if len(sys.argv) > 3 else '<用户名>'
+BROKER_HOST = sys.argv[1] if len(sys.argv) > 1 else 'mqtt.ykdesign.top'
+BROKER_PORT = sys.argv[2] if len(sys.argv) > 2 else '1883'
+EMS_USER = sys.argv[3] if len(sys.argv) > 3 else 'zhhn_ems'
 EMS_PASS = sys.argv[4] if len(sys.argv) > 4 else '<密码>'
 
 
@@ -69,17 +69,19 @@ def main():
     run(t, '晶农EMS 接入参数', 16, True, HEAD)
 
     para(doc, '您好，')
-    para(doc, '我们这边的 MQTT 服务器已经搭好了，麻烦在 EMS 上配置一下第三方 broker，参数如下：')
+    para(doc, '按你们反馈的“EMS 只支持 1883 明文”，我们这边的 MQTT 服务器已经改成 1883 明文端口'
+              '重新搭好了，不需要证书、不需要 TLS。麻烦在 EMS 上按下表配置第三方 broker：')
 
     # 参数表（朴素样式）
     rows = [
         ('服务器地址', BROKER_HOST),
-        ('端口', BROKER_PORT + '（TLS 加密）'),
+        ('端口', BROKER_PORT + '（TCP 明文，不做 TLS）'),
         ('用户名', EMS_USER),
         ('密码', EMS_PASS),
         ('QoS', '0 或 1 都可以'),
         ('Keepalive', '60 秒'),
         ('ClientId', '填 EMS 自己的 SN 即可'),
+        ('会话', 'Clean Session = true（不需要保留离线消息）'),
     ]
     tb = doc.add_table(rows=0, cols=2)
     tb.style = 'Table Grid'
@@ -94,19 +96,22 @@ def main():
 
     para(doc, '', space_after=4)
     para(doc, '登录和上报的 Topic 按协议文档来，就是 zhhn/Post/Login/{SN} 和 '
-              'zhhn/Post/PeriodReport/{SN}。我们收到登录请求会回 zhhn/PostRsp/Login/{SN}，result 置 1。')
+              'zhhn/Post/PeriodReport/{SN}。我们收到登录请求会回 zhhn/PostRsp/Login/{SN}，result 置 1——'
+              '这一步我们已经用模拟设备测通了，EMS 发登录后会正常收到应答。')
 
-    para(doc, '有三件事想先跟你们确认：', space_before=6)
+    para(doc, '地址这边我们填的是域名而不是 IP：万一以后我们换服务器，只要改解析，你们那边不用动配置。')
 
-    para(doc, '1、EMS 支持 TLS 吗？我们这边只有 8883 加密端口，没有 1883 明文端口。'
-              '如果 EMS 只能走明文连接，请提前说一声，我们换别的方案。', indent=True)
-    para(doc, '2、这台 EMS 的 SN 是多少？Topic 里要用。', indent=True)
-    para(doc, '3、通道下发里的 wayName 该怎么填？文档示例里是“下设充电/放电功率”这种中文名，'
+    para(doc, '还有两件事想跟你们确认：', space_before=6)
+
+    para(doc, '1、这台 EMS 的 SN 是多少？Topic 里要用，我们好提前把设备台账对上。', indent=True)
+    para(doc, '2、通道下发里的 wayName 该怎么填？文档示例里是“下设充电/放电功率”这种中文名，'
               '点表里又是 SetPower、S1Power 这样的英文 TAG，两边对不上。麻烦给一份对照表'
               '（包括 S1~S10 分段策略那几个字段），不然充放电策略我们下发不了。', indent=True)
 
-    para(doc, '另外提醒一句：我们用的是 Serverless 版 broker，单个客户端最多 10 个订阅，'
-              'EMS 那边订阅数量控制在 10 个以内，超了虽然不报错但收不到消息。', space_before=6)
+    para(doc, '另外提醒一句：这端口是明文传输，账号密码和报文在公网是可见的，'
+              '所以现场别配错账号、也别把密码外传；如果储能站那边的出口是固定公网 IP，'
+              '告诉我们，我们可以在服务器上把 1883 限制成只允许这个 IP 访问，更保险。'
+              '（这一项可选，不做也能正常连。）', space_before=6)
 
     para(doc, '还有，协议文档里有几处示例报文的写法有点问题，主要是全角冒号和逗号、'
               'PeriodReport 里的 time 写在了 data 数组里面、UserInfor 应答里 DeviceName 重复。'

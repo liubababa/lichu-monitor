@@ -8,7 +8,7 @@
  *   3. 把收到的报文落盘到 logs/ 目录，便于事后查
  *
  * 用法：node watch-broker.js <broker地址> <用户名> <密码> [运行秒数，默认0=一直跑]
- *   例：node watch-broker.js aa50f11a.ala.cn-hangzhou.emqxsl.cn lichu_web 872373 120
+ *   例：node watch-broker.js <broker地址> <用户名> <密码> 120
  * ============================================================ */
 'use strict';
 const mqtt = require('mqtt');

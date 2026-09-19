@@ -385,7 +385,7 @@ window.GaoteService = (function () {
       const subs = [];
       if (cfg.productSN && cfg.deviceSN) subs.push('/' + cfg.productSN + '/' + cfg.deviceSN + '/#');
       subs.push('/' + cfg.productSN + '/+/#');          // 设备序列号未知时兜底
-      subs.push('+/+/-/#');                              // 极端兜底（部分 broker 限制通配符，失败不影响）
+      subs.push('+/+/#');                               // 极端兜底：ProductSN/DeviceSN 填错也能收到
       subs.forEach(t => client.subscribe(t, { qos: 1 }, function (err) {
         if (err) sys('订阅失败 ' + t + '：' + (err.message || err));
         else sys('已订阅 ' + t);

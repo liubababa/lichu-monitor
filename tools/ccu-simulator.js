@@ -8,7 +8,7 @@
  *
  * 用法：
  *   node ccu-simulator.js --url mqtt://127.0.0.1:1884 \
- *        --username zhhn_ems --password 872373 \
+ *        --username <用户名> --password <密码> \
  *        --psn kp23bhcpmt91n2v8 --dsn SN2025B3781TEST --interval 30 --arr 5 --cells 8
  * ============================================================ */
 'use strict';

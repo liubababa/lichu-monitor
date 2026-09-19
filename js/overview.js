@@ -2,11 +2,11 @@
  * 设备总览（主页）—— 晶农EMS 点表九大板块，每板块独立样式
  *
  * 数据源：
- *   · mqtt 模式：MqttUI.ingest() → OverviewUI.update(tagsMap, 'mqtt')
+ *   · 只来自设备 MQTT 上报：MqttUI.ingest() → OverviewUI.update(tagsMap, 'mqtt')
  *     tagsMap = { EMS:{TAG:值}, PCS:{...}, BMS:{...}, BMS_CELLS:{...},
  *                 PCS_METER:{...}, GRID_METER:{...}, TMS:{...},
  *                 DIDO:{...}, FIRE:{...}, CSJ:{...}, systemSet:{...} }
- *   · mock 模式：main.js onData() → OverviewUI.update(null, 'mock')，内部用演示值
+ *   · 没有数据时各板块显示「--」，不含任何本地模拟/演示数据
  *
  * 板块与定制样式：
  *   1 系统参数  横向状态条（CPU/内存/磁盘进度条 + 4G 信号格）
@@ -604,30 +604,6 @@ window.OverviewUI = (function () {
     concMap.forEach(([t], i) => { R.aux.conc[i].textContent = fmt(gn(map, 'FIRE', t), '', 0); });
   }
 
-  /* ---------------- 演示数据（mock 模式） ---------------- */
-  function demoBase() {
-    const t = Date.now() / 1000;
-    const wave = (f, ph) => Math.sin(t / f + (ph || 0));
-    const p = +(180 * wave(600, 1)).toFixed(1);          // PCS_P：-180~180 波动
-    const soc = +(82 + 4 * wave(1800)).toFixed(1);
-    const cells = {};
-    for (let i = 1; i <= 224; i++) cells['RkCeVolt' + String(i).padStart(3, '0')] = String(Math.round(3157 + 28 * Math.sin(i * 0.35) + 6 * Math.random()));
-    for (let i = 1; i <= 112; i++) cells['RkCeTemp' + String(i).padStart(3, '0')] = (28.5 + 2.5 * Math.sin(i * 0.21) + Math.random()).toFixed(1);
-    return {
-      systemSet: { SN: 'SNLICHU-DEMO', CpuUsage: String(Math.round(16 + 6 * Math.random())), DiskSpace: '232348', Rss: '1024', netIp: '192.168.1.66', SignalStrength: '26', Ccid: '89860121802209000000', version: '工控机版V1.6', Online: 1 },
-      EMS: { PCS_P: p, PCS_Q: 12.1, GRID_P: (270 + 30 * wave(400)).toFixed(1), PV_P: '0', PCU_P: '0', LoadPower: (420 + 25 * wave(300, 2)).toFixed(1), BMS_P: (p * 0.95).toFixed(1), BMS_SOC: soc, CabPower: '500', CabCapacity: '1000', SysStatus: '0', ControlMode: '1', ProhibiteCha: '0', ProhibiteDisc: '0', AlarmCnt: '0', Online: 1 },
-      PCS: { AphaseVoltage: '233.4', BphaseVoltage: '235.1', CphaseVoltage: '231.8', Frequency: '50.01', ActivePower: p, ReactivePower: '12.1', ApparentPower: Math.abs(p).toFixed(1), ACFactor: '0.998', BatVolt: '707.1', BatCurr: (p / 0.707).toFixed(1), BatPower: (p * 0.95).toFixed(1), IGBTTemp: (37 + wave(900)).toFixed(1), RunStatu: Math.abs(p) < 5 ? '5' : '257', GridOnOff: '0', DC2: '120.5', DC4: '98.2', DC6: '3120.4', DC8: '2871.9', Online: 1 },
-      BMS: { SOC: soc, SOH: '99', SOE: '92.6', RackVoltage: '707.1', RackCurrent: (p / 0.707).toFixed(1), RackRunState: '7', RackMaxTemp: '31', RackMaxTempModuleId: '1', RackMaxTempCellId: '48', RackMinTemp: '26', RackMinTempModuleId: '2', RackMinTempCellId: '7', RackMaxVoltage: '3189', RackMaxVoltageModuleId: '1', RackMaxVolCellId: '102', RackMinVoltage: '3121', RackMinVoltageModuleId: '2', RackMinVolCellId: '11', RackPosInsulatVal: '5120', RackNegInsulatVal: '5088', Online: 1 },
-      TMS: { InflowTemp: '24.6', EffluentTemp: '28.9', AmbientTemp: '26.2', WaterInPreVal: '2.41', WaterOutPreVal: '2.12', PressSpeed: '2100', PumpStatus: '1', CompressorStatus: '1', Read_15: '2', Read_4: String(Math.floor(Date.now() / 3000) % 256), Online: 1 },
-      BMS_CELLS: cells,
-      PCS_METER: { AphaseVoltage: '233.2', BphaseVoltage: '234.9', CphaseVoltage: '231.6', AphaseCurrent: Math.abs(p / 3 / 0.233).toFixed(2), BphaseCurrent: Math.abs(p / 3 / 0.233).toFixed(2), CphaseCurrent: Math.abs(p / 3 / 0.233).toFixed(2), ActivePower: p, ReactivePower: '12.0', ApparentPower: Math.abs(p).toFixed(1), PowerFactor: '0.998', ActiveEnergy: '523411.2', ReactiveEnergy: '481122.9', Online: 1 },
-      GRID_METER: { AphaseVoltage: '234.1', BphaseVoltage: '235.8', CphaseVoltage: '232.4', AphaseCurrent: (300 / 3 / 0.234).toFixed(2), BphaseCurrent: (300 / 3 / 0.234).toFixed(2), CphaseCurrent: (300 / 3 / 0.234).toFixed(2), ActivePower: (300 + 30 * wave(400)).toFixed(1), ReactivePower: '45.2', ApparentPower: '302.4', PowerFactor: '0.989', ActiveEnergy: '1258340.6', ReactiveEnergy: '982213.4', Online: 1 },
-      DIDO: { DI1: '0', DI2: '0', DI3: '0', DI4: '0', DI5: '0', DI6: '0', DI7: '0', DI8: '0', Online: 1 },
-      FIRE: { Status: '1', Alarm: '0', Fault: '0', ValveOpen: '0', COConcentration: '2', H2Concentration: '1', VOCConcentration: '3', SmokeAttenuation: '0', Online: 1 },
-      CSJ: { CurTemp: '27', CurHum: '8', DehumStatus: '1', HeatState: '0', Online: 1 }
-    };
-  }
-
   /* ---------------- 渲染调度 ---------------- */
   let inited = false, lastRender = 0;
   function render(map, src) {
@@ -642,8 +618,8 @@ window.OverviewUI = (function () {
     /* 数据源角标 */
     const srcEl = byId('ovSrc');
     if (srcEl) {
-      srcEl.textContent = src === 'mqtt' ? '厂家实时数据' : '演示数据';
-      srcEl.className = 'ov-src ' + (src === 'mqtt' ? 'live' : 'mock');
+      srcEl.textContent = '厂家实时数据';
+      srcEl.className = 'ov-src live';
     }
   }
   function update(tags, src) {
@@ -653,8 +629,7 @@ window.OverviewUI = (function () {
     if (!visible && src !== 'force') return;
     if (now - lastRender < 1200 && src !== 'force') return;
     lastRender = now;
-    const has = tags && Object.keys(tags).length;
-    render(has ? tags : demoBase(), src);
+    render(tags || {}, src);
   }
   function init() {
     if (inited) return;
