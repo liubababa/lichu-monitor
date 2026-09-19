@@ -13,6 +13,7 @@
   "dependencies": {
     "aedes": "^0.51.3",
     "mqtt": "^5.16.0",
+    "ssh2": "^1.17.0",
     "websocket-stream": "^5.5.2"
   }
 }

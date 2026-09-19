@@ -25,11 +25,14 @@ dist/
 # 含接入凭据的文件（不进仓库）
 给厂家的接入参数.md
 给厂家的接入参数.docx
+给高特的接入参数.md
+给高特的接入参数.docx
 refs/  
 logs/  
 
 # 部署/联调脚本（内置服务器登录密码或 broker 账号）
 tools/deploy-remote.sh
+tools/deploy-site.js
 tools/remote-run.js
 tools/ssh-probe.js
 tools/test-remote-broker.js
@@ -40,6 +43,14 @@ tools/old-emqx-listen.js
 tools/audit.js
 tools/test-wildcard.js
 tools/check-emqx.js
+tools/check-wss.js
+tools/broker-status.sh
+tools/audit-server.sh
+tools/diagnose.sh
+tools/remove-gateway.sh
+tools/setup-watch.sh
+tools/fix-watch.sh
+tools/setup-tls-listener.sh
 
 # 网关配置（含 broker / 网页账号密码）
 tools/gateway.config.json
