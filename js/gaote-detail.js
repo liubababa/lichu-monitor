@@ -28,6 +28,45 @@ window.GaoteDetail = (function () {
   const S = { win: { t: [], soc: [], pcs: [], grid: [], load: [] }, lastDay: null, dayBase: null, alarms: [] };
   const WIN = 60;
 
+  /* ---------------- 历史曲线（后端保留 3 天） ---------------- */
+  let histMode = 'live', histData = null, histLoading = false;
+  const HIST_BASE = (function () {
+    if (/^https?:/.test(location.protocol)) {
+      if (/^(127\.0\.0\.1|localhost)$/.test(location.hostname)) return 'http://127.0.0.1:8095';   // 本地联调
+      return '';                                                                                  // 与页面同源（nginx 反代 /history）
+    }
+    return 'https://mqtt.ykdesign.top';
+  })();
+  const RANGE_TITLE = { live: '本次会话实时曲线', today: '今日历史曲线', yesterday: '昨日历史曲线', days3: '近 3 天历史曲线' };
+
+  function loadHistory(range) {
+    histMode = range;
+    histLoading = true;
+    if (range === 'live') { histLoading = false; render(true); return; }
+    render(true);
+    fetch(HIST_BASE + '/history?range=' + range + '&step=300')
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        const pts = (j && j.points) || [];
+        histData = {
+          labels: pts.map(function (p) {
+            const d = new Date(p.t * 1000);
+            const hm = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+            return (range === 'days3') ? (String(d.getMonth() + 1) + '-' + String(d.getDate()) + ' ' + hm) : hm;
+          }),
+          soc: pts.map(function (p) { return p.soc; }),
+          p: pts.map(function (p) { return p.p; })
+        };
+        histLoading = false;
+        render(true);
+      })
+      .catch(function () {
+        histData = { labels: [], soc: [], p: [] };
+        histLoading = false;
+        render(true);
+      });
+  }
+
   function el(tag, cls, html) { const e = document.createElement(tag); if (cls) e.className = cls; if (html !== undefined) e.innerHTML = html; return e; }
   function f(v, d, u) { return (v === null || v === undefined || isNaN(v)) ? '--' : Number(v).toFixed(d === undefined ? 1 : d) + (u || ''); }
   function sum(dim, key) {
@@ -90,14 +129,14 @@ window.GaoteDetail = (function () {
   let chart1 = null, chart2 = null, chartPay = null, chartCycle = null;
 
   let lastSig = '';
-  function render() {
+  function render(force) {
     const host = byId('detailBody');
     if (!host) return;
     const stKeys = Object.keys(GaoteService.state);
     const lastT = Math.max.apply(null, stKeys.map(function (k) { return GaoteService.state[k]._t || 0; }).concat([0]));
     /* 数据没变就不重绘：5 秒一次的整块重绘既会让图表重画、也会把滚动位置打回顶部 */
     const sig = stKeys.length + '|' + lastT;
-    if (sig === lastSig && host.childElementCount) return;
+    if (!force && sig === lastSig && host.childElementCount) return;
     lastSig = sig;
     const scroller = host.parentElement;
     const keepTop = scroller ? scroller.scrollTop : 0;
@@ -184,9 +223,21 @@ window.GaoteDetail = (function () {
     /* 三列主体 */
     const grid = el('div', 'dt-grid');
 
-    /* 左列：两条曲线 */
+    /* 左列：两条曲线（充放电曲线可切实时 / 历史） */
     const colL = el('div', 'dt-col');
-    colL.appendChild(panel('充放电曲线', 'SOC(%) · 储能功率(kW)', 'dtChart1', '本次会话实时曲线（历史曲线需后端存储）'));
+    const chipHtml = '<div class="dt-chips">'
+      + [['live', '实时'], ['today', '今日'], ['yesterday', '昨日'], ['days3', '近3天']].map(function (c) {
+        return '<button data-range="' + c[0] + '"' + (histMode === c[0] ? ' class="on"' : '') + '>' + c[1] + '</button>';
+      }).join('') + '</div>';
+    const histNote = (histMode === 'live')
+      ? RANGE_TITLE.live
+      : (RANGE_TITLE[histMode] + '（服务端保留 3 天）'
+        + (histLoading ? '　加载中…' : (histData && histData.labels.length === 0 ? '　暂无数据' : '')));
+    const pChart1 = panel('充放电曲线', 'SOC(%) · 储能功率(kW)', 'dtChart1', histNote, chipHtml);
+    pChart1.querySelectorAll('.dt-chips button').forEach(function (b) {
+      b.addEventListener('click', function () { loadHistory(b.dataset.range); });
+    });
+    colL.appendChild(pChart1);
     colL.appendChild(panel('功率曲线', '关口功率 · 储能功率 · 负荷(kW)', 'dtChart2', ''));
     grid.appendChild(colL);
 
@@ -255,10 +306,17 @@ window.GaoteDetail = (function () {
 
     /* 图表 */
     setTimeout(function () {
-      drawLine('dtChart1', 'chart1', [
-        { name: 'SOC(%)', data: S.win.soc, axis: 0, color: '#2ee6c8' },
-        { name: '储能功率(kW)', data: S.win.pcs, axis: 1, color: '#ffb020' }
-      ]);
+      if (histMode === 'live') {
+        drawLine('dtChart1', 'chart1', [
+          { name: 'SOC(%)', data: S.win.soc, axis: 0, color: '#2ee6c8' },
+          { name: '储能功率(kW)', data: S.win.pcs, axis: 1, color: '#ffb020' }
+        ]);
+      } else if (histData) {
+        drawLine('dtChart1', 'chart1', [
+          { name: 'SOC(%)', data: histData.soc, axis: 0, color: '#2ee6c8' },
+          { name: '储能功率(kW)', data: histData.p, axis: 1, color: '#ffb020' }
+        ], histData.labels);
+      }
       drawLine('dtChart2', 'chart2', [
         { name: '关口功率', data: S.win.grid, axis: 0, color: '#7aa2ff' },
         { name: '储能功率', data: S.win.pcs, axis: 0, color: '#2ee6c8' },
@@ -272,11 +330,12 @@ window.GaoteDetail = (function () {
 
   /* 图表容器节点缓存：每次重绘复用同一个节点，ECharts 实例就不会挂到被删掉的旧节点上（否则图表会闪/变空） */
   const chartNodes = {};
-  function panel(title, sub, canvasId, note) {
+  function panel(title, sub, canvasId, note, actions) {
     const s = el('section', 'dt-panel');
     const h = el('div', 'dt-ptitle');
     h.appendChild(el('b', '', title));
     if (sub) h.appendChild(el('em', '', sub));
+    if (actions) h.appendChild(el('div', 'dt-panelops', actions));
     s.appendChild(h);
     let c = chartNodes[canvasId];
     if (!c) { c = el('div', 'dt-chart'); c.id = canvasId; chartNodes[canvasId] = c; }
@@ -290,7 +349,7 @@ window.GaoteDetail = (function () {
     if (!charts[key]) charts[key] = echarts.init(node);
     return charts[key];
   }
-  function drawLine(id, key, series) {
+  function drawLine(id, key, series, labels) {
     const node = byId(id);
     if (!node || typeof echarts === 'undefined') return;
     bindChart(key, node);
@@ -298,7 +357,7 @@ window.GaoteDetail = (function () {
       grid: { left: 46, right: 46, top: 26, bottom: 24 },
       tooltip: { trigger: 'axis', backgroundColor: 'rgba(6,18,20,.92)', borderColor: 'rgba(46,230,200,.35)', textStyle: { color: '#cfeee8', fontSize: 11 } },
       legend: { show: true, right: 6, top: 0, textStyle: { color: '#6f9a94', fontSize: 10 }, itemWidth: 12, itemHeight: 8 },
-      xAxis: { type: 'category', data: S.win.t, axisLine: { lineStyle: { color: 'rgba(46,230,200,.25)' } }, axisLabel: { color: '#6b9490', fontSize: 9 } },
+      xAxis: { type: 'category', data: labels || S.win.t, axisLine: { lineStyle: { color: 'rgba(46,230,200,.25)' } }, axisLabel: { color: '#6b9490', fontSize: 9 } },
       yAxis: [
         { type: 'value', scale: true, axisLabel: { color: '#6b9490', fontSize: 9 }, splitLine: { lineStyle: { color: 'rgba(46,230,200,.08)', type: 'dashed' } } },
         { type: 'value', scale: true, axisLabel: { color: '#6b9490', fontSize: 9 }, splitLine: { show: false } }
