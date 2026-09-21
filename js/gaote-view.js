@@ -320,13 +320,26 @@ window.GaoteView = (function () {
   }
 
   /* ---------- 7. 告警 ---------- */
+  /* 同名告警合并显示（多堆/多簇会报同一条），数量用 ×N，位置信息放进悬停提示 */
+  function groupAlarms(list) {
+    const out = [];
+    list.forEach(function (a) {
+      const key = (a.label || a.dim) + ' · ' + a.name;
+      const hit = out.filter(function (g) { return g.key === key; })[0];
+      if (hit) { hit.n++; if (a.inst) hit.insts.push(a.inst); }
+      else out.push({ key: key, n: 1, insts: a.inst ? [a.inst] : [] });
+    });
+    return out;
+  }
   function alarmSec() {
     const list = collectAlarms();
     if (!list.length) return null;
     const { s, body } = sec('sp12', '告警（遥信）', 'rtg/status');
     const wrap = el('div', 'gv3-alarms');
-    list.forEach(function (a) {
-      wrap.appendChild(el('span', 'gv3-alarm', (a.label || a.dim) + ' · ' + (a.inst || '') + ' · ' + a.name));
+    groupAlarms(list).forEach(function (g) {
+      const chip = el('span', 'gv3-alarm', g.key + (g.n > 1 ? ' ×' + g.n : ''));
+      if (g.insts.length) chip.title = '位置：' + g.insts.join('、');
+      wrap.appendChild(chip);
     });
     body.appendChild(wrap);
     return s;
@@ -356,10 +369,16 @@ window.GaoteView = (function () {
     const bar = byId('gaoteAlarmBar');
     const alarms = collectAlarms();
     if (bar) {
-      bar.className = 'gv-alarm alarm ' + (alarms.length ? 'bad' : 'ok');
-      bar.textContent = alarms.length
-        ? ('⚠ ' + alarms.slice(0, 6).map(a => (a.label || a.dim) + ' · ' + a.name).join('　') + (alarms.length > 6 ? '　…共 ' + alarms.length + ' 条' : ''))
-        : '当前无告警';
+      const groups = groupAlarms(alarms);
+      bar.className = 'gv-alarm alarm ' + (groups.length ? 'bad' : 'ok');
+      if (!groups.length) {
+        bar.textContent = '当前无告警';
+      } else {
+        const head = groups.slice(0, 3).map(function (g) { return g.key + (g.n > 1 ? ' ×' + g.n : ''); }).join('　');
+        bar.textContent = groups.length <= 3
+          ? '⚠ ' + head
+          : '⚠ ' + head + '　等 ' + groups.length + ' 类，共 ' + alarms.length + ' 条告警';
+      }
     }
     body.innerHTML = '';
     body.appendChild(heroSec());

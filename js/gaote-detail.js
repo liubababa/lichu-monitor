@@ -53,9 +53,11 @@ window.GaoteDetail = (function () {
     return arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
   }
   function collectAlarms() {
-    /* 统一走 GaoteService.alarms()：只认状态帧里的告警类点（编号/工作状态不算） */
-    if (typeof GaoteService.alarms === 'function') return GaoteService.alarms().map(function (a) { return a.name; });
-    return [];
+    /* 统一走 GaoteService.alarms()：只认状态帧里的告警类点（编号/工作状态不算），同名合并计数 */
+    if (typeof GaoteService.alarms !== 'function') return [];
+    const counts = {};
+    GaoteService.alarms().forEach(function (a) { counts[a.name] = (counts[a.name] || 0) + 1; });
+    return Object.keys(counts).map(function (n) { return n + (counts[n] > 1 ? ' ×' + counts[n] : ''); });
   }
 
   /* 分时电量：电表的尖/峰/平/谷/深谷电能点位 */
