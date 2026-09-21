@@ -133,11 +133,11 @@ def main():
     s = doc.add_paragraph()
     s.alignment = WD_ALIGN_PARAGRAPH.CENTER
     s.paragraph_format.space_after = Pt(12)
-    set_run(s.add_run('力储未来储能远程监控平台   →   中和汇能（山东）电气科技有限公司'), 10.5, False, RGBColor(0x60, 0x60, 0x60), HEAD_FONT)
+    set_run(s.add_run('力储未来能源综合管理系统   →   中和汇能（山东）电气科技有限公司'), 10.5, False, RGBColor(0x60, 0x60, 0x60), HEAD_FONT)
 
     table(doc, ['项目', '内容'], [
         ['收件方', '中和汇能（山东）电气科技有限公司'],
-        ['提出方', '力储未来储能远程监控平台'],
+        ['提出方', '力储未来能源综合管理系统'],
         ['依据文件', '《晶农EMS的MQTT通讯协议》2026-03-04；mqtt_north.xlsx 点表'],
         ['验证方式', '在真实公网 MQTT broker 上按文档逐条收发验证；并对文档示例报文做 JSON 合法性校验'],
         ['验证结论', '协议框架可用：文档定义的 14 条 Topic 链路在真实 broker 上全部可达。\n'

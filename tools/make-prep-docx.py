@@ -132,7 +132,7 @@ def main():
     t = doc.add_paragraph()
     t.alignment = WD_ALIGN_PARAGRAPH.CENTER
     t.paragraph_format.space_after = Pt(2)
-    set_run(t.add_run('力储未来储能远程监控平台 · 对接准备清单'), 18, True, ACCENT, HEAD_FONT)
+    set_run(t.add_run('力储未来能源综合管理系统 · 对接准备清单'), 18, True, ACCENT, HEAD_FONT)
     s = doc.add_paragraph()
     s.alignment = WD_ALIGN_PARAGRAPH.CENTER
     s.paragraph_format.space_after = Pt(12)
