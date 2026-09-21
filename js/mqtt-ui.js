@@ -201,10 +201,101 @@ window.MqttUI = (function () {
     const healthTab = document.querySelector('#mainTabs .tab[data-tab="health"]');
     if (healthTab) healthTab.classList.toggle('hidden', gaote);
     applyVendor();
+    renderDevChip();
+  }
+
+  /* ============================ 设备列表（高特：自动发现 + 切换） ============================ */
+  function devData() {
+    return (typeof GaoteService !== 'undefined' && GaoteService.devicesList) ? GaoteService.devicesList() : [];
+  }
+  function toggleDevPanel(open) {
+    const p = byId('devPanel');
+    if (!p) return;
+    const show = (open === undefined) ? p.classList.contains('hidden') : open;
+    p.classList.toggle('hidden', !show);
+    if (show) { togglePanel(false); renderDevList(); }
+  }
+  /* 顶栏芯片：显示当前设备；没有任何设备时隐藏 */
+  function renderDevChip() {
+    const chip = byId('devChip'), txt = byId('devChipText');
+    if (!chip || !txt) return;
+    const list = devData();
+    const dev = (typeof GaoteService !== 'undefined' && GaoteService.activeDevice) ? GaoteService.activeDevice() : null;
+    const act = dev ? list.filter(function (d) { return d.dsn === dev.dsn; })[0] : null;
+    chip.classList.toggle('hidden', CFG.protocol !== 'gaote' || !list.length);
+    if (!dev) { txt.textContent = '设备'; chip.classList.remove('online'); return; }
+    txt.textContent = dev.dsn;
+    chip.classList.toggle('online', !!(act && act.online));
+    chip.title = '当前设备：' + dev.dsn + '（点击打开设备列表）' + (act ? '　' + (act.online ? '在线' : '离线') : '');
+  }
+  let devListSig = '';
+  function renderDevList() {
+    const box = byId('devList');
+    if (!box) return;
+    const list = devData();
+    if (!list.length) {
+      if (devListSig !== 'EMPTY') {
+        devListSig = 'EMPTY';
+        box.innerHTML = '<div class="dev-empty">还没有发现设备。<br/>先在「MQTT 接入配置」里连接并等设备上报，设备会自动出现在这里。</div>';
+      }
+      return;
+    }
+    /* 只在"设备集合 / 当前设备 / 在线状态"变化时重建列表；条数就地在原行更新，
+       避免每 2 秒重建打断用户点击 */
+    const sig = list.map(function (d) { return d.dsn + '|' + (d.active ? 1 : 0) + '|' + (d.online ? 1 : 0); }).join(',');
+    if (sig !== devListSig) {
+      devListSig = sig;
+      box.innerHTML = '';
+      list.forEach(function (d) {
+        const row = document.createElement('div');
+        row.className = 'dev-row' + (d.active ? ' on' : '') + (d.online ? ' online' : '');
+        const dot = document.createElement('span'); dot.className = 'dev-dot';
+        const main = document.createElement('div'); main.className = 'dev-main';
+        const sn = document.createElement('div'); sn.className = 'dev-sn'; sn.textContent = d.dsn;
+        const meta = document.createElement('div'); meta.className = 'dev-meta';
+        main.appendChild(sn); main.appendChild(meta);
+        const badge = document.createElement('span');
+        badge.className = 'dev-badge' + (d.online ? '' : ' off');
+        badge.textContent = d.online ? '在线' : '离线';
+        row.appendChild(dot); row.appendChild(main); row.appendChild(badge);
+        row.title = 'ProductSN ' + d.psn;
+        row.addEventListener('click', function () { switchDevice(d); });
+        box.appendChild(row);
+      });
+    }
+    [].slice.call(box.querySelectorAll('.dev-row')).forEach(function (row, i) {
+      const d = list[i];
+      if (!d) return;
+      const meta = row.querySelector('.dev-meta');
+      if (meta) meta.textContent = '报文 ' + d.msgs + ' 条　最后上报 ' + (d.lastSeen ? new Date(d.lastSeen).toTimeString().slice(0, 8) : '--');
+    });
+  }
+  /* 切换当前查看的设备：把 SN 写回配置并刷新界面 */
+  function switchDevice(d) {
+    if (d.active) { toast('当前已是该设备'); return; }
+    if (typeof GaoteService === 'undefined' || !GaoteService.setActive || !GaoteService.setActive(d.dsn)) {
+      toast('切换失败：该设备暂无可显示的数据');
+      return;
+    }
+    const snEl = byId('mqSn'); if (snEl) snEl.value = d.dsn;
+    const psnEl = byId('mqPsn'); if (psnEl) psnEl.value = d.psn;
+    CFG.sn = d.dsn; CFG.psn = d.psn;
+    persist(false);
+    if (CFG.protocol === 'gaote' && window.GaoteStrategy && byId('tabView') && !byId('tabView').classList.contains('hidden')) {
+      GaoteStrategy.init();
+    }
+    toast('已切换到设备 ' + d.dsn);
+    renderDevList(); renderDevChip();
+  }
+  function bindDevPanel() {
+    const chip = byId('devChip');
+    if (chip) chip.addEventListener('click', function () { toggleDevPanel(); });
+    const close = byId('devPanelClose');
+    if (close) close.addEventListener('click', function () { toggleDevPanel(false); });
   }
 
   function bindPanel() {
-    byId('dsChip').addEventListener('click', () => togglePanel(true));
+    byId('dsChip').addEventListener('click', () => { toggleDevPanel(false); togglePanel(true); });
     byId('mqClose').addEventListener('click', () => togglePanel(false));
     byId('mqSave').addEventListener('click', () => { persist(true); syncProtocolUI(); });
     const proto = byId('mqProtocol');
@@ -728,6 +819,13 @@ window.MqttUI = (function () {
     });
 
     bindMqtt();
+    bindDevPanel();
+    /* 设备列表：芯片与面板每 2 秒按最新发现刷新（在线状态随最后上报时间变化） */
+    setInterval(function () {
+      renderDevChip();
+      const p = byId('devPanel');
+      if (p && !p.classList.contains('hidden')) renderDevList();
+    }, 2000);
     kpiLabels();
     setInterval(kpiLabels, 2000);
     window.addEventListener('resize', function () {

@@ -19,9 +19,16 @@ window.GaoteService = (function () {
 
   let client = null, cfg = null;
   const handlers = { conn: [], log: [], data: [] };
-  const state = {};            // state[维度][实例键] = { 索引: 值 }
-  const lastSeen = {};         // 各维度最后更新时间
+  /* 多设备：stateByDev[ProductSN/DeviceSN][实例键] = 点位；页面只渲染"当前设备" */
+  const stateByDev = {};
+  const lastSeenByDev = {};    // 各设备各维度最后更新时间
+  const devices = {};          // key = ProductSN/DeviceSN → { psn, dsn, firstSeen, lastSeen, msgs }
+  let activeKey = '';          // 当前查看的设备
   let reportTimer = null;
+
+  function devKey(psn, dsn) { return psn + '/' + dsn; }
+  function activeState() { return stateByDev[activeKey] || {}; }
+  function activeLastSeen() { return lastSeenByDev[activeKey] || {}; }
 
   const DEFAULT_PSN = 'kp23bhcpmt91n2v8';
   const INVALID = [65535, 65534, -1, -2];
@@ -111,13 +118,19 @@ window.GaoteService = (function () {
     return n;
   }
 
-  /* 收报文 → 落到 state */
+  /* 收报文 → 落到"该设备"的 state（多台设备各存一份，页面只显示当前设备） */
   function ingest(t, payload) {
     const info = parseTopic(t);
     if (!info || !info.dim) return null;
     const isStatus = info.cls === 'status';
     const instKey = normDim(info.dim) + '|' + (info.arr || '') + '|' + (info.clu || '') + '|' + (info.dev || '') + '|' + (info.model || '');
-    const bucket = state[instKey] || (state[instKey] = { _meta: info, _t: Date.now() });
+    const dk = devKey(info.psn, info.dsn);
+    const reg = devices[dk] || (devices[dk] = { psn: info.psn, dsn: info.dsn, firstSeen: Date.now(), lastSeen: 0, msgs: 0 });
+    reg.lastSeen = Date.now();
+    reg.msgs++;
+    if (!activeKey) activeKey = dk;                       // 第一个上报的设备作为默认查看对象
+    const st = stateByDev[dk] || (stateByDev[dk] = {});
+    const bucket = st[instKey] || (st[instKey] = { _meta: info, _t: Date.now() });
     bucket._t = Date.now();
     let n = 0;
     Object.keys(payload).forEach(function (k) {
@@ -128,9 +141,10 @@ window.GaoteService = (function () {
       bucket[i] = { v: num(payload[k]), def: def, key: key };
       n++;
     });
-    lastSeen[normDim(info.dim)] = Date.now();
+    const ls = lastSeenByDev[dk] || (lastSeenByDev[dk] = {});
+    ls[normDim(info.dim)] = Date.now();
     if (n) log('↓', t, JSON.stringify(payload).slice(0, 400), info.dim + (isStatus ? '/状态' : '') + ' ' + n + ' 点');
-    return { info, instKey, bucket };
+    return { info, instKey, bucket, devKey: dk, isActive: dk === activeKey };
   }
 
   function capFirst(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
@@ -139,9 +153,10 @@ window.GaoteService = (function () {
   function val(dim, key, opt) {
     opt = opt || {};
     const want = normDim(dim);
-    const keys = Object.keys(state).filter(k => k.split('|')[0] === want);
+    const st = activeState();
+    const keys = Object.keys(st).filter(k => k.split('|')[0] === want);
     for (let i = 0; i < keys.length; i++) {
-      const b = state[keys[i]];
+      const b = st[keys[i]];
       if (opt.arr !== undefined && b._meta && String(b._meta.arr) !== String(opt.arr)) continue;
       const ks = Object.keys(b);
       for (let j = 0; j < ks.length; j++) {
@@ -287,8 +302,9 @@ window.GaoteService = (function () {
      多堆时按 (堆号, 电芯号) 排序统一编号，避免不同堆的同号电芯互相覆盖 */
   function buildCells() {
     const out = {};
-    const cells = Object.keys(state).filter(k => k.split('|')[0] === 'cell').map(function (k) {
-      const b = state[k];
+    const st = activeState();
+    const cells = Object.keys(st).filter(k => k.split('|')[0] === 'cell').map(function (k) {
+      const b = st[k];
       const arr = b._meta && b._meta.arr !== '' ? parseInt(b._meta.arr, 10) : 0;
       const no = b._meta && b._meta.dev !== '' ? parseInt(b._meta.dev, 10) : NaN;
       return { b: b, arr: isFinite(arr) ? arr : 0, no: no };
@@ -373,6 +389,8 @@ window.GaoteService = (function () {
     if (!url) { sys('Broker 地址为空'); emit('conn', { state: 'error', error: 'Broker 地址为空' }); return; }
     cfg.url = url;
     cfg.productSN = cfg.productSN || DEFAULT_PSN;
+    /* 再次连到已知设备时，直接把它设为当前查看对象 */
+    if (cfg.deviceSN && devices[devKey(cfg.productSN, cfg.deviceSN)]) activeKey = devKey(cfg.productSN, cfg.deviceSN);
     emit('conn', { state: 'connecting', url: url });
     sys('连接 Broker：' + url + '　ProductSN=' + cfg.productSN);
     const opts = { reconnectPeriod: 5000, connectTimeout: 10000, keepalive: 120, clean: true, clientId: 'gaote-web-' + Math.random().toString(16).slice(2, 10) };
@@ -408,8 +426,9 @@ window.GaoteService = (function () {
         return;
       }
       if (info && info.kind === 'cmd') return;   /* 自己下发的 cmd/set 回声，不入数据 */
-      ingest(topic, json);
-      if (!reportTimer) {
+      const res = ingest(topic, json);
+      /* 只有"当前设备"的报文才刷新界面；其它设备的数据各自留着，切换时立即显示 */
+      if (res && res.isActive && !reportTimer) {
         reportTimer = setTimeout(function () { reportTimer = null; pushToUI(); }, 800);
       }
     });
@@ -430,11 +449,46 @@ window.GaoteService = (function () {
     emit('conn', { state: 'disconnected' });
   }
 
+  /* ---------------- 设备列表 / 切换 ---------------- */
+
+  /* 发现到的设备（含在线判定：2 分钟内有报文） */
+  function devicesList() {
+    const now = Date.now();
+    return Object.keys(devices).map(function (k) {
+      const d = devices[k];
+      return {
+        psn: d.psn, dsn: d.dsn, lastSeen: d.lastSeen, msgs: d.msgs,
+        online: (now - d.lastSeen) < 120000,
+        active: k === activeKey
+      };
+    }).sort(function (a, b) { return b.lastSeen - a.lastSeen; });
+  }
+
+  function activeDevice() {
+    const d = devices[activeKey];
+    return d ? { psn: d.psn, dsn: d.dsn } : null;
+  }
+
+  /* 切换当前查看的设备：用该设备已收到的数据立即刷新界面 */
+  function setActive(dsn) {
+    const hit = Object.keys(devices).filter(function (k) { return devices[k].dsn === dsn; })[0];
+    if (!hit) return false;
+    activeKey = hit;
+    if (!cfg) cfg = {};
+    cfg.productSN = devices[hit].psn;
+    cfg.deviceSN = devices[hit].dsn;
+    pushToUI();
+    return true;
+  }
+
   return {
     on, connect, disconnect, publish,
     isConnected: () => !!(client && client.connected),
-    state, val, buildTags, buildPseudoReport,
-    lastSeen: () => lastSeen,
+    /* state 始终指向"当前设备"的一份点位表（getter 保证切换后引用仍有效） */
+    get state() { return activeState(); },
+    val, buildTags, buildPseudoReport,
+    lastSeen: () => activeLastSeen(),
+    devicesList, activeDevice, setActive,
     getCfg: () => cfg,
     normUrl
   };

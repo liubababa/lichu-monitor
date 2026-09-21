@@ -245,7 +245,36 @@ button{font-family:inherit;cursor:pointer;background:none;border:none;color:inhe
 .ds-chip.disconnected{color:#9fb8b3}
 .ds-chip.error{border-color:rgba(255,110,80,.55);color:#ffa08c}
 .ds-chip.error::before{background:#ff6e50;box-shadow:0 0 8px #ff6e50}
+/* 顶栏：设备列表入口 */
+.ds-chip.dev{font-family:var(--num)}
+.ds-chip.dev.online::before{background:var(--teal);box-shadow:0 0 8px var(--teal)}
 @media (max-width:1420px){ .site-title span{display:none} }
+
+/* ---------- 设备列表面板 ---------- */
+#devPanel{
+  position:fixed;top:72px;right:14px;width:320px;z-index:70;
+  background:linear-gradient(165deg,rgba(9,25,29,.986),rgba(4,12,14,.988));
+  border:1px solid rgba(46,230,200,.4);
+  box-shadow:0 14px 40px rgba(0,0,0,.66),0 0 26px rgba(46,230,200,.14);
+}
+#devPanel::before{content:"";position:absolute;top:-1px;left:-1px;width:16px;height:16px;
+  border-top:2px solid var(--teal);border-left:2px solid var(--teal)}
+.dev-hint{font-size:11px;line-height:1.65;color:var(--dim);margin-bottom:10px}
+.dev-list{display:flex;flex-direction:column;gap:7px}
+.dev-row{
+  display:flex;align-items:center;gap:9px;padding:8px 10px;cursor:pointer;transition:.2s;
+  border:1px solid rgba(46,230,200,.18);background:rgba(2,10,12,.6);
+}
+.dev-row:hover{border-color:rgba(46,230,200,.5);background:rgba(46,230,200,.06)}
+.dev-row.on{border-color:rgba(46,230,200,.7);background:rgba(46,230,200,.1);box-shadow:0 0 10px rgba(46,230,200,.18)}
+.dev-dot{width:8px;height:8px;border-radius:50%;background:#5b7d78;flex:none}
+.dev-row.online .dev-dot{background:var(--teal);box-shadow:0 0 8px var(--teal)}
+.dev-main{flex:1;min-width:0}
+.dev-sn{font-family:var(--num);font-size:13px;color:#d9fff6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dev-meta{font-size:10px;color:var(--dim);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dev-badge{font-size:10px;padding:1px 7px;border-radius:8px;border:1px solid rgba(46,230,200,.4);color:#6ff2d4;flex:none}
+.dev-badge.off{color:#9fb8b3;border-color:rgba(159,184,179,.4)}
+.dev-empty{font-size:12px;line-height:1.7;color:var(--dim);padding:6px 2px}
 
 /* ---------- MQTT 接入配置面板 ---------- */
 #mqttPanel{
