@@ -255,11 +255,16 @@ window.DataService = (function () {
     if (loadP !== null) M.acc.load    += Math.max(0, loadP) * dtH;
     if (gridP !== null) M.acc.grid    += Math.max(0, gridP) * dtH;
 
-    const chg = pickFrom(map, [['PCS', 'DC6'], ['PCS', 'DC2'], ['PCS', 'DC5'], ['PCS', 'DC1']]);
-    const dis = pickFrom(map, [['PCS', 'DC8'], ['PCS', 'DC4'], ['PCS', 'DC7'], ['PCS', 'DC3']]);
-    if (chg !== null || dis !== null) {
-      M.dailyEnergy = (chg || 0) + (dis || 0);
-      M.hints = { storage: '厂家日电量点位 PCS DC6+DC8（今日）', load: 'LoadPower 功率积分（会话累计）', grid: 'GRID_P 功率积分（会话累计）' };
+    /* 今日电量：优先设备给的"全站日电量"（各簇/各 PCS 求和），KPI 显示充+放合计 */
+    const dayChg = pickFrom(map, [['EMS', 'DayCharge'], ['PCS', 'DC6'], ['PCS', 'DC2'], ['PCS', 'DC5'], ['PCS', 'DC1']]);
+    const dayDis = pickFrom(map, [['EMS', 'DayDischarge'], ['PCS', 'DC8'], ['PCS', 'DC4'], ['PCS', 'DC7'], ['PCS', 'DC3']]);
+    if (dayChg !== null || dayDis !== null) {
+      M.dailyEnergy = (dayChg || 0) + (dayDis || 0);
+      M.hints = {
+        storage: '今日充电 ' + (dayChg === null ? '--' : Number(dayChg).toFixed(1)) + ' + 放电 '
+          + (dayDis === null ? '--' : Number(dayDis).toFixed(1)) + ' kWh（各簇日电量求和）',
+        load: 'LoadPower 功率积分（会话累计）', grid: 'GRID_P 功率积分（会话累计）'
+      };
     } else {
       M.dailyEnergy = null;
       M.hints = { storage: 'PCS_P 功率积分（会话累计）', load: 'LoadPower 功率积分（会话累计）', grid: 'GRID_P 功率积分（会话累计）' };

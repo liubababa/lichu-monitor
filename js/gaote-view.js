@@ -335,9 +335,9 @@ window.GaoteView = (function () {
     const out = [];
     Object.keys(GaoteService.state).forEach(function (k) {
       const parts = k.split('|');
-      if (parts[0].indexOf('/status') < 0) return;
-      const dim = parts[0].replace('/status', '');
       const b = GaoteService.state[k];
+      if (!b || !b._meta || b._meta.cls !== 'status') return;      // 只看状态帧（遥信）
+      const dim = parts[0];
       Object.keys(b).forEach(function (i) {
         if (i === '_meta' || i === '_t') return;
         const it = b[i];
