@@ -60,6 +60,12 @@
   const byId = id => document.getElementById(id);
   function tweenNum(el, to, fmt) {
     const from = parseFloat(el.dataset.v || '0') || 0;
+    /* 变化很小就直接落字，避免数字一直来回滚动 */
+    if (from && Math.abs(to - from) / Math.max(1, Math.abs(from)) < 0.004) {
+      el.dataset.v = to;
+      el.textContent = fmt ? fmt(to) : Math.round(to).toLocaleString('en-US');
+      return;
+    }
     el.dataset.v = to;
     const t0 = performance.now(), dur = 600;
     (function step(now) {

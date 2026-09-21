@@ -89,9 +89,18 @@ window.GaoteDetail = (function () {
   /* ---------- 渲染 ---------- */
   let chart1 = null, chart2 = null, chartPay = null, chartCycle = null;
 
+  let lastSig = '';
   function render() {
     const host = byId('detailBody');
     if (!host) return;
+    const stKeys = Object.keys(GaoteService.state);
+    const lastT = Math.max.apply(null, stKeys.map(function (k) { return GaoteService.state[k]._t || 0; }).concat([0]));
+    /* 数据没变就不重绘：5 秒一次的整块重绘既会让图表重画、也会把滚动位置打回顶部 */
+    const sig = stKeys.length + '|' + lastT;
+    if (sig === lastSig && host.childElementCount) return;
+    lastSig = sig;
+    const scroller = host.parentElement;
+    const keepTop = scroller ? scroller.scrollTop : 0;
 
     /* 采集实时值 */
     const totChg = sum('cluster', 'cluSumsChaElec');
@@ -256,25 +265,33 @@ window.GaoteDetail = (function () {
       drawBar('dtChartPay', 'chartPay', '收益(元)', [profit === null ? 0 : +profit.toFixed(2)], ['本次会话'], '#2ee6c8');
       drawBar('dtChartCycle', 'chartCycle', '电量(kWh)', [dayChg || 0, dayDis || 0], ['今日充电', '今日放电'], '#7aa2ff');
     }, 30);
+    if (scroller) scroller.scrollTop = keepTop;      // 重绘后恢复滚动位置
   }
 
+  /* 图表容器节点缓存：每次重绘复用同一个节点，ECharts 实例就不会挂到被删掉的旧节点上（否则图表会闪/变空） */
+  const chartNodes = {};
   function panel(title, sub, canvasId, note) {
     const s = el('section', 'dt-panel');
     const h = el('div', 'dt-ptitle');
     h.appendChild(el('b', '', title));
     if (sub) h.appendChild(el('em', '', sub));
     s.appendChild(h);
-    const c = el('div', 'dt-chart');
-    c.id = canvasId;
+    let c = chartNodes[canvasId];
+    if (!c) { c = el('div', 'dt-chart'); c.id = canvasId; chartNodes[canvasId] = c; }
     s.appendChild(c);
     if (note) s.appendChild(el('div', 'dt-note', note));
     return s;
   }
   const charts = {};
+  function bindChart(key, node) {
+    if (charts[key] && charts[key].getDom() !== node) { try { charts[key].dispose(); } catch (_) {} charts[key] = null; }
+    if (!charts[key]) charts[key] = echarts.init(node);
+    return charts[key];
+  }
   function drawLine(id, key, series) {
     const node = byId(id);
     if (!node || typeof echarts === 'undefined') return;
-    if (!charts[key]) charts[key] = echarts.init(node);
+    bindChart(key, node);
     charts[key].setOption({
       grid: { left: 46, right: 46, top: 26, bottom: 24 },
       tooltip: { trigger: 'axis', backgroundColor: 'rgba(6,18,20,.92)', borderColor: 'rgba(46,230,200,.35)', textStyle: { color: '#cfeee8', fontSize: 11 } },
@@ -294,7 +311,7 @@ window.GaoteDetail = (function () {
   function drawBar(id, key, unit, data, labels, color) {
     const node = byId(id);
     if (!node || typeof echarts === 'undefined') return;
-    if (!charts[key]) charts[key] = echarts.init(node);
+    bindChart(key, node);
     charts[key].setOption({
       grid: { left: 48, right: 16, top: 22, bottom: 24 },
       tooltip: { trigger: 'axis', backgroundColor: 'rgba(6,18,20,.92)', borderColor: 'rgba(46,230,200,.35)', textStyle: { color: '#cfeee8', fontSize: 11 } },

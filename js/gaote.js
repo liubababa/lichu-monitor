@@ -132,6 +132,15 @@ window.GaoteService = (function () {
     const st = stateByDev[dk] || (stateByDev[dk] = {});
     const bucket = st[instKey] || (st[instKey] = { _meta: info, _t: Date.now() });
     bucket._t = Date.now();
+    /* 补传的历史帧时间戳比当前值旧：丢弃，避免界面在"当前值/历史值"之间来回跳 */
+    const tsRaw = (payload.Ts !== undefined) ? payload.Ts : payload.ts;
+    const ts = Number(tsRaw);
+    if (isFinite(ts) && ts > 0) {
+      if (bucket._ts && ts < bucket._ts) {
+        return { info: info, instKey: instKey, bucket: bucket, devKey: dk, isActive: dk === activeKey, stale: true };
+      }
+      bucket._ts = ts;
+    }
     let n = 0;
     Object.keys(payload).forEach(function (k) {
       const i = parseInt(k, 10);
@@ -455,8 +464,8 @@ window.GaoteService = (function () {
       }
       if (info && info.kind === 'cmd') return;   /* 自己下发的 cmd/set 回声，不入数据 */
       const res = ingest(topic, json);
-      /* 只有"当前设备"的报文才刷新界面；其它设备的数据各自留着，切换时立即显示 */
-      if (res && res.isActive && !reportTimer) {
+      /* 只有"当前设备"的、且不是补传旧帧的报文才刷新界面 */
+      if (res && res.isActive && !res.stale && !reportTimer) {
         reportTimer = setTimeout(function () { reportTimer = null; pushToUI(); }, 800);
       }
     });
