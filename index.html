@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>力储未来远程监控平台</title>
-<link rel="stylesheet" href="css/style.css?v=20260917d"/>
+<link rel="stylesheet" href="css/style.css?v=20260921b"/>
 <script>
 /* 加载期错误收集（便于排查依赖/脚本问题） */
 window.__loadErrs = [];
@@ -58,6 +58,9 @@ window.addEventListener('error', function (e) {
       <!-- 数据源状态指示 -->
       <button class="ds-chip idle" id="dsChip" title="数据源状态（点击打开 MQTT 接入配置）">
         <span>未连接</span>
+      </button>
+      <button class="ds-chip dev hidden" id="devChip" title="设备列表（点击切换查看的设备）">
+        <span id="devChipText">设备</span>
       </button>
       <div class="clock"><b id="clockTime">--:--:--</b><span id="clockDate"></span></div>
       <button class="icon-btn" id="btnFullscreen" title="全屏">
@@ -185,6 +188,18 @@ window.addEventListener('error', function (e) {
   </div>
 </aside>
 
+<!-- ===== 设备列表 ===== -->
+<aside id="devPanel" class="hidden">
+  <div class="mq-head">
+    <b>设备列表 · 自动发现</b>
+    <button class="mq-x" id="devPanelClose" title="关闭">×</button>
+  </div>
+  <div class="mq-body">
+    <div class="dev-hint" id="devHint">连上 MQTT 后自动列出正在上报的设备，点一行切换查看（2 分钟内有报文算在线）。</div>
+    <div class="dev-list" id="devList"></div>
+  </div>
+</aside>
+
 <!-- ===== MQTT 收发报文日志 ===== -->
 <section id="logPanel" class="hidden">
   <div class="log-head">
@@ -277,13 +292,13 @@ window.addEventListener('error', function (e) {
 <script src="js/points.js?v=20260917d"></script>
 <script src="js/mqtt.js?v=20260921a"></script>
 <script src="js/gaote-points.js?v=20260917d"></script>
-<script src="js/gaote.js?v=20260919c"></script>
+<script src="js/gaote.js?v=20260921b"></script>
 <script src="js/gaote-view.js?v=20260919b"></script>
 <script src="js/gaote-detail.js?v=20260917j"></script>
 <script src="js/gaote-scene3d.js?v=20260917e"></script>
 <script src="js/gaote-strategy.js?v=20260917d"></script>
 <script src="js/overview.js?v=20260919b"></script>
-<script src="js/mqtt-ui.js?v=20260921a"></script>
+<script src="js/mqtt-ui.js?v=20260921b"></script>
 <script src="js/scene3d.js?v=20260917d"></script>
 <script src="js/charts.js?v=20260917d"></script>
 <script src="js/main.js?v=20260921a"></script>
