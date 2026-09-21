@@ -332,22 +332,13 @@ window.GaoteView = (function () {
     return s;
   }
   function collectAlarms() {
-    const out = [];
-    Object.keys(GaoteService.state).forEach(function (k) {
-      const parts = k.split('|');
-      const b = GaoteService.state[k];
-      if (!b || !b._meta || b._meta.cls !== 'status') return;      // 只看状态帧（遥信）
-      const dim = parts[0];
-      Object.keys(b).forEach(function (i) {
-        if (i === '_meta' || i === '_t') return;
-        const it = b[i];
-        if (it && it.def && it.v === 1 && it.key !== 'Ts') {
-          out.push({ dim: dim, label: TITLE[dim] || dim, name: it.def.n || it.key,
-            inst: [b._meta.arr, b._meta.clu, b._meta.dev].filter(x => x !== undefined && x !== '' && x !== '-1').join('/') });
-        }
+    /* 统一走 GaoteService.alarms()：只认状态帧里的告警类点（编号/工作状态不算） */
+    if (typeof GaoteService.alarms === 'function') {
+      return GaoteService.alarms().map(function (a) {
+        return { dim: a.dim, label: TITLE[a.dim] || a.dim, name: a.name, inst: a.inst };
       });
-    });
-    return out;
+    }
+    return [];
   }
   const TITLE = { pcs: '变流器', cluster: '电池簇', array: '电池堆', emu: 'EMU', liqcool: '液冷机', drier: '除湿机', fire: '消防', io: '硬件IO', 'meter-aems-storage': '储能电表', 'meter-lems-antireflux': '逆流电表', 'meter-lems-demand': '需量电表', 'meter-mems-storage': '计量电表' };
 
