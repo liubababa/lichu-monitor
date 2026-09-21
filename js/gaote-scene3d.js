@@ -425,6 +425,7 @@ window.GaoteScene3D = (function () {
     facLabelEl = el;
 
     g.position.set(fx, 0, fz);
+    g.userData.key = 'factory';          // 点厂房可展开明细卡
     root.add(g);
     facGroup = g;
     groups.factory = g;
@@ -441,7 +442,8 @@ window.GaoteScene3D = (function () {
     ground.rotation.x = -Math.PI / 2;
     ground.receiveShadow = true;
     root.add(ground);
-    root.add(box(20, .18, 10, std(0x0b1a1e, { roughness: .9 }), 0, .09, 0));
+    /* 场地（混凝土平台）：范围要盖住储能柜、汇流柜、杆塔与厂房，避免模型跑到地面外 */
+    root.add(box(28, .18, 12, std(0x0b1a1e, { roughness: .9 }), .4, .09, .6));
 
     texCache.cabFront = cabFrontTexture();
     texCache.cabSide = cabSideTexture();
@@ -663,7 +665,6 @@ window.GaoteScene3D = (function () {
       facLabelEl.innerHTML = '<b>厂房（工厂用电）</b><i>'
         + (facOn ? ('受电 ' + f(emuP, 1, ' kW')) : '待机') + '</i>';
     }
-    if (facGroup) facGroup.userData.on = facOn;
     setCard('factory', '厂房（工厂用电）', [
       ['进线（受电）', facOn ? f(emuP, 1, ' kW') : '待机'],
       ['并网点功率', f(GaoteService.val('meter-lems-antireflux', 'meter_tot_p'), 1, ' kW')],
