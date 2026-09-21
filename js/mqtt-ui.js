@@ -772,7 +772,8 @@ window.MqttUI = (function () {
       el.title = title || '';
     };
     const tail = info.mode === 'daily' ? '' : '（会话累计）';
-    set('kpiStorageLabel', '储能电站 · 今日充放电量' + tail, info.hints.storage || '');
+    /* 一格只显示一个方向：在充电就显示今日充电量，在放电就显示今日放电量 */
+    set('kpiStorageLabel', '储能电站 · ' + (info.dir < 0 ? '今日充电量' : '今日放电量') + tail, info.hints.storage || '');
     set('kpiLoadLabel', '用户负载 · 今日用电量' + tail, info.hints.load || '');
     set('kpiGridLabel', '变压器 · 今日发电量' + tail, info.hints.grid || '');
   }
