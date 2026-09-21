@@ -44,10 +44,6 @@ window.addEventListener('error', function (e) {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19V5M4 19h16"/><path d="M8 16V9M12 16v-4M16 16v-7"/></svg>
         <span>详细信息</span><i>▾</i>
       </button>
-      <button class="tab" data-tab="vendor">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h18M3 12h18M3 17h10"/></svg>
-        <span>厂家数据</span><i>▾</i>
-      </button>
       <button class="tab" data-tab="strategy">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v4h-4"/></svg>
         <span>充放电策略</span><i>▾</i>
@@ -63,15 +59,7 @@ window.addEventListener('error', function (e) {
       <button class="ds-chip idle" id="dsChip" title="数据源状态（点击打开 MQTT 接入配置）">
         <span>未连接</span>
       </button>
-      <div class="weather" id="weatherChip">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4 12H2M22 12h-2M5 5l1.5 1.5M17.5 17.5 19 19M19 5l-1.5 1.5M6.5 17.5 5 19"/></svg>
-        <span>晴 26℃</span>
-      </div>
       <div class="clock"><b id="clockTime">--:--:--</b><span id="clockDate"></span></div>
-      <div class="user-chip">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 5-5.5 8-5.5s6.5 1.5 8 5.5"/></svg>
-        <span>Admin</span><i>▾</i>
-      </div>
       <button class="icon-btn" id="btnFullscreen" title="全屏">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
       </button>
@@ -90,9 +78,6 @@ window.addEventListener('error', function (e) {
           <div class="station-chip">电站名称：<b id="stationName">--</b></div>
         </div>
         <div class="sh-right">
-          <div class="seg" id="modeSeg">
-            <button class="active" data-mode="realtime">实时状态</button>
-          </div>
           <button class="ghost-btn" id="btnMqttLog" title="MQTT 收发报文日志">报文</button>
           <button class="ghost-btn active" id="btnLabels" title="显示 / 隐藏设备标签">标签</button>
           <button class="ghost-btn" id="btnRotate" title="自动旋转开/关">旋转</button>
@@ -250,17 +235,6 @@ window.addEventListener('error', function (e) {
   <div class="ov-body"><div id="detailBody" class="dt-body"></div></div>
 </section>
 
-<!-- ===== 厂家平台数据（照搬 ess-ds.com 站点详情页内容） ===== -->
-<section id="vendorView" class="hidden">
-  <div class="ov-bar">
-    <div class="tv-title">厂家平台数据 <em>· 内容照搬中和汇能集控平台（ess-ds.com）</em></div>
-    <div class="ov-bar-r">
-      <span class="ov-src mock" id="vdSrc">数据快照</span>
-    </div>
-  </div>
-  <div class="ov-body"><div id="vendorBody" class="dt-body"></div></div>
-</section>
-
 <!-- ===== Tab 视图：充放电策略 / 电芯健康 ===== -->
 <section id="tabView" class="hidden">
   <div class="tv-bar">
@@ -299,21 +273,19 @@ window.addEventListener('error', function (e) {
   </div>
 </div>
 
-<script src="js/data.js?v=20260919b"></script>
+<script src="js/data.js?v=20260921a"></script>
 <script src="js/points.js?v=20260917d"></script>
-<script src="js/mqtt.js?v=20260919c"></script>
+<script src="js/mqtt.js?v=20260921a"></script>
 <script src="js/gaote-points.js?v=20260917d"></script>
 <script src="js/gaote.js?v=20260919c"></script>
 <script src="js/gaote-view.js?v=20260919b"></script>
 <script src="js/gaote-detail.js?v=20260917j"></script>
 <script src="js/gaote-scene3d.js?v=20260917e"></script>
 <script src="js/gaote-strategy.js?v=20260917d"></script>
-<script src="js/vendor-data.js?v=20260918a"></script>
-<script src="js/vendor-view.js?v=20260918b"></script>
 <script src="js/overview.js?v=20260919b"></script>
-<script src="js/mqtt-ui.js?v=20260919b"></script>
+<script src="js/mqtt-ui.js?v=20260921a"></script>
 <script src="js/scene3d.js?v=20260917d"></script>
 <script src="js/charts.js?v=20260917d"></script>
-<script src="js/main.js?v=20260917d"></script>
+<script src="js/main.js?v=20260921a"></script>
 </body>
 </html>

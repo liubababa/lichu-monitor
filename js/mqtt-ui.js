@@ -180,7 +180,7 @@ window.MqttUI = (function () {
     CFG = Object.assign({}, CFG, readInputs());
     if (LS_OK) { try { localStorage.setItem(LS_KEY, JSON.stringify(CFG)); } catch (_) {} }
     if (CFG.stationName) { APP_CONFIG.stationName = CFG.stationName; }
-    else if (CFG.sn) { APP_CONFIG.stationName = '晶农EMS · ' + CFG.sn; }
+    else if (CFG.sn) { APP_CONFIG.stationName = CFG.sn; }
     byId('stationName').textContent = APP_CONFIG.stationName;
     byId('sceneTitle').textContent = APP_CONFIG.stationName + '运行监测图';
     if (showToast) toast(LS_OK ? '配置已保存到浏览器（localStorage）' : '配置已生效（当前环境不允许 localStorage 持久化）');
@@ -200,8 +200,7 @@ window.MqttUI = (function () {
     /* 电芯健康页签是为晶农点位设计的，高特协议下用设备总览里的单体电芯面板，隐藏该页签 */
     const healthTab = document.querySelector('#mainTabs .tab[data-tab="health"]');
     if (healthTab) healthTab.classList.toggle('hidden', gaote);
-    const stBox = byId('strategyView');
-    if (stBox) stBox.classList.toggle('hidden', false);
+    applyVendor();
   }
 
   function bindPanel() {
@@ -625,12 +624,6 @@ window.MqttUI = (function () {
     const gaote = CFG.protocol === 'gaote' && window.GaoteView;
     if (name !== 'overview') { if (gaote) GaoteView.hide(); ov.classList.toggle('hidden', true); }
     if (name !== 'detail' && window.GaoteDetail) GaoteDetail.hide();
-    if (name !== 'vendor' && window.VendorView) VendorView.hide();
-    if (name === 'vendor') {
-      view.classList.add('hidden');
-      if (window.VendorView) VendorView.open();
-      return;
-    }
     if (name === 'detail') {
       view.classList.add('hidden');
       if (window.GaoteDetail) GaoteDetail.open();
@@ -651,7 +644,7 @@ window.MqttUI = (function () {
     if (name === 'health') { drawCellCharts(STATE.lastTags); setTimeout(resizeHealth, 60); }
     if (name === 'strategy') {
       const srcEl = byId('stSrcInfo');
-      if (srcEl) srcEl.textContent = (DataService.getSource() === 'mqtt' && STATE.gotData)
+      if (srcEl) srcEl.textContent = STATE.gotData
         ? '当前数据源：厂家 MQTT（' + (CFG.sn || '未填 SN') + '）'
         : '尚未收到设备数据，下发前请先连接 MQTT 并等到上报';
       /* 高特协议：用协议文档自动生成的下发表单 */
@@ -670,12 +663,15 @@ window.MqttUI = (function () {
 
   /* ============================ 厂家信息 / KPI 文案 ============================ */
   function applyVendor() {
+    const el = byId('mqVendor');
+    if (!el) return;
+    if (CFG.protocol === 'gaote') {
+      el.textContent = '高特 CCU · 协议 SJ2025B3781ESCCU-MQTT';
+      return;
+    }
     const v = (typeof DataService !== 'undefined' && DataService.vendor) ? DataService.vendor() : (APP_CONFIG.vendor || {});
     const line = (v.company || '') + (v.product ? ' · ' + v.product : '');
-    const el = byId('vendorName'); if (el) el.textContent = v.company || '--';
-    const el2 = byId('vendorProduct'); if (el2) el2.textContent = v.product || '--';
-    const el3 = byId('vendorLine'); if (el3) el3.textContent = line;
-    const el4 = byId('mqVendor'); if (el4) el4.textContent = line + '（' + (v.protocol || '') + '）';
+    el.textContent = line + '（' + (v.protocol || '') + '）';
   }
   function kpiLabels() {
     const info = (typeof DataService !== 'undefined') ? DataService.energyInfo() : { hints: {} };
@@ -738,8 +734,10 @@ window.MqttUI = (function () {
       resizeHealth();
       if (typeof Charts !== 'undefined' && byId('tabView') && !byId('tabView').classList.contains('hidden')) Charts.resize();
     });
-    logRow('•', '-', '晶农EMS 北向协议接入就绪：' + (APP_CONFIG.vendor ? APP_CONFIG.vendor.company + ' · ' + APP_CONFIG.vendor.product : ''));
+    logRow('•', '-', CFG.protocol === 'gaote'
+      ? '高特 CCU 接入就绪：主题 /{ProductSN}/{DeviceSN}/rtg|history|cmd/…（协议 SJ2025B3781ESCCU-MQTT）'
+      : '晶农EMS 北向协议接入就绪：' + (APP_CONFIG.vendor ? APP_CONFIG.vendor.company + ' · ' + APP_CONFIG.vendor.product : ''));
   }
 
-  return { init, openTab, setConn, logRow, panel: togglePanel, modal: toggleModal, protocol: () => CFG.protocol };
+  return { init, openTab, setConn, logRow, protocol: () => CFG.protocol };
 })();

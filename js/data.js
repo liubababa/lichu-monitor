@@ -31,7 +31,6 @@
 window.APP_CONFIG = {
   siteName:   '力储未来远程监控平台',     // 顶部标题
   stationName:'力储未来储能电站',         // 电站名称（左上角显示）
-  weather:    '晴 26℃',                  // 顶栏天气文案
   /* 数据接入：只支持设备 MQTT 实时上报（无本地模拟数据） */
   mode: 'mqtt',
 
@@ -44,19 +43,13 @@ window.APP_CONFIG = {
 
   /* MQTT 接入参数默认值；页面「数据源」面板配置后持久化到 localStorage（键：dianzhan.mqtt.cfg）
      接入地址不写进代码（避免随仓库泄露），部署时通过页面上填写或按需在本地覆盖 */
-  mqtt: { url: '', port: '', username: '', password: '', sn: '', stationName: '' },
-
-  http: { url: 'http://your-api/realtime', interval: 5000 },
-  ws:   { url: 'ws://your-api/realtime' }
+  mqtt: { url: '', port: '', username: '', password: '', sn: '', stationName: '' }
 };
 
 window.DataService = (function () {
   'use strict';
   const C = APP_CONFIG;
-  let cb = null, chartMode = 'realtime', timer = null, ws = null;
-
-  /* 数据来源固定为设备 MQTT 实时上报 */
-  let source = 'mqtt';
+  let cb = null;
 
   const WIN = 40; // 实时曲线滚动窗口点数
   /* 时间标签格式化（曲线横轴） */
@@ -277,19 +270,15 @@ window.DataService = (function () {
     const mag = Math.abs(pcsP === null ? 0 : pcsP);
     M.flow = 0.6 + Math.min(2.2, mag / 3000);
 
-    if (source !== 'mqtt') { stopTimer(); source = 'mqtt'; }
     emit();
     return mqttSnapshot();
   }
 
   function mqttSnapshot() {
-    const chart = chartMode === 'history'
-      ? { labels: M.win.labels.slice(), actual: M.win.actual.slice(), rated: M.win.rated.slice(), user: M.win.user.slice(), storage: M.win.storage.slice() }
-      : { labels: M.win.labels.slice(), actual: M.win.actual.slice(), rated: M.win.rated.slice(), user: M.win.user.slice(), storage: M.win.storage.slice() };
+    const chart = { labels: M.win.labels.slice(), actual: M.win.actual.slice(), rated: M.win.rated.slice(), user: M.win.user.slice(), storage: M.win.storage.slice() };
     return {
       time: new Date(),
       source: 'mqtt',
-      mode: chartMode,
       kpis: {
         chargeToday: Math.round(M.dailyEnergy !== null ? M.dailyEnergy : M.acc.storage),
         loadToday:   Math.round(M.acc.load),
@@ -310,41 +299,10 @@ window.DataService = (function () {
     cb(mqttSnapshot());
   }
 
-  function stopTimer() { if (timer) { clearInterval(timer); timer = null; } }
-
-  /* ============================================================
-   * 真实数据映射（http / websocket）：把后端 JSON 映射为"标准快照"。
-   * 按你的接口字段名修改此函数即可，例如：
-   *   function mapReal(j){
-   *     return {
-   *       kpis:{ chargeToday:j.charge, loadToday:j.used, gridToday:j.gen },
-   *       soc:j.soc,
-   *       pcs:{ labels:j.t, actual:j.pcsP, rated:j.pcsRated },
-   *       load:{ labels:j.t, user:j.loadP, storage:j.essP },
-   *       devices: buildDevices(j),   // 参考本文件 devices() 的结构
-   *       alarms:j.alarms || []
-   *     };
-   *   }
-   * ============================================================ */
-  function mapReal(j) { return j; }
-
   function start(callback) {
+    /* 数据只来自设备 MQTT 实时上报：收到报文后由 mqttReport 触发刷新 */
     cb = callback;
-    if (source === 'http') {
-      const pull = () => fetch(C.http.url)
-        .then(r => r.json())
-        .then(j => cb && cb(mapReal(j)))
-        .catch(() => {});
-      pull();
-      timer = setInterval(pull, C.http.interval || 5000);
-      return;
-    }
-    if (source === 'websocket') {
-      ws = new WebSocket(C.ws.url);
-      ws.onmessage = e => { try { cb && cb(mapReal(JSON.parse(e.data))); } catch (_) {} };
-      return;
-    }
-    if (source === 'mqtt') { emit(); return; }   // 等待厂家上报，收到报文后自动刷新
+    emit();
   }
 
   /* ---- 供 UI（MQTT 面板 / 电芯健康 / 策略表单）读取的接口 ---- */
@@ -360,9 +318,7 @@ window.DataService = (function () {
 
   return {
     start,
-    setChartMode(m) { chartMode = m; emit(); },
     snapshot() { return mqttSnapshot(); },
-    getSource() { return source; },
     mqttReport,
     mqttTags() { return M.tags; },
     lastReport() { return lastReport; },

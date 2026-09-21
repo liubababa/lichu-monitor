@@ -70,17 +70,9 @@ button{font-family:inherit;cursor:pointer;background:none;border:none;color:inhe
   border-color:transparent;font-weight:bold;box-shadow:0 0 16px rgba(46,230,200,.45);
 }
 .tb-right{margin-left:auto;display:flex;align-items:center;gap:16px}
-.weather{display:flex;align-items:center;gap:6px;color:var(--dim);font-size:13px;white-space:nowrap}
-.weather svg{width:16px;height:16px;color:var(--amber)}
 .clock{text-align:right}
 .clock b{display:block;font-family:var(--num);font-size:19px;color:#d9fff6;letter-spacing:1px;font-weight:normal}
 .clock span{font-size:10px;color:var(--dim)}
-.user-chip{
-  display:flex;align-items:center;gap:7px;padding:6px 12px;font-size:12px;color:var(--text);
-  border:1px solid var(--teal-soft);border-radius:16px;background:rgba(46,230,200,.05);white-space:nowrap;
-}
-.user-chip svg{width:14px;height:14px;color:var(--teal)}
-.user-chip i{font-style:normal;font-size:9px;color:var(--dim)}
 .icon-btn{
   width:32px;height:32px;display:flex;align-items:center;justify-content:center;
   border:1px solid var(--teal-soft);border-radius:6px;color:var(--dim);transition:.2s;
@@ -98,7 +90,7 @@ button{font-family:inherit;cursor:pointer;background:none;border:none;color:inhe
   position:absolute;top:12px;left:16px;right:16px;z-index:5;
   display:flex;justify-content:space-between;align-items:flex-start;pointer-events:none;
 }
-.scene-head button,.scene-head .seg{pointer-events:auto}
+.scene-head button{pointer-events:auto}
 .scene-title{display:flex;align-items:center;gap:9px;font-size:16px;color:#e6fffa;letter-spacing:1px}
 .scene-title i{
   width:0;height:0;border-top:6px solid transparent;border-bottom:6px solid transparent;
@@ -107,9 +99,6 @@ button{font-family:inherit;cursor:pointer;background:none;border:none;color:inhe
 .station-chip{margin-top:7px;font-size:12px;color:var(--dim)}
 .station-chip b{color:var(--teal);font-weight:normal}
 .sh-right{display:flex;gap:8px;align-items:center}
-.seg{display:flex;border:1px solid var(--teal-soft);background:rgba(5,15,17,.72)}
-.seg button{padding:5px 13px;font-size:12px;color:var(--dim);transition:.2s}
-.seg button.active{color:#04231d;background:linear-gradient(120deg,#35f0cf,#1cc9a8);font-weight:bold}
 .ghost-btn{
   padding:5px 12px;font-size:12px;color:var(--dim);
   border:1px solid rgba(46,230,200,.18);background:rgba(5,15,17,.72);transition:.2s;
@@ -249,8 +238,6 @@ button{font-family:inherit;cursor:pointer;background:none;border:none;color:inhe
 }
 .ds-chip::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--dim);flex:none}
 .ds-chip:hover{border-color:rgba(46,230,200,.55);box-shadow:0 0 10px rgba(46,230,200,.28)}
-.ds-chip.mock{color:var(--dim)}
-.ds-chip.mock::before{background:#5b7d78}
 .ds-chip.connecting,.ds-chip.reconnecting{border-color:rgba(255,176,32,.5);color:#ffd79a}
 .ds-chip.connecting::before,.ds-chip.reconnecting::before{background:var(--amber);box-shadow:0 0 8px var(--amber);animation:breath 1.2s ease-in-out infinite}
 .ds-chip.connected{border-color:rgba(46,230,200,.6);color:#6ff2d4}
@@ -434,7 +421,6 @@ button{font-family:inherit;cursor:pointer;background:none;border:none;color:inhe
 .ov-bar .tv-title em{font-style:normal;font-size:11px;color:var(--dim);letter-spacing:0}
 .ov-bar-r{display:flex;align-items:center;gap:9px}
 .ov-src{font-size:11px;padding:4px 11px;border-radius:12px;letter-spacing:1px}
-.ov-src.mock{color:#9fb8b3;border:1px dashed rgba(159,184,179,.4)}
 .ov-src.live{color:#6ff2d4;border:1px solid rgba(46,230,200,.55);background:rgba(46,230,200,.07);
   box-shadow:0 0 10px rgba(46,230,200,.2)}
 .ov-body{flex:1;min-height:0;overflow:auto;padding:13px 15px}

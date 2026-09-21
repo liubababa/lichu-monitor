@@ -192,8 +192,6 @@ window.MqttService = (function () {
     on, connect, disconnect, isConnected,
     startDevData, setChannels, requestDeviceInfor, requestUserInfor,
     topics: T,
-    normUrl, getCfg: function () { return cfg; },
-    /* 供 UI 展示：一次召测的应答 Topic 与请求 Topic */
-    devdataTopics: function (sn) { return { req: T.devdata(sn), rsp: T.devdataRsp(sn) }; }
+    normUrl, getCfg: function () { return cfg; }
   };
 })();
