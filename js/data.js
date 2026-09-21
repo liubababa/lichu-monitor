@@ -262,9 +262,10 @@ window.DataService = (function () {
     M.dayDischarge = (dayDis === null) ? null : Number(dayDis);
     if (M.dayCharge !== null || M.dayDischarge !== null) {
       M.dailyEnergy = (M.dayCharge || 0) + (M.dayDischarge || 0);
+      const src = pickFrom(map, [['EMS', 'DaySrc']]) || '设备日电量';
       M.hints = {
         storage: '今日充电 ' + (M.dayCharge === null ? '--' : M.dayCharge.toFixed(1)) + ' + 放电 '
-          + (M.dayDischarge === null ? '--' : M.dayDischarge.toFixed(1)) + ' kWh（各簇日电量求和）',
+          + (M.dayDischarge === null ? '--' : M.dayDischarge.toFixed(1)) + ' kWh（' + src + '）',
         load: 'LoadPower 功率积分（会话累计）', grid: 'GRID_P 功率积分（会话累计）'
       };
     } else {

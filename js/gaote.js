@@ -132,10 +132,19 @@ window.GaoteService = (function () {
     const st = stateByDev[dk] || (stateByDev[dk] = {});
     const bucket = st[instKey] || (st[instKey] = { _meta: info, _t: Date.now() });
     bucket._t = Date.now();
-    /* 补传的历史帧时间戳比当前值旧：丢弃，避免界面在"当前值/历史值"之间来回跳 */
-    const tsRaw = (payload.Ts !== undefined) ? payload.Ts : payload.ts;
-    const ts = Number(tsRaw);
-    if (isFinite(ts) && ts > 0) {
+    /* 补传的历史帧时间戳比当前值旧：丢弃，避免界面在"当前值/历史值"之间来回跳。
+       设备按点位索引发报文（如 {"3":5,"38":1789…}），Ts 要通过点表找到对应索引再取 */
+    let ts = NaN;
+    Object.keys(payload).forEach(function (k) {
+      const i = parseInt(k, 10);
+      if (!isFinite(i)) return;
+      const def = pointDef(info.dim, i, isStatus);
+      if (def && def.k === 'Ts') {
+        const v = Number(payload[k]);
+        if (isFinite(v) && v > 0) ts = v;
+      }
+    });
+    if (isFinite(ts)) {
       if (bucket._ts && ts < bucket._ts) {
         return { info: info, instKey: instKey, bucket: bucket, devKey: dk, isActive: dk === activeKey, stale: true };
       }
@@ -371,15 +380,24 @@ window.GaoteService = (function () {
     /* 电芯 */
     const cells = buildCells();
     if (Object.keys(cells).length) out.BMS_CELLS = cells;
-    /* 全站日电量（今日）：各簇日充/放电之和；没有簇数据时退回各 PCS 交流日电量之和 */
-    const dayChg = (sumInst('cluster', 'cludaychg_cap') !== null) ? sumInst('cluster', 'cludaychg_cap')
-      : ((sumInst('pcs', 'comchgday_cap') !== null) ? sumInst('pcs', 'comchgday_cap') : sumInst('pcs', 'chgday_cap'));
-    const dayDis = (sumInst('cluster', 'cludaydis_cap') !== null) ? sumInst('cluster', 'cludaydis_cap')
-      : ((sumInst('pcs', 'comdisday_cap') !== null) ? sumInst('pcs', 'comdisday_cap') : sumInst('pcs', 'disday_cap'));
+    /* 全站日电量（今日）：优先各 PCS 交流日电量之和（与厂家口径一致），
+       其次各簇日电量之和；某一侧报 0（缺报）时用另一侧兜底 */
+    const pcsChg = sumInst('pcs', 'comchgday_cap');
+    const pcsDis = sumInst('pcs', 'comdisday_cap');
+    const cluChg = sumInst('cluster', 'cludaychg_cap');
+    const cluDis = sumInst('cluster', 'cludaydis_cap');
+    const pickDay = function (a, b) {
+      if (a !== null && a > 0) return a;
+      if (b !== null && b > 0) return b;
+      return (a !== null) ? a : b;
+    };
+    const dayChg = pickDay(pcsChg, cluChg);
+    const dayDis = pickDay(pcsDis, cluDis);
     if (dayChg !== null || dayDis !== null) {
       out.EMS = out.EMS || {};
       if (dayChg !== null) out.EMS.DayCharge = String(dayChg);
       if (dayDis !== null) out.EMS.DayDischarge = String(dayDis);
+      out.EMS.DaySrc = (pcsChg !== null && pcsChg > 0) ? 'PCS 交流日电量求和' : '各簇日电量求和';
     }
     return out;
   }

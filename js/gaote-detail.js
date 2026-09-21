@@ -105,8 +105,10 @@ window.GaoteDetail = (function () {
     /* 采集实时值 */
     const totChg = sum('cluster', 'cluSumsChaElec');
     const totDis = sum('cluster', 'cluSumsDischgElec');
-    const dayChg = sum('cluster', 'cludaychg_cap');
-    const dayDis = sum('cluster', 'cludaydis_cap');
+    /* 今日充/放电量与页面 KPI 同源（PCS 交流日电量优先、簇日电量兜底），避免两处显示不一致 */
+    const dayTags = (GaoteService.buildTags() || {}).EMS || {};
+    const dayChg = (dayTags.DayCharge !== undefined) ? Number(dayTags.DayCharge) : sum('cluster', 'cludaychg_cap');
+    const dayDis = (dayTags.DayDischarge !== undefined) ? Number(dayTags.DayDischarge) : sum('cluster', 'cludaydis_cap');
     const soc = N('emu', 'SumsSOC');
     const soh = avgSoh();
     const pcsP = N('emu', 'PCSSumsActivePower');
