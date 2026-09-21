@@ -79,7 +79,6 @@
   }
 
   /* ---------- 应用状态 ---------- */
-  const STATE = { mode: 'realtime' };
   const WEEK = ['日', '一', '二', '三', '四', '五', '六'];
 
   function startClock() {
@@ -124,7 +123,6 @@
     Charts.applyData(d);
     S3D().update(d);
     renderAlarm(d.alarms);
-    if (window.OverviewUI && DataService.getSource() !== 'mqtt') OverviewUI.update(null);
   }
 
   /* ---------- UI 绑定 ---------- */
@@ -135,14 +133,6 @@
       byId('mainTabs').querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       if (window.MqttUI) MqttUI.openTab(btn.dataset.tab);
-    });
-    // 实时 / 历史
-    byId('modeSeg').addEventListener('click', e => {
-      const btn = e.target.closest('button'); if (!btn) return;
-      byId('modeSeg').querySelectorAll('button').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      STATE.mode = btn.dataset.mode;
-      DataService.setChartMode(STATE.mode);
     });
     // 场景按钮
     byId('btnLabels').addEventListener('click', () => {
@@ -160,8 +150,6 @@
       if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => {});
       else document.exitFullscreen();
     });
-    // 天气文案
-    document.querySelector('#weatherChip span').textContent = APP_CONFIG.weather;
     // 窗口尺寸
     window.addEventListener('resize', () => { Charts.resize(); S3D().resize(); });
   }
