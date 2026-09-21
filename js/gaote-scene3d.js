@@ -13,13 +13,22 @@ window.GaoteScene3D = (function () {
 
   let scene, camera, renderer, labelRenderer, controls, composer;
   let host = null, raf = null;
-  let rot = { auto: true, speed: 0.12 }, labelsOn = true, activeCardKey = null;
+  let rot = { auto: true, speed: 0.05 }, labelsOn = true, activeCardKey = null;
   const groups = {};        // key -> THREE.Group
   const labelEls = {};      // key -> .tag3d element
   const cardEls = {};       // key -> .card3d element
   const strips = {};        // key -> 顶部色条 mesh
   let inited = false;
   const clock = { last: 0 };
+  /* 能量流光点：沿电缆移动，方向与速度由实时功率决定（放电=柜→PCS→电网，充电反向） */
+  const flows = [];
+  const flow = { dir: 0, units: 0, color: 0x6f9a94 };
+  /* 电动车：仅"放电"时出现，表示电的去向（给车充电），电量条长度跟随 SOC */
+  let carGroup = null, carBar = null, carPort = null, carLabelEl = null, carOn = false;
+  /* 储能柜数量按实际上报自动排布：柜体建到 MAXN 个，用不到的隐藏 */
+  const MAXN = 8, GAP = 3.3, STACK_W = 2.5, STACK_H = 2.8, STACK_D = 1.5;
+  let stackN = 5;
+  const stackCables = [];   // { geo, flow } 每柜到 PCS 的电缆与能量流
 
   function std(c, o) { return new THREE.MeshStandardMaterial(Object.assign({ color: c, roughness: .6, metalness: .35 }, o || {})); }
   function box(w, h, d, m, x, y, z) {
@@ -87,9 +96,101 @@ window.GaoteScene3D = (function () {
   }
   function applyLabelVisibility() {
     for (const k in labelEls) {
-      const hide = !labelsOn && k !== activeCardKey;
+      const isStack = k.indexOf('stack') === 0;
+      const idx = isStack ? parseInt(k.slice(5), 10) : -1;
+      const hide = (!labelsOn && k !== activeCardKey) || (isStack && idx >= stackN);
       labelEls[k].style.display = hide ? 'none' : '';
     }
+    if (carLabelEl) carLabelEl.style.display = (carOn && labelsOn) ? '' : 'none';
+  }
+
+  /* ---------- 能量流 ---------- */
+  function addFlow(pts, n, parent) {
+    let curve;
+    try { curve = new THREE.CatmullRomCurve3(pts); } catch (_) { return; }
+    const len = Math.max(1, curve.getLength());
+    const items = [];
+    for (let i = 0; i < n; i++) {
+      const mesh = new THREE.Mesh(new THREE.SphereGeometry(.085, 8, 8),
+        new THREE.MeshBasicMaterial({ color: 0x6f9a94, transparent: true, opacity: .28 }));
+      mesh.position.copy(curve.getPointAt(i / n));
+      (parent || scene).add(mesh);
+      items.push({ mesh: mesh, t: i / n });
+    }
+    flows.push({ curve: curve, len: len, items: items });
+    return flows[flows.length - 1];
+  }
+  function stepFlow(dt) {
+    if (!flows.length || !dt) return;
+    const on = flow.dir !== 0;
+    for (let i = 0; i < flows.length; i++) {
+      const fl = flows[i];
+      for (let j = 0; j < fl.items.length; j++) {
+        const it = fl.items[j];
+        if (on) {
+          it.t += (flow.dir * flow.units * dt) / fl.len;
+          if (it.t >= 1) it.t -= Math.floor(it.t);
+          else if (it.t < 0) it.t += 1;
+        }
+        it.mesh.position.copy(fl.curve.getPointAt(Math.min(1, Math.max(0, it.t))));
+        it.mesh.material.color.setHex(flow.color);
+        it.mesh.material.opacity = on ? .95 : .28;
+      }
+    }
+  }
+
+  /* ---------- 电动车（放电去向：给车充电） ---------- */
+  function buildCar(root) {
+    const g = new THREE.Group();
+    const cx = 5.9, cz = 4.3;               // 停在汇流/PCS 柜旁边
+    g.visible = false;
+
+    const body = box(4.2, .7, 1.9, std(0x123039, { roughness: .42, metalness: .55 }), cx, .62, cz);
+    g.add(body);
+    g.add(box(2.1, .6, 1.62, std(0x0c222a, { roughness: .32, metalness: .5 }), cx - .25, 1.24, cz));
+    g.add(box(1.9, .06, 1.44, new THREE.MeshStandardMaterial({ color: 0x1d4a52, roughness: .28, metalness: .7, emissive: 0x061c20 }), cx - .25, 1.56, cz));
+
+    const wheelMat = std(0x0a1416, { roughness: .95 });
+    [cx - 1.3, cx + 1.3].forEach(function (x) {
+      [-0.92, 0.92].forEach(function (dz) {
+        const w = new THREE.Mesh(new THREE.CylinderGeometry(.33, .33, .24, 12), wheelMat);
+        w.rotation.x = Math.PI / 2;
+        w.position.set(x, .33, cz + dz);
+        g.add(w);
+      });
+    });
+
+    /* 电量条：底槽 + 亮条（长度随 SOC 变化） */
+    g.add(box(3.5, .26, .06, std(0x06202a, { roughness: .85 }), cx, 1.0, cz + .99));
+    const barGeo = new THREE.BoxGeometry(3.2, .16, .07);
+    barGeo.translate(1.6, 0, 0);            // 让亮条从左端向右长
+    carBar = new THREE.Mesh(barGeo, new THREE.MeshBasicMaterial({ color: 0x2ee6c8 }));
+    carBar.position.set(cx - 1.6, 1.0, cz + 1.02);
+    g.add(carBar);
+
+    /* 充电口指示灯（充电中会呼吸） */
+    carPort = new THREE.Mesh(new THREE.SphereGeometry(.13, 8, 8), new THREE.MeshBasicMaterial({ color: 0x2ee6c8 }));
+    carPort.position.set(cx - 2.12, .74, cz - .8);
+    g.add(carPort);
+
+    /* 充电枪电缆：PCS 柜 → 车头（沿线跑光点，方向恒为"充进车里"） */
+    const cable = [new THREE.Vector3(2.3, .62, 4.1), new THREE.Vector3(3.9, .5, 3.5), new THREE.Vector3(cx - 2.12, .74, cz - .8)];
+    g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(cable),
+      new THREE.LineBasicMaterial({ color: 0x2ee6c8, transparent: true, opacity: .5 })));
+    addFlow(cable, 2, g);
+
+    /* 标签跟随电动车显隐 */
+    const wrap = document.createElement('div');
+    const el = document.createElement('div');
+    el.className = 'tag3d';
+    wrap.appendChild(el);
+    const o = new THREE.CSS2DObject(wrap);
+    o.position.set(cx, 2.15, cz);
+    g.add(o);
+    carLabelEl = el;
+
+    root.add(g);
+    carGroup = g;
   }
 
   /* ---------- 构建场景 ---------- */
@@ -108,14 +209,13 @@ window.GaoteScene3D = (function () {
     const pad = box(20, .18, 10, std(0x0b1a1e, { roughness: .9 }), 0, .09, 0);
     root.add(pad);
 
-    /* 5 个储能柜（堆） */
+    /* 储能柜（堆）：先建到 MAXN 个，实际用几个由 layoutStacks() 按数据决定 */
     const rackTex = rackTexture();
-    const N = 5, gap = 3.3, startX = -(N - 1) * gap / 2;
-    for (let i = 0; i < N; i++) {
+    const cableMat = new THREE.LineBasicMaterial({ color: 0x2ee6c8, transparent: true, opacity: .42 });
+    for (let i = 0; i < MAXN; i++) {
       const key = 'stack' + i;
       const g = new THREE.Group();
-      g.position.set(startX + i * gap, 0, 0);
-      const W = 2.5, H = 2.8, D = 1.5;
+      const W = STACK_W, H = STACK_H, D = STACK_D;
 
       const body = box(W, H, D, new THREE.MeshStandardMaterial({ map: rackTex, color: 0xffffff, roughness: .62, metalness: .3 }), 0, H / 2 + .18, 0);
       body.userData.key = key;
@@ -143,6 +243,12 @@ window.GaoteScene3D = (function () {
       groups[key] = g;
       addLabel(key, new THREE.Vector3(0, H + .95, 0));
       addCard(key, new THREE.Vector3(0, H + .1, 0));
+
+      /* 柜 → PCS 的电缆（本地坐标，随柜体平移；终点在 layoutStacks 里对齐 PCS） */
+      const cpts = [new THREE.Vector3(0, .25, .8), new THREE.Vector3(0, .25, 2.6), new THREE.Vector3(-1, .25, 3.5), new THREE.Vector3(-2, .6, 3.5)];
+      const cgeo = new THREE.BufferGeometry().setFromPoints(cpts);
+      g.add(new THREE.Line(cgeo, cableMat));
+      stackCables.push({ geo: cgeo, flow: addFlow(cpts, 2, g) });
     }
 
     /* 汇流 / PCS 柜 */
@@ -173,17 +279,60 @@ window.GaoteScene3D = (function () {
     groups.grid = tower;
     addLabel('grid', new THREE.Vector3(0, 7.9, 0));
 
-    /* 电缆：柜 → PCS → 杆塔 */
-    const cableMat = new THREE.LineBasicMaterial({ color: 0x2ee6c8, transparent: true, opacity: .42 });
-    for (let i = 0; i < N; i++) {
-      const x = startX + i * gap;
-      const pts = [new THREE.Vector3(x, .25, .8), new THREE.Vector3(x, .25, 2.6), new THREE.Vector3(x * .5, .25, 3.5), new THREE.Vector3(0, .6, 3.5)];
-      root.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), cableMat));
-    }
+    /* PCS → 并网杆塔（沿线跑能量流光点） */
     const toTower = [new THREE.Vector3(0, .6, 4.2), new THREE.Vector3(-5.5, .8, 4.2), new THREE.Vector3(-9.4, 1.2, -1.2), new THREE.Vector3(-10.5, 3.0, -2.3)];
     root.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(toTower), cableMat));
+    addFlow(toTower, 3, root);
+
+    buildCar(root);
 
     scene.add(root);
+    layoutStacks(stackN);
+  }
+
+  /* ---------- 按实际堆数排布储能柜 ---------- */
+  function layoutStacks(n) {
+    stackN = Math.max(1, Math.min(MAXN, n || 5));
+    const startX = -(stackN - 1) * GAP / 2;
+    for (let i = 0; i < MAXN; i++) {
+      const g = groups['stack' + i];
+      if (!g) continue;
+      const on = i < stackN;
+      g.visible = on;
+      if (!on) continue;
+      const x = startX + i * GAP;
+      g.position.x = x;
+      /* 电缆终点要落在 PCS（世界 x=0），本地坐标随柜位调整 */
+      const sc = stackCables[i];
+      if (sc) {
+        const pts = [new THREE.Vector3(0, .25, .8), new THREE.Vector3(0, .25, 2.6),
+          new THREE.Vector3(-x * .5, .25, 3.5), new THREE.Vector3(-x, .6, 3.5)];
+        sc.geo.setFromPoints(pts);
+        if (sc.flow) {
+          sc.flow.curve = new THREE.CatmullRomCurve3(pts);
+          sc.flow.len = Math.max(1, sc.flow.curve.getLength());
+          sc.flow.items.forEach(function (it) { it.mesh.position.copy(sc.flow.curve.getPointAt(it.t)); });
+        }
+      }
+    }
+    applyLabelVisibility();
+  }
+
+  /* 现场实际有几个储能单元：优先 array 的堆号，退化到设备序号；判不出来按 5 */
+  function stackCount() {
+    const s = GaoteService.state || {};
+    const seen = {};
+    Object.keys(s).forEach(function (k) {
+      if (k.split('|')[0] !== 'array') return;
+      const meta = s[k] && s[k]._meta;
+      if (!meta) return;
+      const a = String(meta.arr === undefined ? '' : meta.arr);
+      const v = (a && a !== '-1') ? a : String(meta.dev === undefined ? '' : meta.dev);
+      if (!v || v === '-1') return;
+      seen[v] = 1;
+    });
+    const n = Object.keys(seen).length;
+    return (n >= 1 && n <= MAXN) ? n : 5;
   }
 
   /* ---------- 数据刷新 ---------- */
@@ -201,10 +350,12 @@ window.GaoteScene3D = (function () {
       return (v === null || v === undefined) ? null : Number(v);
     };
     const arr = find('array', i), clu = find('cluster', i);
+    /* 有的设备只报汇总的堆数据（arr=-1），分堆值退回用该簇 cluster 的值 */
+    const pv = function (a, ka, kb) { const v = bval(a, ka); return v !== null ? v : bval(clu, kb); };
     return {
-      soc: bval(arr, 'arrSOC'), soh: bval(arr, 'arrSOH'),
-      vol: bval(arr, 'arrVol'), cur: bval(arr, 'arrCur'),
-      maxT: bval(arr, 'maxCellTem'), minT: bval(arr, 'minCellTem'),
+      soc: pv(arr, 'arrSOC', 'cluSoc'), soh: bval(arr, 'arrSOH'),
+      vol: pv(arr, 'arrVol', 'cluVol'), cur: pv(arr, 'arrCur', 'cluCur'),
+      maxT: pv(arr, 'maxCellTem', 'maxCellTem'), minT: pv(arr, 'minCellTem', 'minCellTem'),
       difV: bval(arr, 'CellVolDif'), difT: bval(arr, 'CellTemDif'),
       chgP: bval(arr, 'arrMaxReChaPower'), disP: bval(arr, 'arrMaxReDischgPower'),
       cluSoc: bval(clu, 'cluSoc'), cluVol: bval(clu, 'cluVol'), cluCur: bval(clu, 'cluCur'),
@@ -224,11 +375,51 @@ window.GaoteScene3D = (function () {
     if (status) { st.style.display = ''; st.textContent = status; } else { st.style.display = 'none'; }
   }
 
+  /* 全站有功功率：优先 EMS 汇总点，缺失时用各 PCS 有功相加 */
+  function stationPower() {
+    const p = GaoteService.val('emu', 'PCSSumsActivePower');
+    if (p !== null && p !== undefined && isFinite(Number(p))) return Number(p);
+    const s = GaoteService.state || {};
+    let sum = null;
+    Object.keys(s).forEach(function (k) {
+      if (k.split('|')[0] !== 'pcs') return;
+      const b = s[k];
+      const idx = Object.keys(b).filter(function (x) { return b[x] && b[x].key === 'ac_pow_p'; })[0];
+      if (idx === undefined) return;
+      const v = b[idx].v;
+      if (v !== null && v !== undefined && isFinite(Number(v))) sum = (sum === null ? 0 : sum) + Number(v);
+    });
+    return sum;
+  }
+
   function update() {
     if (!inited) return;
-    const emuP = GaoteService.val('emu', 'PCSSumsActivePower');
+    const emuP = stationPower();
     const emuSoc = GaoteService.val('emu', 'SumsSOC');
-    for (let i = 0; i < 5; i++) {
+
+    /* 能量流：放电(正功率)=柜→PCS→电网，充电(负功率)=反向；速度随功率大小，停机时光点不跑 */
+    const pNum = (emuP === null || emuP === undefined) ? 0 : Number(emuP);
+    flow.dir = pNum > 0.5 ? 1 : (pNum < -0.5 ? -1 : 0);
+    flow.units = Math.min(4, Math.abs(pNum) / 80);
+    flow.color = flow.dir > 0 ? 0x2ee6c8 : (flow.dir < 0 ? 0x8fd8ff : 0x6f9a94);
+
+    /* 电动车：放电（功率为正）时才出现，电量条长度按 SOC */
+    carOn = flow.dir > 0;
+    if (carGroup) carGroup.visible = carOn;
+    if (carLabelEl) {
+      carLabelEl.innerHTML = '<b>电动车充电中</b><i>' + f(emuP, 1, ' kW') + ' · 电量 ' + f(emuSoc, 0, '%') + '</i>';
+    }
+    if (carBar) {
+      const soc = (emuSoc === null || emuSoc === undefined) ? 0 : Math.max(0, Math.min(100, Number(emuSoc)));
+      carBar.scale.x = Math.max(.03, soc / 100);
+    }
+    applyLabelVisibility();
+
+    /* 储能柜数量按实际上报自动排布（真机可能只有 2 个储能单元，模拟器是 5 个） */
+    const n = stackCount();
+    if (n !== stackN) layoutStacks(n);
+
+    for (let i = 0; i < stackN; i++) {
       const d = stackData(i);
       const key = 'stack' + i;
       const strip = strips[key];
@@ -306,6 +497,11 @@ window.GaoteScene3D = (function () {
     clock.last = t;
     if (rot.auto && controls) controls.autoRotate && (controls.autoRotateSpeed = rot.speed * 6);
     if (controls) controls.update();
+    stepFlow(dt);
+    /* 充电口指示灯呼吸 */
+    if (carPort && carGroup && carGroup.visible) {
+      carPort.scale.setScalar(0.85 + 0.35 * (0.5 + 0.5 * Math.sin(t / 300)));
+    }
     if (composer) composer.render(); else renderer.render(scene, camera);
     labelRenderer.render(scene, camera);
   }
