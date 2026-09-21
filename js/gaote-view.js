@@ -357,9 +357,20 @@ window.GaoteView = (function () {
 
   /* ---------- 渲染 ---------- */
   let inited = false, openState = false;
+  let lastSig = '';
   function render() {
     const body = byId('gaoteBody');
     if (!body) return;
+    const st = GaoteService.state;
+    const keys = Object.keys(st);
+    const lastT = Math.max.apply(null, keys.map(function (k) { return st[k]._t || 0; }).concat([0]));
+    const alarms = collectAlarms();
+    /* 数据没变就不重建：2 秒一次的整块重绘会把滚动位置打回顶部，看着像"闪" */
+    const sig = keys.length + '|' + lastT + '|' + alarms.length + '|' + (alarms[0] ? alarms[0].name : '');
+    if (sig === lastSig && body.childElementCount) return;
+    lastSig = sig;
+    const scroller = body.parentElement;
+    const keepTop = scroller ? scroller.scrollTop : 0;
     const stats = byId('gaoteStats');
     if (stats) {
       const instCount = Object.keys(GaoteService.state).length;
@@ -367,7 +378,6 @@ window.GaoteView = (function () {
       stats.textContent = '实例 ' + instCount + ' · 最近更新 ' + (last ? new Date(last).toTimeString().slice(0, 8) : '—');
     }
     const bar = byId('gaoteAlarmBar');
-    const alarms = collectAlarms();
     if (bar) {
       const groups = groupAlarms(alarms);
       bar.className = 'gv-alarm alarm ' + (groups.length ? 'bad' : 'ok');
@@ -390,6 +400,7 @@ window.GaoteView = (function () {
     body.appendChild(auxSec());
     const al = alarmSec();
     if (al) body.appendChild(al);
+    if (scroller) scroller.scrollTop = keepTop;      // 重建后恢复滚动位置
   }
 
   function init() {
