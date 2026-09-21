@@ -262,7 +262,9 @@ window.DataService = (function () {
     M.dayDischarge = (dayDis === null) ? null : Number(dayDis);
     if (M.dayCharge !== null || M.dayDischarge !== null) {
       M.dailyEnergy = (M.dayCharge || 0) + (M.dayDischarge || 0);
-      const src = pickFrom(map, [['EMS', 'DaySrc']]) || '设备日电量';
+      /* DaySrc 是文字说明（不是数值），pickFrom 会按数值解析而取不到，这里直接读标签 */
+      const emsTags = map['EMS'] || {};
+      const src = (typeof emsTags.DaySrc === 'string' && emsTags.DaySrc) ? emsTags.DaySrc : '设备日电量';
       M.hints = {
         storage: '今日充电 ' + (M.dayCharge === null ? '--' : M.dayCharge.toFixed(1)) + ' + 放电 '
           + (M.dayDischarge === null ? '--' : M.dayDischarge.toFixed(1)) + ' kWh（' + src + '）',
