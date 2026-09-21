@@ -66,7 +66,7 @@ window.DataService = (function () {
     win: { labels: [], actual: [], rated: [], user: [], storage: [] },
     tags: null, devices: null, alarms: [], soc: null, flow: 1,
     acc: { storage: 0, load: 0, grid: 0, tPrev: 0 },
-    dailyEnergy: null,
+    dailyEnergy: null, dayCharge: null, dayDischarge: null, dir: 1,
     hints: { storage: '', load: '', grid: '' }
   };
   let lastReport = null;
@@ -255,19 +255,26 @@ window.DataService = (function () {
     if (loadP !== null) M.acc.load    += Math.max(0, loadP) * dtH;
     if (gridP !== null) M.acc.grid    += Math.max(0, gridP) * dtH;
 
-    /* 今日电量：优先设备给的"全站日电量"（各簇/各 PCS 求和），KPI 显示充+放合计 */
+    /* 今日电量：优先设备给的"全站日电量"（各簇/各 PCS 求和）；充电/放电分开存，界面按当前方向二选一 */
     const dayChg = pickFrom(map, [['EMS', 'DayCharge'], ['PCS', 'DC6'], ['PCS', 'DC2'], ['PCS', 'DC5'], ['PCS', 'DC1']]);
     const dayDis = pickFrom(map, [['EMS', 'DayDischarge'], ['PCS', 'DC8'], ['PCS', 'DC4'], ['PCS', 'DC7'], ['PCS', 'DC3']]);
-    if (dayChg !== null || dayDis !== null) {
-      M.dailyEnergy = (dayChg || 0) + (dayDis || 0);
+    M.dayCharge = (dayChg === null) ? null : Number(dayChg);
+    M.dayDischarge = (dayDis === null) ? null : Number(dayDis);
+    if (M.dayCharge !== null || M.dayDischarge !== null) {
+      M.dailyEnergy = (M.dayCharge || 0) + (M.dayDischarge || 0);
       M.hints = {
-        storage: '今日充电 ' + (dayChg === null ? '--' : Number(dayChg).toFixed(1)) + ' + 放电 '
-          + (dayDis === null ? '--' : Number(dayDis).toFixed(1)) + ' kWh（各簇日电量求和）',
+        storage: '今日充电 ' + (M.dayCharge === null ? '--' : M.dayCharge.toFixed(1)) + ' + 放电 '
+          + (M.dayDischarge === null ? '--' : M.dayDischarge.toFixed(1)) + ' kWh（各簇日电量求和）',
         load: 'LoadPower 功率积分（会话累计）', grid: 'GRID_P 功率积分（会话累计）'
       };
     } else {
       M.dailyEnergy = null;
       M.hints = { storage: 'PCS_P 功率积分（会话累计）', load: 'LoadPower 功率积分（会话累计）', grid: 'GRID_P 功率积分（会话累计）' };
+    }
+    /* 当前充放电方向：功率为负=充电、为正=放电；待机时沿用上一次方向，避免来回翻 */
+    if (pcsP !== null) {
+      const dir = pcsP < -0.5 ? -1 : (pcsP > 0.5 ? 1 : 0);
+      if (dir) M.dir = dir;
     }
 
     M.devices = mqttDevices(map);
@@ -279,16 +286,27 @@ window.DataService = (function () {
     return mqttSnapshot();
   }
 
+  /* 当前方向对应的今日电量：充电看今日充电量，放电看今日放电量；无分项时退回合计/会话累计 */
+  function kpiToday() {
+    const pick = (M.dir < 0) ? M.dayCharge : M.dayDischarge;
+    if (pick !== null && pick !== undefined) return pick;
+    return (M.dailyEnergy !== null) ? M.dailyEnergy : M.acc.storage;
+  }
+
   function mqttSnapshot() {
     const chart = { labels: M.win.labels.slice(), actual: M.win.actual.slice(), rated: M.win.rated.slice(), user: M.win.user.slice(), storage: M.win.storage.slice() };
     return {
       time: new Date(),
       source: 'mqtt',
       kpis: {
-        chargeToday: Math.round(M.dailyEnergy !== null ? M.dailyEnergy : M.acc.storage),
+        /* 今日充电量 / 今日放电量分开给；chargeToday 保留为"当前方向对应的今日电量" */
+        chargeToday: Math.round(kpiToday()),
+        dayCharge: M.dayCharge === null ? null : Math.round(M.dayCharge),
+        dayDischarge: M.dayDischarge === null ? null : Math.round(M.dayDischarge),
         loadToday:   Math.round(M.acc.load),
         gridToday:   Math.round(M.acc.grid)
       },
+      dir: M.dir,
       soc: M.soc === null ? 0 : M.soc,
       pcs:   { labels: chart.labels, actual: chart.actual, rated: chart.rated },
       load:  { labels: chart.labels, user: chart.user, storage: chart.storage },
@@ -314,7 +332,10 @@ window.DataService = (function () {
   function energyInfo() {
     return {
       mode: M.dailyEnergy !== null ? 'daily' : 'session',
-      chargeToday: Math.round(M.dailyEnergy !== null ? M.dailyEnergy : M.acc.storage),
+      dir: M.dir,                                   // -1 充电 / 1 放电（待机沿用上一次）
+      chargeToday: Math.round(kpiToday()),
+      dayCharge: M.dayCharge === null ? null : Math.round(M.dayCharge),
+      dayDischarge: M.dayDischarge === null ? null : Math.round(M.dayDischarge),
       loadToday: Math.round(M.acc.load),
       gridToday: Math.round(M.acc.grid),
       hints: M.hints
