@@ -138,7 +138,10 @@ window.GaoteService = (function () {
       if (!isFinite(i)) return;
       const def = pointDef(info.dim, i, isStatus);
       const key = def ? def.k : ('#' + i);
-      bucket[i] = { v: num(payload[k]), def: def, key: key };
+      /* 数据帧与状态帧的点位索引会撞号（如同一维度的 3 号点两边含义不同），
+         状态点统一加 'S' 前缀分开存，避免后到的帧把先到的一类覆盖掉 */
+      const slot = isStatus ? ('S' + i) : String(i);
+      bucket[slot] = { v: num(payload[k]), def: def, key: key };
       n++;
     });
     const ls = lastSeenByDev[dk] || (lastSeenByDev[dk] = {});
@@ -323,6 +326,21 @@ window.GaoteService = (function () {
   }
 
   /* 按 MAP 生成平台界面用的点位表 */
+  /* 同一维度所有实例求和（站点级电量用；单实例取 val() 只拿第一台） */
+  function sumInst(dim, key) {
+    const st = activeState();
+    let s = null;
+    Object.keys(st).forEach(function (k) {
+      if (k.split('|')[0] !== normDim(dim)) return;
+      const b = st[k];
+      const idx = Object.keys(b).filter(function (x) { return b[x] && b[x].key === key; })[0];
+      if (idx === undefined) return;
+      const v = b[idx].v;
+      if (v !== null && v !== undefined && isFinite(Number(v))) s = (s === null ? 0 : s) + Number(v);
+    });
+    return s;
+  }
+
   function buildTags() {
     const out = {};
     Object.keys(MAP).forEach(function (dev) {
@@ -344,6 +362,16 @@ window.GaoteService = (function () {
     /* 电芯 */
     const cells = buildCells();
     if (Object.keys(cells).length) out.BMS_CELLS = cells;
+    /* 全站日电量（今日）：各簇日充/放电之和；没有簇数据时退回各 PCS 交流日电量之和 */
+    const dayChg = (sumInst('cluster', 'cludaychg_cap') !== null) ? sumInst('cluster', 'cludaychg_cap')
+      : ((sumInst('pcs', 'comchgday_cap') !== null) ? sumInst('pcs', 'comchgday_cap') : sumInst('pcs', 'chgday_cap'));
+    const dayDis = (sumInst('cluster', 'cludaydis_cap') !== null) ? sumInst('cluster', 'cludaydis_cap')
+      : ((sumInst('pcs', 'comdisday_cap') !== null) ? sumInst('pcs', 'comdisday_cap') : sumInst('pcs', 'disday_cap'));
+    if (dayChg !== null || dayDis !== null) {
+      out.EMS = out.EMS || {};
+      if (dayChg !== null) out.EMS.DayCharge = String(dayChg);
+      if (dayDis !== null) out.EMS.DayDischarge = String(dayDis);
+    }
     return out;
   }
 

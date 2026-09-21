@@ -55,8 +55,8 @@ window.GaoteDetail = (function () {
   function collectAlarms() {
     const out = [];
     Object.keys(GaoteService.state).forEach(function (k) {
-      if (k.split('|')[0].indexOf('/status') < 0) return;
       const b = GaoteService.state[k];
+      if (!b || !b._meta || b._meta.cls !== 'status') return;      // 只看状态帧（遥信）
       Object.keys(b).forEach(function (i) {
         if (i === '_meta' || i === '_t') return;
         const it = b[i];
@@ -108,12 +108,20 @@ window.GaoteDetail = (function () {
     const soh = avgSoh();
     const pcsP = N('emu', 'PCSSumsActivePower');
     const gridP = N('meter-lems-antireflux', 'meter_tot_p');
-    const eff = (dayChg && dayDis) ? (dayDis / dayChg * 100) : ((totChg && totDis) ? (totDis / totChg * 100) : null);
+    /* 转换效率按累计电量算（与厂家平台口径一致：总放电量 / 总充电量） */
+    const eff = (totChg && totDis) ? (totDis / totChg * 100) : ((dayChg && dayDis) ? (dayDis / dayChg * 100) : null);
 
     /* 分时电量（累计充/放电，取自电表正/反向分时电能） */
     const chgTou = sumTou('meter-lems-antireflux', false);
     const disTou = sumTou('meter-lems-antireflux', true);
-    const income = money(disTou), expense = money(chgTou);
+    let income = money(disTou), expense = money(chgTou);
+    /* 电表没上报分时电量时，用累计电量 × 电价估算（放电按尖/峰均价、充电按谷/深谷均价） */
+    let estimatedMoney = false;
+    if (touTotal(chgTou) === 0 && touTotal(disTou) === 0 && (totChg || totDis)) {
+      income = (totDis || 0) * ((cfg.tip + cfg.peak) / 2);
+      expense = (totChg || 0) * ((cfg.valley + cfg.deep) / 2);
+      estimatedMoney = true;
+    }
     const profit = income - expense;
 
     /* 会话窗口 */
@@ -218,7 +226,9 @@ window.GaoteDetail = (function () {
     colM.appendChild(pTou);
 
     const pMoney = el('section', 'dt-panel');
-    pMoney.appendChild(el('div', 'dt-ptitle', '收益信息（按当前电价折算）'));
+    pMoney.appendChild(el('div', 'dt-ptitle', estimatedMoney
+      ? '收益信息（按配置电价与累计电量估算，电表分时电量未上报）'
+      : '收益信息（按当前电价折算）'));
     const mg = el('div', 'dt-money');
     [['累计收益', profit], ['放电收入', income], ['充电总支出', expense], ['昨日收益', null]].forEach(function ([k, v]) {
       const r = el('div', 'dt-kv');
