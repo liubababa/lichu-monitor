@@ -477,6 +477,37 @@ window.GaoteService = (function () {
     emit('conn', { state: 'disconnected' });
   }
 
+  /* ---------------- 告警（遥信） ----------------
+     只认状态帧里"告警类"的点：
+       · 等级类（…WarnLevel / 预警等级 / 告警汇总等级 Err）：值 > 0 才算
+       · 标志类（…Fault / CommErr / alarm / 故障 / 报警…）：值 = 1 才算
+     编号（堆号/簇号/设备号）、工作状态、时间戳一律不算告警 */
+  const ALARM_NAME = /告警|报警|故障|异常|预警|警告|过压|欠压|过温|欠温|过流|缺液/;
+  const SKIP_KEY = /^(ccuno|arrno|arrnum|cluno|clunum|devno|ts)$/i;
+  function alarms() {
+    const st = activeState();
+    const out = [];
+    Object.keys(st).forEach(function (k) {
+      const b = st[k];
+      if (!b || !b._meta || b._meta.cls !== 'status') return;
+      const dim = k.split('|')[0];
+      const inst = [b._meta.arr, b._meta.clu, b._meta.dev].filter(function (x) { return x !== undefined && x !== '' && x !== '-1'; }).join('/');
+      Object.keys(b).forEach(function (i) {
+        const it = b[i];
+        if (!it || !it.def) return;
+        const key = String(it.key || ''), name = String(it.def.n || '');
+        if (SKIP_KEY.test(key)) return;
+        const v = Number(it.v);
+        const isLevel = /warnlevel$/i.test(key) || /预警等级$/.test(name);
+        const isFlag = /(fault|commerr|alarm|abn|trouble|detect)/i.test(key) || ALARM_NAME.test(name);
+        if (isLevel && v > 0) out.push({ dim: dim, name: name.replace(/等级$/, '') + '（等级 ' + v + '）', inst: inst });
+        else if (key === 'Err' && v > 0) out.push({ dim: dim, name: '告警汇总等级 ' + v, inst: inst });
+        else if (!isLevel && isFlag && v === 1) out.push({ dim: dim, name: name, inst: inst });
+      });
+    });
+    return out;
+  }
+
   /* ---------------- 设备列表 / 切换 ---------------- */
 
   /* 发现到的设备（含在线判定：2 分钟内有报文） */
@@ -516,6 +547,7 @@ window.GaoteService = (function () {
     get state() { return activeState(); },
     val, buildTags, buildPseudoReport,
     lastSeen: () => activeLastSeen(),
+    alarms,
     devicesList, activeDevice, setActive,
     getCfg: () => cfg,
     normUrl

@@ -53,17 +53,9 @@ window.GaoteDetail = (function () {
     return arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
   }
   function collectAlarms() {
-    const out = [];
-    Object.keys(GaoteService.state).forEach(function (k) {
-      const b = GaoteService.state[k];
-      if (!b || !b._meta || b._meta.cls !== 'status') return;      // 只看状态帧（遥信）
-      Object.keys(b).forEach(function (i) {
-        if (i === '_meta' || i === '_t') return;
-        const it = b[i];
-        if (it && it.def && it.v === 1 && it.key !== 'Ts') out.push(it.def.n || it.key);
-      });
-    });
-    return out;
+    /* 统一走 GaoteService.alarms()：只认状态帧里的告警类点（编号/工作状态不算） */
+    if (typeof GaoteService.alarms === 'function') return GaoteService.alarms().map(function (a) { return a.name; });
+    return [];
   }
 
   /* 分时电量：电表的尖/峰/平/谷/深谷电能点位 */
