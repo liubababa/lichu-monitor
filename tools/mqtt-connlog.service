@@ -1,0 +1,15 @@
+[Unit]
+Description=MQTT 连接尝试留痕（从 mosquitto.log 抽出 CONNECT/AUTH_OK/AUTH_FAIL/PROTO_ERR）
+After=mosquitto.service
+Requires=mosquitto.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/mqtt-connlog.sh
+Restart=always
+RestartSec=3
+# 不需要账号：只读 mosquitto 文本日志
+User=root
+
+[Install]
+WantedBy=multi-user.target
