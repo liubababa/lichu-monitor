@@ -172,7 +172,9 @@ window.GaoteScene3D = (function () {
     for (const k in labelEls) {
       const isStack = k.indexOf('stack') === 0;
       const idx = isStack ? parseInt(k.slice(5), 10) : -1;
-      const hide = cardOpen || !labelsOn || (isStack && idx >= stackN);
+      /* 没内容的浮标不显示（否则会剩个空心框，看不出是什么） */
+      const empty = !labelEls[k].textContent.trim();
+      const hide = cardOpen || !labelsOn || empty || (isStack && idx >= stackN);
       labelEls[k].style.display = hide ? 'none' : '';
     }
     if (facLabelEl) facLabelEl.style.display = (labelsOn && !cardOpen) ? '' : 'none';
@@ -299,7 +301,8 @@ window.GaoteScene3D = (function () {
     }
     root.add(g);
     groups.pcs = g;
-    addLabel('pcs', new THREE.Vector3(0, H + .9, 0));
+    /* 这里原来挂了个浮标但从不填内容，默认视角下就是个空心框（用户当成了进度条）；
+       汇流/PCS 柜的信息点开卡片看即可 */
     addCard('pcs', new THREE.Vector3(0, H + .1, 0));
   }
 
