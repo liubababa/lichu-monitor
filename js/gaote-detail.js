@@ -39,6 +39,27 @@ window.GaoteDetail = (function () {
   })();
   const RANGE_TITLE = { live: '本次会话实时曲线', today: '今日历史曲线', yesterday: '昨日历史曲线', days3: '近 3 天历史曲线' };
 
+  /* ---------------- 每日收益（服务端按天汇总电量 → 页面按电价折算） ---------------- */
+  let dailyCache = { at: 0, list: null };
+  function loadDaily() {
+    if (Date.now() - dailyCache.at < 60000 && dailyCache.list) return;
+    dailyCache.at = Date.now();
+    fetch(HIST_BASE + '/daily?days=3')
+      .then(function (r) { return r.json(); })
+      .then(function (j) { dailyCache.list = (j && j.list) || []; render(true); })
+      .catch(function () { if (!dailyCache.list) dailyCache.list = null; });
+  }
+  function dailyRows() {
+    return (dailyCache.list || []).filter(function (d) { return d.samples > 0; });
+  }
+  /* 日收益估算：放电按尖/峰均价、充电按谷/深谷均价（与下方"收益信息"口径一致）
+     电量优先取设备当日累计值，缺失时用服务端按功率积分的兜底值 */
+  function dayRevenue(d) {
+    const chg = (d.chg === null || d.chg === undefined) ? d.ichg : d.chg;
+    const dis = (d.dis === null || d.dis === undefined) ? d.idis : d.dis;
+    return (dis || 0) * ((cfg.tip + cfg.peak) / 2) - (chg || 0) * ((cfg.valley + cfg.deep) / 2);
+  }
+
   function loadHistory(range) {
     histMode = range;
     histLoading = true;
@@ -298,11 +319,20 @@ window.GaoteDetail = (function () {
 
     /* 右列：两个统计图 */
     const colR = el('div', 'dt-col');
-    colR.appendChild(panel('收益趋势统计', '累计收益估算（元，按累计电量 × 电价）', 'dtChartPay', '柱上数字即数值，鼠标悬停不再弹提示框'));
+    const dRows = dailyRows();
+    const dToday = dRows.filter(function (d) { return d.today && !Number(d.dis || d.idis); })[0];
+    colR.appendChild(panel('收益趋势统计',
+      dRows.length ? '每日收益估算（元）' : '累计收益估算（元，按累计电量 × 电价）',
+      'dtChartPay',
+      dRows.length
+        ? '按日电量 × 电价估算（放电按尖/峰均价、充电按谷/深谷均价）；带 ＊ 为当日实时累计'
+          + (dToday ? '；今日尚未放电，暂为负值属正常' : '')
+        : '柱上数字即数值，鼠标悬停不再弹提示框'));
     colR.appendChild(panel('充放电量统计', '本次会话充/放电量（kWh）', 'dtChartCycle', ''));
     grid.appendChild(colR);
 
     host.appendChild(grid);
+    loadDaily();      // 每日收益（服务端按天汇总，60 秒内不重复请求）
 
     /* 图表 */
     setTimeout(function () {
@@ -322,7 +352,16 @@ window.GaoteDetail = (function () {
         { name: '储能功率', data: S.win.pcs, axis: 0, color: '#2ee6c8' },
         { name: '负荷', data: S.win.load, axis: 0, color: '#b48cff' }
       ]);
-      drawBar('dtChartPay', 'chartPay', '收益(元)', [profit === null ? 0 : +profit.toFixed(2)], ['累计收益'], '#2ee6c8');
+      /* 收益趋势：服务端有按天电量就画每日柱，否则退回"累计收益"单柱 */
+      const days = dailyRows();
+      if (days.length) {
+        drawBar('dtChartPay', 'chartPay', '收益(元)',
+          days.map(function (d) { return +dayRevenue(d).toFixed(2); }),
+          days.map(function (d) { return d.day + (d.today ? '＊' : ''); }),
+          '#2ee6c8');
+      } else {
+        drawBar('dtChartPay', 'chartPay', '收益(元)', [profit === null ? 0 : +profit.toFixed(2)], ['累计收益'], '#2ee6c8');
+      }
       drawBar('dtChartCycle', 'chartCycle', '电量(kWh)', [dayChg || 0, dayDis || 0], ['今日充电', '今日放电'], '#7aa2ff');
     }, 30);
     if (scroller) scroller.scrollTop = keepTop;      // 重绘后恢复滚动位置
