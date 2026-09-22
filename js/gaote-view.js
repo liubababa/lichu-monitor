@@ -34,6 +34,13 @@ window.GaoteView = (function () {
     const v = b[i].v;
     return (v === null || v === undefined) ? null : Number(v);
   }
+  /* 数组点位（单体电芯：一帧带 N 节）取值——不能走 bval，Number(数组) 会变 NaN */
+  function barr(b, key) {
+    const i = Object.keys(b).filter(k => b[k] && b[k].key === key)[0];
+    if (i === undefined) return null;
+    const v = b[i].v;
+    return Array.isArray(v) ? v : null;
+  }
   function sec(span, title, chip) {
     const s = el('section', 'ov-sec gv3-sec ' + span);
     const h = el('div', 'ov-sec-head');
@@ -89,12 +96,14 @@ window.GaoteView = (function () {
     const mode = N('emu', 'EmuModCod');
     const run = N('emu', 'RunStatus');
     const MODE = { 0: '子系统', 1: '计划', 2: '总指令' };
-    [['系统状态', sysV === null ? '--' : (sysV === 0 ? '正常' : '异常'), sysV === 0 ? 'ok' : 'bad'],
+    /* SysStatus 在协议点表里没有定义枚举，不做"正常/异常"判定（厂家答复：设备正常） */
+    [['系统状态', sysV === null ? '--' : ('状态码 ' + sysV), ''],
      ['控制源', ctrl === null ? '--' : (ctrl === 1 ? '远程' : (ctrl === 0 ? '本地' : '其他')), ctrl === 1 ? 'ok' : 'warn'],
      ['指令模式', mode === null ? '--' : (MODE[mode] || mode), ''],
      ['电池状态', run === null ? '--' : ({ 0: '静置', 1: '充电', 2: '放电' }[run] || run), '']
     ].forEach(function ([k, v, cls]) {
       const b = el('div', 'gv3-badge');
+      if (k === '系统状态') b.title = '协议点表未定义该点枚举，暂不判定正常/异常';
       b.appendChild(el('span', '', k));
       b.appendChild(el('b', 'v ' + cls, String(v)));
       badges.appendChild(b);
@@ -110,16 +119,19 @@ window.GaoteView = (function () {
     function el2() { return sec('sp12', '功率分布', 'PCS / 电表'); }
     const pcs = N('emu', 'PCSSumsActivePower');
     const grid = N('meter-lems-antireflux', 'meter_tot_p');
-    const ess = N('meter-aems-storage', 'meter_tot_p');
+    /* 储能功率以 PCS 汇总为准：现场 AEMS 这台储能计量表长期报 0，
+       拿它当储能功率会一直显示"0.0 kW 待机"（实际正在充放电） */
+    const essMeter = N('meter-aems-storage', 'meter_tot_p');
+    const ess = (pcs !== null && pcs !== 0) ? pcs : (essMeter !== null ? essMeter : pcs);
     const meterIn = N('meter-mems-storage', 'meter_tot_p');
     const row = el('div', 'gv3-flow');
-    [['市电（并网点）', grid, 'grid'], ['储能（AEMS）', ess !== null ? ess : pcs, 'ess'],
-     ['计量柜（MEMS）', meterIn, 'load'], ['PCS 汇总', pcs, 'pcs']].forEach(function ([label, v, cls]) {
+    [['市电（并网点）', grid, 'grid'], ['储能（充放电）', ess, 'ess'],
+     ['计量柜（MEMS）', meterIn, 'load'], ['储能计量表（AEMS）', essMeter, 'pcs']].forEach(function ([label, v, cls]) {
       const t = el('div', 'gv3-tile ' + cls);
       t.appendChild(el('span', 'gv3-tlabel', label));
       t.appendChild(el('b', 'gv3-tval', num(v, '', 1)));
       t.appendChild(el('u', '', 'kW'));
-      if (label === '储能（AEMS）' && v !== null) t.appendChild(el('em', 'gv3-ttag', v < 0 ? '充电' : (v > 0 ? '放电' : '待机')));
+      if (label === '储能（充放电）' && v !== null) t.appendChild(el('em', 'gv3-ttag', v < 0 ? '充电' : (v > 0 ? '放电' : '待机')));
       row.appendChild(t);
     });
     body.appendChild(row);
@@ -131,14 +143,24 @@ window.GaoteView = (function () {
     const { s, body } = sec('sp12', '电池堆', 'rtg/data/array');
     const list = insts('array');
     if (!list.length) { body.appendChild(el('div', 'gv3-empty', '尚未收到堆数据')); return s; }
+    /* 按报文里的堆号排序，卡片顺序固定（堆1 在前） */
+    list.sort(function (a, b) {
+      const x = bval(a.b, 'arrno'), y = bval(b.b, 'arrno');
+      return (x === null ? 99 : x) - (y === null ? 99 : y);
+    });
     const row = el('div', 'gv3-stack-row');
     list.forEach(function (it) {
       const soc = bval(it.b, 'arrSOC');
       const card = el('div', 'gv3-stack');
       const head = el('div', 'gv3-shead');
-      head.appendChild(el('b', '', '堆 ' + (it.meta.arr || '0')));
+      /* 堆号取报文的 arrno（设备从 0 开始编号，显示时 +1）；主题段位是 -1，不能当堆号 */
+      const arrno = bval(it.b, 'arrno');
+      head.appendChild(el('b', '', '堆 ' + (arrno === null ? String(it.meta.arr || 0) : (arrno + 1))));
+      /* 协议枚举：0 停机 / 1 充电 / 2 放电 / 3 待机 / 4 故障
+         （此前只把 0 当"正常"，充放电时就误报"异常"） */
+      const ARR_ST = { 0: '停机', 1: '充电', 2: '放电', 3: '待机', 4: '故障' };
       const st = bval(it.b, 'arrStatus');
-      head.appendChild(el('span', 'gv3-dot' + (st === 0 ? ' ok' : ' warn'), st === 0 ? '正常' : (st === null ? '--' : '异常')));
+      head.appendChild(el('span', 'gv3-dot' + (st === 4 ? ' warn' : ' ok'), st === null ? '--' : (ARR_ST[st] || ('状态' + st))));
       card.appendChild(head);
 
       const bar = el('div', 'gv3-socbar');
@@ -149,7 +171,8 @@ window.GaoteView = (function () {
       const kv = el('div', 'gv3-skv');
       [['电压', num(bval(it.b, 'arrVol'), 'V', 1)], ['电流', num(bval(it.b, 'arrCur'), 'A', 1)],
        ['SOH', num(bval(it.b, 'arrSOH'), '%', 0)], ['压差', num(bval(it.b, 'CellVolDif'), 'V', 3)],
-       ['温差', num(bval(it.b, 'CellTemDif'), '℃', 1)], ['允许充放', num(bval(it.b, 'arrMaxReChaPower'), '', 0) + '/' + num(bval(it.b, 'arrMaxReDischgPower'), '', 0)]]
+       ['温差', num(bval(it.b, 'CellTemDif'), '℃', 1)],
+       ['充放限值', num(bval(it.b, 'arrMaxReChaPower'), '', 0) + '/' + num(bval(it.b, 'arrMaxReDischgPower'), '', 0) + ' kW']]
         .forEach(function ([k, v]) {
           const r = el('div', 'gv3-kvrow');
           r.appendChild(el('span', '', k));
@@ -163,53 +186,63 @@ window.GaoteView = (function () {
     return s;
   }
 
-  /* ---------- 4. 电芯热力图 ---------- */
+  /* ---------- 4. 单体电芯（数组点位：一簇一帧带 N 节电压/温度） ---------- */
   function cellSec() {
     const { s, body } = sec('sp12', '单体电芯', 'rtg/data/cell');
     const keys = Object.keys(GaoteService.state).filter(k => k.split('|')[0] === 'cell');
     if (!keys.length) { body.appendChild(el('div', 'gv3-empty', '尚未收到单体数据')); return s; }
-    const groups = {};
-    keys.forEach(function (k) {
-      const b = GaoteService.state[k];
-      const g = '堆' + (b._meta.arr || 0) + ' · 簇' + (b._meta.clu || 0);
-      (groups[g] = groups[g] || []).push(b);
+    const list = keys.map(function (k) {
+      return { k: k, b: GaoteService.state[k], m: GaoteService.state[k]._meta || {} };
+    }).sort(function (a, b) {
+      return ((parseInt(a.m.arr, 10) || 0) - (parseInt(b.m.arr, 10) || 0)) || ((parseInt(a.m.clu, 10) || 0) - (parseInt(b.m.clu, 10) || 0));
     });
+    /* 单体数组里混有未接传感器的占位值（65535），要当"无数据"处理，否则温区范围会被拉到 6 万度 */
+    const ok = function (v) { return typeof v === 'number' && isFinite(v) && v >= 0 && v < 1000; };
+    const nums = function (a) { return (a || []).filter(ok); };
     const wrap = el('div', 'heat-wrap');
-    Object.keys(groups).forEach(function (g) {
-      const list = groups[g].sort((a, b) => (parseInt(a._meta.dev, 10) || 0) - (parseInt(b._meta.dev, 10) || 0));
+    list.forEach(function (it) {
+      const vol = barr(it.b, 'CelVol'), tem = barr(it.b, 'CelTem'), soc = barr(it.b, 'CelSOC');
+      const n = (vol && vol.length) || (tem && tem.length) || 0;
+      if (!n) return;
       const box = el('div', 'heat-box');
-      const vals = k => list.map(b => bval(b, k)).filter(v => v !== null);
-      const vv = vals('CelVol'), tt = vals('CelTem');
+      const vv = nums(vol), tt = nums(tem), ss = nums(soc);
+      const arrNo = bval(it.b, 'ArrNo'), cluNo = bval(it.b, 'CluNo');
       const meta = el('div', 'heat-meta');
-      meta.innerHTML = '<b>' + g + '　' + list.length + ' 节</b><span class="hm-stat">电压 '
+      meta.innerHTML = '<b>堆' + (arrNo === null ? '?' : arrNo + 1) + ' · 簇' + (cluNo === null ? '?' : cluNo + 1) + '　' + n + ' 节</b>'
+        + '<span class="hm-stat">电压 '
         + (vv.length ? (Math.min.apply(null, vv) * 1000).toFixed(0) + '~' + (Math.max.apply(null, vv) * 1000).toFixed(0) + ' mV' : '--')
-        + '　温度 ' + (tt.length ? Math.min.apply(null, tt).toFixed(1) + '~' + Math.max.apply(null, tt).toFixed(1) + ' ℃' : '--') + '</span>';
+        + '　温度 ' + (tt.length ? Math.min.apply(null, tt).toFixed(1) + '~' + Math.max.apply(null, tt).toFixed(1) + ' ℃' : '--')
+        + (tt.length && tt.length < n ? '（' + (n - tt.length) + ' 节未接）' : '')
+        + (ss.length ? '　单体SOC ' + Math.min.apply(null, ss).toFixed(0) + '~' + Math.max.apply(null, ss).toFixed(0) + ' %' : '')
+        + '</span>';
       box.appendChild(meta);
-      [['CelVol', 'mV', 1000], ['CelTem', '℃', 1]].forEach(function ([k, u, f]) {
-        const arr = list.map(b => bval(b, k));
-        const valid = arr.filter(v => v !== null);
+      [['CelVol', vol, 'mV', 1000, '电压(mV)'], ['CelTem', tem, '℃', 1, '温度(℃)']].forEach(function (row) {
+        const arr = row[1];
+        if (!arr || !arr.length) return;
+        const valid = nums(arr);
         if (!valid.length) return;
         const min = Math.min.apply(null, valid), max = Math.max.apply(null, valid);
         const grid = el('div', 'heat-grid');
-        grid.style.gridTemplateColumns = 'repeat(' + Math.min(list.length, 24) + ',1fr)';
+        grid.style.gridTemplateColumns = 'repeat(' + Math.min(arr.length, 32) + ',1fr)';
         arr.forEach(function (v, idx) {
           const c = el('i', 'hc');
-          if (v === null) { c.className = 'hc na'; c.title = '第 ' + (idx + 1) + ' 节：无数据'; }
+          if (!ok(v)) { c.className = 'hc na'; c.title = '第 ' + (idx + 1) + ' 节：无数据'; }
           else {
             const t = (v - min) / ((max - min) || 1);
-            const hue = k === 'CelVol' ? (168 + 34 * t) : (205 - 165 * t);
+            const hue = row[0] === 'CelVol' ? (168 + 34 * t) : (205 - 165 * t);
             c.style.background = 'hsl(' + hue + ',72%,' + (26 + 30 * (1 - Math.abs(t - 0.5) * 2)) + '%)';
-            c.title = '第 ' + (idx + 1) + ' 节：' + (v * f).toFixed(f === 1000 ? 0 : 1) + ' ' + u;
+            c.title = '第 ' + (idx + 1) + ' 节：' + (v * row[3]).toFixed(row[3] === 1000 ? 0 : 1) + ' ' + row[2];
           }
           grid.appendChild(c);
         });
         const line = el('div', 'gv3-heatline');
-        line.appendChild(el('span', 'gv3-hlabel', k === 'CelVol' ? '电压(mV)' : '温度(℃)'));
+        line.appendChild(el('span', 'gv3-hlabel', row[4]));
         line.appendChild(grid);
         box.appendChild(line);
       });
       wrap.appendChild(box);
     });
+    if (!wrap.childElementCount) body.appendChild(el('div', 'gv3-empty', '尚未收到单体数据'));
     body.appendChild(wrap);
     return s;
   }
