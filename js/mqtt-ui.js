@@ -39,7 +39,8 @@ window.MqttUI = (function () {
 
   const STATE = {
     conn: 'idle', gotData: false, lastTags: null, lastReportAt: 0,
-    pollTimer: null, pollLeft: 0, paused: false, logCount: 0, buffered: 0, devRows: []
+    pollTimer: null, pollLeft: 0, paused: false, logCount: 0, buffered: 0, devRows: [],
+    autoClosePending: false
   };
 
   /* ============================ 数据源状态指示 ============================ */
@@ -67,6 +68,11 @@ window.MqttUI = (function () {
       st.textContent = (CONN_TEXT[state] || state)
         + '　|　页面数据源：厂家 MQTT'
         + (STATE.gotData ? '　|　最近上报：' + new Date(STATE.lastReportAt).toTimeString().slice(0, 8) : '');
+    }
+    /* 点「连接」且连上了：自动收起配置面板（顶部已显示"MQTT 已连接"，面板留着会挡住页面） */
+    if (state === 'connected' && STATE.autoClosePending) {
+      STATE.autoClosePending = false;
+      setTimeout(function () { togglePanel(false); }, 800);
     }
   }
 
@@ -305,6 +311,7 @@ window.MqttUI = (function () {
       persist(false);
       if (!CFG.url) { toast('请填写网关地址（ws:// 或 wss://）'); return; }
       setConn('connecting');
+      STATE.autoClosePending = true;      // 连上后自动收起面板
       if (CFG.protocol === 'gaote') {
         if (typeof GaoteService === 'undefined') { toast('GaoteService 未加载'); setConn('error', '模块未加载'); return; }
         GaoteService.connect({
