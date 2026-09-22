@@ -169,13 +169,15 @@ window.GaoteScene3D = (function () {
     applyLabelVisibility();
   }
   function applyLabelVisibility() {
+    /* 明细卡片打开时把所有浮标藏起来：浮标按 3D 位置投影，会压在卡片上（重叠很难看） */
+    const cardOpen = !!activeCardKey;
     for (const k in labelEls) {
       const isStack = k.indexOf('stack') === 0;
       const idx = isStack ? parseInt(k.slice(5), 10) : -1;
-      const hide = (!labelsOn && k !== activeCardKey) || (isStack && idx >= stackN);
+      const hide = cardOpen || !labelsOn || (isStack && idx >= stackN);
       labelEls[k].style.display = hide ? 'none' : '';
     }
-    if (facLabelEl) facLabelEl.style.display = labelsOn ? '' : 'none';
+    if (facLabelEl) facLabelEl.style.display = (labelsOn && !cardOpen) ? '' : 'none';
   }
 
   /* ---------------- 能量流 ---------------- */
