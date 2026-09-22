@@ -3,7 +3,6 @@
  *
  * 与场景对齐真实拓扑：储能柜（数量按上报自动排布）+ 汇流/PCS 柜 + 并网杆塔，
  * 数据全部来自 GaoteService（高特协议实时值）：
- *   柜门小电表 —— 该柜 SOC（横向亮条）
  *   柜顶色条   —— 充电(蓝) / 放电(青) / 待机(灰)
  *   电缆能量流 —— 每根柜线按该柜电流方向流动，并网线按全站功率方向流动；
  *                光纹沿电缆滚动 + 沿线发光粒子，速度随数值大小，待机时停下
@@ -22,7 +21,6 @@ window.GaoteScene3D = (function () {
   const labelEls = {};      // key -> .tag3d element
   const cardEls = {};       // key -> .card3d element
   const strips = {};        // key -> 柜顶色条
-  const gauges = {};        // key -> 柜门 SOC 亮条
   let inited = false;
   const clock = { last: 0 };
 
@@ -256,14 +254,6 @@ window.GaoteScene3D = (function () {
     for (let k = 0; k < 4; k++) {
       g.add(box(W * .6, .03, .06, std(0x0a1a20, { roughness: .9 }), 0, H + .47, -.2 + k * .13));
     }
-    /* 柜门小电表：底槽 + 随 SOC 生长的亮条 */
-    g.add(box(.42, .18, .03, std(0x061418, { roughness: .5 }), -W * .18, H * .62, D / 2 + .02));
-    const barGeo = new THREE.BoxGeometry(.34, .1, .02);
-    barGeo.translate(.17, 0, 0);
-    const gauge = new THREE.Mesh(barGeo, new THREE.MeshBasicMaterial({ color: 0x2ee6c8 }));
-    gauge.position.set(-W * .18 - .17, H * .62, D / 2 + .045);
-    g.add(gauge);
-    gauges[key] = gauge;
 
     const strip = box(W * .92, .12, D * .92, std(0x6f9a94, { emissive: 0x000000 }), 0, H + .2, 0);        // 柜顶色条
     g.add(strip);
@@ -601,13 +591,6 @@ window.GaoteScene3D = (function () {
         strip.material.color.setHex(col);
         strip.material.emissive.setHex(col);
         strip.material.emissiveIntensity = (chg || dis) ? .85 : .12;
-      }
-      /* 柜门小电表：长度按 SOC */
-      const gg = gauges[key];
-      if (gg) {
-        const soc = (d.soc === null || d.soc === undefined) ? 0 : Math.max(0, Math.min(100, Number(d.soc)));
-        gg.scale.x = Math.max(.02, soc / 100);
-        gg.material.color.setHex(col);
       }
       /* 柜底光晕随充放电强弱 */
       const gl = groups[key] && groups[key].userData.glow;
