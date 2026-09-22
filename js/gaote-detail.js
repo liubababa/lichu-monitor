@@ -298,7 +298,7 @@ window.GaoteDetail = (function () {
 
     /* 右列：两个统计图 */
     const colR = el('div', 'dt-col');
-    colR.appendChild(panel('收益趋势统计', '本次会话累计收益（元）', 'dtChartPay', '按电价折算，历史趋势需后端'));
+    colR.appendChild(panel('收益趋势统计', '累计收益估算（元，按累计电量 × 电价）', 'dtChartPay', '柱上数字即数值，鼠标悬停不再弹提示框'));
     colR.appendChild(panel('充放电量统计', '本次会话充/放电量（kWh）', 'dtChartCycle', ''));
     grid.appendChild(colR);
 
@@ -322,7 +322,7 @@ window.GaoteDetail = (function () {
         { name: '储能功率', data: S.win.pcs, axis: 0, color: '#2ee6c8' },
         { name: '负荷', data: S.win.load, axis: 0, color: '#b48cff' }
       ]);
-      drawBar('dtChartPay', 'chartPay', '收益(元)', [profit === null ? 0 : +profit.toFixed(2)], ['本次会话'], '#2ee6c8');
+      drawBar('dtChartPay', 'chartPay', '收益(元)', [profit === null ? 0 : +profit.toFixed(2)], ['累计收益'], '#2ee6c8');
       drawBar('dtChartCycle', 'chartCycle', '电量(kWh)', [dayChg || 0, dayDis || 0], ['今日充电', '今日放电'], '#7aa2ff');
     }, 30);
     if (scroller) scroller.scrollTop = keepTop;      // 重绘后恢复滚动位置
@@ -355,7 +355,7 @@ window.GaoteDetail = (function () {
     bindChart(key, node);
     charts[key].setOption({
       grid: { left: 46, right: 46, top: 26, bottom: 24 },
-      tooltip: { trigger: 'axis', backgroundColor: 'rgba(6,18,20,.92)', borderColor: 'rgba(46,230,200,.35)', textStyle: { color: '#cfeee8', fontSize: 11 } },
+      tooltip: { trigger: 'axis', confine: true, backgroundColor: 'rgba(6,18,20,.92)', borderColor: 'rgba(46,230,200,.35)', textStyle: { color: '#cfeee8', fontSize: 11 } },
       legend: { show: true, right: 6, top: 0, textStyle: { color: '#6f9a94', fontSize: 10 }, itemWidth: 12, itemHeight: 8 },
       xAxis: { type: 'category', data: labels || S.win.t, axisLine: { lineStyle: { color: 'rgba(46,230,200,.25)' } }, axisLabel: { color: '#6b9490', fontSize: 9 } },
       yAxis: [
@@ -374,12 +374,17 @@ window.GaoteDetail = (function () {
     if (!node || typeof echarts === 'undefined') return;
     bindChart(key, node);
     charts[key].setOption({
-      grid: { left: 48, right: 16, top: 22, bottom: 24 },
-      tooltip: { trigger: 'axis', backgroundColor: 'rgba(6,18,20,.92)', borderColor: 'rgba(46,230,200,.35)', textStyle: { color: '#cfeee8', fontSize: 11 } },
+      grid: { left: 48, right: 16, top: 28, bottom: 24 },
+      /* 柱图不要浮动提示框：它会飘出画布盖住标题（用户反馈字被挡），数值直接标在柱顶 */
+      tooltip: { show: false },
       xAxis: { type: 'category', data: labels, axisLine: { lineStyle: { color: 'rgba(46,230,200,.25)' } }, axisLabel: { color: '#6b9490', fontSize: 10 } },
       yAxis: { type: 'value', name: unit, nameTextStyle: { color: '#6f9a94', fontSize: 10 }, scale: true, axisLabel: { color: '#6b9490', fontSize: 9 }, splitLine: { lineStyle: { color: 'rgba(46,230,200,.08)', type: 'dashed' } } },
       series: [{
         type: 'bar', data: data, barWidth: '38%',
+        label: {
+          show: true, position: 'top', color: '#cfeee8', fontSize: 10,
+          formatter: function (p) { return Number(p.value).toLocaleString('zh-CN', { maximumFractionDigits: 2 }); }
+        },
         itemStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0, color: color }, { offset: 1, color: 'rgba(46,230,200,.15)' }]) }
       }]
     }, true);
