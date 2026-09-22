@@ -107,7 +107,12 @@ function tmp(name, content) {
     await exec(conn, 'sudo cp ' + NGINX_SITE + ' ' + NGINX_SITE + '.bak.$(date +%Y%m%d%H%M)');
     const has = (await exec(conn, "sudo grep -c 'location /history' " + NGINX_SITE + ' || true')).trim();
     if (has === '0') {
-      await exec(conn, "sudo sed -i '/location \\/mqtt {/i\\    location = /history/healthz { proxy_pass http://127.0.0.1:" + PORT + "/healthz; }\\n    location /history { proxy_pass http://127.0.0.1:" + PORT + "; }' " + NGINX_SITE);
+      await exec(conn, "sudo sed -i '/location \\/mqtt {/i\\    location = /history/healthz { proxy_pass http://127.0.0.1:" + PORT + "/healthz; }\\n    location /history { proxy_pass http://127.0.0.1:" + PORT + "; }\\n    location /daily { proxy_pass http://127.0.0.1:" + PORT + "; }' " + NGINX_SITE);
+    }
+    /* /daily（每日电量，供收益趋势用）单独兜底：老配置里可能只有 /history */
+    const hasDaily = (await exec(conn, "sudo grep -c 'location /daily' " + NGINX_SITE + ' || true')).trim();
+    if (hasDaily === '0') {
+      await exec(conn, "sudo sed -i '/location \\/history {/i\\    location /daily { proxy_pass http://127.0.0.1:" + PORT + "; }' " + NGINX_SITE);
     }
     await exec(conn, 'sudo nginx -t && sudo systemctl reload nginx');
     console.log('nginx 已加 /history（反代 127.0.0.1:' + PORT + '）');

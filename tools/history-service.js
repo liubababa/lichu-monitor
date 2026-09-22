@@ -45,7 +45,23 @@ function log(line) { console.log(new Date().toTimeString().slice(0, 8) + '  ' + 
 
 /* ---------------- 采样 ---------------- */
 const devices = {};   // sn -> { soc, p, clu:[], ts, lastSaved }
+const pcsDay = {};    // sn -> 逆变器实例 -> { c: 日充电, d: 日放电 }
+const cluDay = {};    // sn -> 簇实例  -> { c: 日充电, d: 日放电 }
 let saved = 0;
+
+/* 日电量：优先 PCS 交流侧（与平台、厂家口径一致），没有再用簇侧 */
+function dayTotals(sn) {
+  const sum = function (m) {
+    if (!m) return null;
+    let c = 0, d = 0, has = false;
+    Object.keys(m).forEach(function (k) {
+      if (isFinite(m[k].c)) { c += m[k].c; has = true; }
+      if (isFinite(m[k].d)) { d += m[k].d; has = true; }
+    });
+    return has ? { c: c, d: d } : null;
+  };
+  return sum(pcsDay[sn]) || sum(cluDay[sn]) || null;
+}
 
 function dayFile(ms) {
   const d = new Date(ms);
@@ -74,7 +90,9 @@ function save(sn) {
   const now = Date.now();
   if (d.lastSaved && now - d.lastSaved < OPT.sampleGap * 1000) return;   // 采样间隔
   d.lastSaved = now;
+  const dt = dayTotals(sn);
   const rec = { t: now, sn: sn, soc: d.soc, p: d.p, clu: d.clu.slice(0, 8) };
+  if (dt) { rec.chg = +dt.c.toFixed(2); rec.dis = +dt.d.toFixed(2); }     // 当日累计充/放电量(kWh)
   try {
     fs.appendFileSync(dayFile(now), JSON.stringify(rec) + '\n');
     saved++;
@@ -138,6 +156,23 @@ function onMessage(topic, buf) {
     const soc = (p.cluSoc !== undefined) ? num('cluSoc') : num('3');
     const arr = (p.arrno !== undefined) ? Number(p.arrno) : Number(seg[5]);
     if (soc !== null && isFinite(arr)) d.clu[arr] = soc;
+    const inst = seg.slice(5, -1).join('/') || '0';
+    const m = (cluDay[sn] = cluDay[sn] || {});
+    const rec = m[inst] = m[inst] || {};
+    const c = num('34'), dd = num('35');          // 当日累计充/放电量
+    if (c !== null) rec.c = c;
+    if (dd !== null) rec.d = dd;
+    return;
+  }
+  if (dim === 'pcs') {
+    const inst = seg.slice(5, -1).join('/') || '0';
+    const m = (pcsDay[sn] = pcsDay[sn] || {});
+    const rec = m[inst] = m[inst] || {};
+    const c = (p.comchgday_cap !== undefined) ? num('comchgday_cap') : num('110010119');
+    const dd = (p.comdisday_cap !== undefined) ? num('comdisday_cap') : num('110010120');
+    if (c !== null) rec.c = c;
+    if (dd !== null) rec.d = dd;
+    return;
   }
   if (dim === 'array') {
     const soc = (p.arrSOC !== undefined) ? num('arrSOC') : num('3');
@@ -200,18 +235,64 @@ function rangeOf(name) {
   return [now - OPT.days * 86400000, now];
 }
 
+function fmtDay(ms) {
+  const d = new Date(ms);
+  const p = function (n) { return String(n).padStart(2, '0'); };
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+}
+
+/* 按天汇总：日电量取当天采样里的最大值（设备计数器当日累计），另外给出按功率积分的兜底值 */
+function dailySummary(days) {
+  const d0 = new Date(); d0.setHours(0, 0, 0, 0);
+  const today0 = d0.getTime();
+  const out = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const from = today0 - i * 86400000;
+    const to = from + 86400000 - 1;
+    const rows = readPoints(from, to);
+    let chg = null, dis = null, ichg = 0, idis = 0, prev = null;
+    rows.forEach(function (r) {
+      if (isFinite(r.chg)) chg = (chg === null) ? r.chg : Math.max(chg, r.chg);
+      if (isFinite(r.dis)) dis = (dis === null) ? r.dis : Math.max(dis, r.dis);
+      if (prev && isFinite(r.p)) {
+        const dt = (r.t - prev.t) / 1000;
+        if (dt > 0 && dt < 3600) {
+          const e = Math.abs(r.p) * dt / 3600;
+          if (r.p < 0) ichg += e; else idis += e;
+        }
+      }
+      prev = r;
+    });
+    out.push({
+      date: fmtDay(from), day: i === 0 ? '今日' : (i === 1 ? '昨日' : fmtDay(from).slice(5)),
+      chg: chg, dis: dis,                         // 设备当日累计电量(kWh)，可能为 null
+      ichg: +ichg.toFixed(2), idis: +idis.toFixed(2),   // 按功率积分兜底
+      samples: rows.length, today: i === 0
+    });
+  }
+  return out;
+}
+
 const server = http.createServer(function (req, res) {
   const u = new URL(req.url, 'http://localhost');
   res.setHeader('access-control-allow-origin', '*');
   res.setHeader('cache-control', 'no-store');
   if (u.pathname === '/healthz') {
     const files = fs.readdirSync(OPT.dir).filter(function (f) { return /\.jsonl$/.test(f); });
+    const live = {};
+    Object.keys(devices).forEach(function (sn) { live[sn] = dayTotals(sn); });
     res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
     res.end(JSON.stringify({
       ok: true, mqtt: client.connected ? 'connected' : 'disconnected',
       dir: OPT.dir, days: OPT.days, keptFiles: files.sort(), saved: saved,
-      devices: Object.keys(devices)
+      devices: Object.keys(devices), todayEnergy: live
     }, null, 2));
+    return;
+  }
+  if (u.pathname === '/daily') {
+    const days = parseInt(u.searchParams.get('days') || String(OPT.days), 10);
+    res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify({ days: days, unit: 'kWh', list: dailySummary(Math.max(1, Math.min(31, days))) }));
     return;
   }
   if (u.pathname === '/history') {
@@ -227,7 +308,7 @@ const server = http.createServer(function (req, res) {
     return;
   }
   res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
-  res.end('lichu history service\n  GET /healthz\n  GET /history?range=today|yesterday|days3&step=300\n');
+  res.end('lichu history service\n  GET /healthz\n  GET /history?range=today|yesterday|days3&step=300\n  GET /daily?days=3\n');
 });
 
 prune();
