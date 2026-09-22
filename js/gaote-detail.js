@@ -328,7 +328,7 @@ window.GaoteDetail = (function () {
         ? '按日电量 × 电价估算（放电按尖/峰均价、充电按谷/深谷均价）；带 ＊ 为当日实时累计'
           + (dToday ? '；今日尚未放电，暂为负值属正常' : '')
         : '柱上数字即数值，鼠标悬停不再弹提示框'));
-    colR.appendChild(panel('充放电量统计', '本次会话充/放电量（kWh）', 'dtChartCycle', ''));
+    colR.appendChild(panel('充放电量统计', '今日充 / 放电量（kWh）', 'dtChartCycle', '纵轴从 0 起，柱长即为数值比例'));
     grid.appendChild(colR);
 
     host.appendChild(grid);
@@ -417,7 +417,8 @@ window.GaoteDetail = (function () {
       /* 柱图不要浮动提示框：它会飘出画布盖住标题（用户反馈字被挡），数值直接标在柱顶 */
       tooltip: { show: false },
       xAxis: { type: 'category', data: labels, axisLine: { lineStyle: { color: 'rgba(46,230,200,.25)' } }, axisLabel: { color: '#6b9490', fontSize: 10 } },
-      yAxis: { type: 'value', name: unit, nameTextStyle: { color: '#6f9a94', fontSize: 10 }, scale: true, axisLabel: { color: '#6b9490', fontSize: 9 }, splitLine: { lineStyle: { color: 'rgba(46,230,200,.08)', type: 'dashed' } } },
+      /* 纵轴必须从 0 起：柱图的长度就是数值本身，截断基线会让 506 与 463 看起来差了十倍 */
+      yAxis: { type: 'value', name: unit, nameTextStyle: { color: '#6f9a94', fontSize: 10 }, min: 0, axisLabel: { color: '#6b9490', fontSize: 9 }, splitLine: { lineStyle: { color: 'rgba(46,230,200,.08)', type: 'dashed' } } },
       series: [{
         type: 'bar', data: data, barWidth: '38%',
         label: {

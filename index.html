@@ -6,7 +6,7 @@
 <title>力储未来能源综合管理系统</title>
 <link rel="icon" type="image/png" sizes="64x64" href="libs/logo-64.png"/>
 <link rel="apple-touch-icon" href="libs/logo-180.png"/>
-<link rel="stylesheet" href="css/style.css?v=20260922b"/>
+<link rel="stylesheet" href="css/style.css?v=20260922y"/>
 <script>
 /* 加载期错误收集（便于排查依赖/脚本问题） */
 window.__loadErrs = [];
@@ -18,7 +18,12 @@ window.addEventListener('error', function (e) {
 <body>
 
 <!-- 启动加载遮罩 -->
-<div id="bootLoading"><div class="bl-box"><div class="bl-ring"></div><p>三维引擎加载中，请稍候…</p></div></div>
+<div id="bootLoading"><div class="bl-box">
+  <img class="bl-logo" src="libs/logo.png" alt="力储未来"/>
+  <b class="bl-name">力储未来能源综合管理系统</b>
+  <div class="bl-ring"></div>
+  <p>三维引擎加载中，请稍候…</p>
+</div></div>
 
 <div id="app">
   <!-- ===== 顶部栏 ===== -->
@@ -94,8 +99,10 @@ window.addEventListener('error', function (e) {
       <div class="scene-tip">左键拖拽旋转 · 滚轮缩放 · 单击设备查看运行详情</div>
     </section>
 
-    <!-- 右侧：数据面板 -->
+    <!-- 右侧：数据面板（默认收成一条竖边，鼠标移上去滑出） -->
     <aside id="right">
+      <div class="side-handle"><span>◀ 数据面板</span></div>
+      <div class="side-inner">
       <div class="panel">
         <div class="panel-title"><span>系统概况</span><em id="dataModeTag">未连接</em></div>
         <div class="kpi-grid">
@@ -148,6 +155,7 @@ window.addEventListener('error', function (e) {
         <div class="panel-title"><span>主要设备负载</span><em>kW</em></div>
         <div class="chart" id="loadChart"></div>
       </div>
+      </div>
     </aside>
   </div>
 </div>
@@ -155,6 +163,7 @@ window.addEventListener('error', function (e) {
 <!-- ===== MQTT 接入配置面板 ===== -->
 <aside id="mqttPanel" class="hidden">
   <div class="mq-head">
+    <img class="mq-logo" src="libs/logo.png" alt="力储未来"/>
     <b>MQTT 接入配置 · 高特 CCU / 晶农EMS</b>
     <button class="mq-x" id="mqClose" title="关闭">×</button>
   </div>
@@ -296,8 +305,8 @@ window.addEventListener('error', function (e) {
 <script src="js/gaote-points.js?v=20260917d"></script>
 <script src="js/gaote.js?v=20260921i"></script>
 <script src="js/gaote-view.js?v=20260922b"></script>
-<script src="js/gaote-detail.js?v=20260922d"></script>
-<script src="js/gaote-scene3d.js?v=20260922g"></script>
+<script src="js/gaote-detail.js?v=20260922z"></script>
+<script src="js/gaote-scene3d.js?v=20260922z"></script>
 <script src="js/gaote-strategy.js?v=20260917d"></script>
 <script src="js/overview.js?v=20260919b"></script>
 <script src="js/mqtt-ui.js?v=20260922a"></script>
