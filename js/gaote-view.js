@@ -216,30 +216,30 @@ window.GaoteView = (function () {
         + (ss.length ? '　单体SOC ' + Math.min.apply(null, ss).toFixed(0) + '~' + Math.max.apply(null, ss).toFixed(0) + ' %' : '')
         + '</span>';
       box.appendChild(meta);
-      [['CelVol', vol, 'mV', 1000, '电压(mV)'], ['CelTem', tem, '℃', 1, '温度(℃)']].forEach(function (row) {
-        const arr = row[1];
-        if (!arr || !arr.length) return;
-        const valid = nums(arr);
-        if (!valid.length) return;
-        const min = Math.min.apply(null, valid), max = Math.max.apply(null, valid);
-        const grid = el('div', 'heat-grid');
-        grid.style.gridTemplateColumns = 'repeat(' + Math.min(arr.length, 32) + ',1fr)';
-        arr.forEach(function (v, idx) {
-          const c = el('i', 'hc');
-          if (!ok(v)) { c.className = 'hc na'; c.title = '第 ' + (idx + 1) + ' 节：无数据'; }
-          else {
-            const t = (v - min) / ((max - min) || 1);
-            const hue = row[0] === 'CelVol' ? (168 + 34 * t) : (205 - 165 * t);
-            c.style.background = 'hsl(' + hue + ',72%,' + (26 + 30 * (1 - Math.abs(t - 0.5) * 2)) + '%)';
-            c.title = '第 ' + (idx + 1) + ' 节：' + (v * row[3]).toFixed(row[3] === 1000 ? 0 : 1) + ' ' + row[2];
-          }
-          grid.appendChild(c);
-        });
-        const line = el('div', 'gv3-heatline');
-        line.appendChild(el('span', 'gv3-hlabel', row[4]));
-        line.appendChild(grid);
-        box.appendChild(line);
-      });
+      /* 一根取样条：把整簇按顺序分成若干段，每段取平均，颜色按电压高低；鼠标悬停看该段明细。
+         不再铺 260 个色块（太密，只想知道个大概） */
+      const SEG = 30;
+      const vMin = vv.length ? Math.min.apply(null, vv) : null;
+      const vMax = vv.length ? Math.max.apply(null, vv) : null;
+      const strip = el('div', 'cell-strip');
+      for (let s = 0; s < SEG; s++) {
+        const from = Math.floor(s * n / SEG), to = Math.max(from + 1, Math.floor((s + 1) * n / SEG));
+        const vs = nums((vol || []).slice(from, to));
+        const ts = nums((tem || []).slice(from, to));
+        const seg = el('i', 'cs');
+        if (!vs.length) { seg.className = 'cs na'; }
+        else {
+          const avg = vs.reduce(function (a, b) { return a + b; }, 0) / vs.length;
+          const t = (avg - (vMin === null ? avg : vMin)) / (((vMax - vMin) || 1));
+          const hue = 205 - 165 * Math.max(0, Math.min(1, t));
+          seg.style.background = 'hsl(' + hue + ',70%,58%)';
+        }
+        seg.title = '第 ' + (from + 1) + '~' + to + ' 节　电压 '
+          + (vs.length ? (Math.min.apply(null, vs) * 1000).toFixed(0) + '~' + (Math.max.apply(null, vs) * 1000).toFixed(0) + ' mV' : '--')
+          + (ts.length ? '　温度 ' + Math.min.apply(null, ts).toFixed(1) + '~' + Math.max.apply(null, ts).toFixed(1) + ' ℃' : '');
+        strip.appendChild(seg);
+      }
+      box.appendChild(strip);
       wrap.appendChild(box);
     });
     if (!wrap.childElementCount) body.appendChild(el('div', 'gv3-empty', '尚未收到单体数据'));

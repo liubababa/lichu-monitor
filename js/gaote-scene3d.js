@@ -35,7 +35,7 @@ window.GaoteScene3D = (function () {
   const MAXN = 8, GAP = 3.3, STACK_W = 2.5, STACK_H = 2.8, STACK_D = 1.5;
   /* 汇流/PCS 柜位置（放在并网铁塔下面，储能柜与其排成横向一列）与半宽 */
   const PCS_X = -6.4, PCS_Z = 2.6, PCS_HW = 2.3;
-  let stackN = 5;
+  let stackN = 2;   // 默认按本站实际（2 堆）；连上后按上报的簇数自动排布
   const stackCables = [];   // { flow } 每柜到 PCS 的电缆
 
   /* 厂房（工厂用电负荷）：放电时电送进厂房，进线光点流动 */
@@ -281,6 +281,18 @@ window.GaoteScene3D = (function () {
       gauges[key].push(socBar);
     });
 
+    /* 柜门细节：铰链、把手、铭牌、底部进线箱（让柜子在近景下经得起看） */
+    [-1, 1].forEach(function (s) {
+      [.3, .7].forEach(function (t) {
+        g.add(box(.09, .16, .05, post, s * (W / 2 - .05), .16 + H * t, D / 2 + .03));
+      });
+    });
+    g.add(box(.07, .4, .06, post, W / 2 - .28, .16 + H * .5, D / 2 + .04));                                  // 门把手
+    g.add(box(.34, .18, .02, std(0x0a1a20, { roughness: .6 }), -W / 2 + .34, .16 + H * .76, D / 2 + .022));  // 铭牌底
+    g.add(box(.3, .14, .03, new THREE.MeshBasicMaterial({ color: 0xd9a02a }), -W / 2 + .34, .16 + H * .76, D / 2 + .036));
+    g.add(box(W * .46, .2, .28, std(0x0d222a, { roughness: .8 }), 0, .2, D / 2 + .12));                      // 底部进线箱
+    g.add(box(W * .2, .06, .18, std(0x16404b, { roughness: .5, metalness: .4 }), -W * .3, H + .5, D * .1));   // 顶部风机
+
     const glow = new THREE.Mesh(new THREE.PlaneGeometry(W * 1.45, D * 1.7),
       new THREE.MeshBasicMaterial({ color: 0x2ee6c8, transparent: true, opacity: .06, blending: THREE.AdditiveBlending, depthWrite: false }));
     glow.rotation.x = -Math.PI / 2;
@@ -317,6 +329,18 @@ window.GaoteScene3D = (function () {
     g.add(box(.76, .4, .03, std(0x061418, { roughness: .5 }), -W * .18, H * .68, D / 2 + .005));        // 显示屏
     g.add(box(.7, .34, .04, new THREE.MeshBasicMaterial({ color: 0x14e0c0 }), -W * .18, H * .68, D / 2 + .03));
     g.add(box(.08, .3, .08, std(0x1b4a56, { roughness: .4, metalness: .6 }), W * .32, H * .6, D / 2 + .06));  // 隔离开关
+    /* 顶部出线套管（三相）+ 底部进线箱，近景下更像真设备 */
+    [0, 1, 2].forEach(function (i) {
+      const x = (i - 1) * 1.2;
+      const bush = new THREE.Mesh(new THREE.CylinderGeometry(.11, .15, .52, 8), std(0xd8e6e4, { roughness: .35, metalness: .1 }));
+      bush.position.set(x, H + .5, 0);
+      bush.castShadow = true;
+      g.add(bush);
+      g.add(box(.3, .07, .3, std(0x1b4a56, { roughness: .45, metalness: .5 }), x, H + .22, 0));
+    });
+    g.add(box(W * .5, .22, .3, std(0x0d222a, { roughness: .85 }), 0, .21, D / 2 + .26));                      // 进线箱
+    g.add(box(.36, .2, .02, std(0x0a1a20, { roughness: .6 }), W * .3, H * .5, D / 2 + .012));                 // 铭牌
+    g.add(box(.32, .16, .03, new THREE.MeshBasicMaterial({ color: 0xd9a02a }), W * .3, H * .5, D / 2 + .026));
     for (let k = 0; k < 8; k++) {                                                                       // 散热鳍片
       g.add(box(.06, H * .5, .06, std(0x0a1a20, { roughness: .9 }), -W / 2 - .05, H * .55, -.5 + k * .16));
     }
@@ -360,7 +384,18 @@ window.GaoteScene3D = (function () {
       for (let i = 0; i < lv; i++) {
         member(P(c[0], hgt * i / lv, c[1]), P(c[0], hgt * (i + 1) / lv, c[1]), legMat, .045);
       }
+      /* 每个塔脚一块独立基础（混凝土墩） */
+      const bx = c[0] * halfAt(0), bz = c[1] * halfAt(0);
+      g.add(box(.66, .4, .66, std(0x2a3a3d, { roughness: .95, metalness: .05 }), bx, .2, bz));
+      g.add(box(.36, .28, .36, std(0x3a4c50, { roughness: .9 }), bx, .54, bz));
     });
+    /* 塔身爬梯（沿一根主腿的横档 + 两根立杆） */
+    for (let i = 0; i < 17; i++) {
+      const y = .75 + i * .5, w = halfAt(y);
+      g.add(box(.26, .03, .03, braceMat, -w + .12, y, -w - .07));
+    }
+    g.add(box(.03, hgt - .8, .03, braceMat, -halfAt(.8) + .0, (hgt - .8) / 2 + .8, -halfAt(.8) - .1));
+    g.add(box(.03, hgt - .8, .03, braceMat, -halfAt(.8) + .26, (hgt - .8) / 2 + .8, -halfAt(.8) - .1));
     for (let i = 1; i <= lv; i++) {                                                   // 横撑 + 交叉斜撑
       const y = hgt * i / lv, w = halfAt(y);
       g.add(box(w * 2, .04, .04, braceMat, 0, y, -w));
@@ -531,7 +566,7 @@ window.GaoteScene3D = (function () {
 
   /* ---------- 按实际堆数排布储能柜 ---------- */
   function layoutStacks(n) {
-    stackN = Math.max(1, Math.min(MAXN, n || 5));
+    stackN = Math.max(1, Math.min(MAXN, n || 2));
     const startX = -(stackN - 1) * GAP / 2;
     for (let i = 0; i < MAXN; i++) {
       const g = groups['stack' + i];
@@ -573,7 +608,8 @@ window.GaoteScene3D = (function () {
       seen[v] = 1;
     });
     const n = Object.keys(seen).length;
-    return (n >= 1 && n <= MAXN) ? n : 5;
+    /* 没数据时按本站实际 2 个显示（以前兜底 5，未连接时看着像有 5 个堆） */
+    return (n >= 1 && n <= MAXN) ? n : 2;
   }
 
   /* ---------- 数据刷新 ---------- */
@@ -786,7 +822,7 @@ window.GaoteScene3D = (function () {
     scene = new THREE.Scene();
     scene.fog = new THREE.Fog(0x04090c, 26, 60);
     camera = new THREE.PerspectiveCamera(46, w / h, .1, 300);
-    camera.position.set(16.5, 12.5, 23);
+    camera.position.set(11.6, 7.0, 15.9);
 
     renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
@@ -814,8 +850,8 @@ window.GaoteScene3D = (function () {
       controls.enableDamping = true; controls.dampingFactor = .08;
       controls.minDistance = 8; controls.maxDistance = 46;
       controls.maxPolarAngle = Math.PI / 2.15;
-      controls.target.set(0.5, 2.2, 0.5);
-      controls.autoRotate = true; controls.autoRotateSpeed = rot.speed * 6;
+      controls.target.set(0.2, 1.7, 0.6);
+      controls.autoRotate = rot.auto; controls.autoRotateSpeed = rot.speed * 6;
     }
     if (typeof THREE.EffectComposer === 'function' && THREE.RenderPass && THREE.UnrealBloomPass) {
       try {
@@ -843,8 +879,8 @@ window.GaoteScene3D = (function () {
       return rot.auto;
     },
     resetView: function () {
-      camera.position.set(16.5, 12.5, 23);
-      if (controls) { controls.target.set(0.5, 2.2, 0.5); controls.update(); }
+      camera.position.set(11.6, 7.0, 15.9);
+      if (controls) { controls.target.set(0.2, 1.7, 0.6); controls.update(); }
     },
     setRotateSync: function (cb) { rot.sync = cb; }
   };

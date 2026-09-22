@@ -130,6 +130,33 @@ function whiteToAlpha(img) {
   return { w: w, h: h, rgba: out };
 }
 
+/* ---------- 裁到白色区域（源图外面套了黑框时用；没有大白区就原样返回） ---------- */
+function cropWhite(img) {
+  const { w, h, rgba } = img;
+  let x0 = w, y0 = h, x1 = -1, y1 = -1;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      if (Math.min(rgba[i], rgba[i + 1], rgba[i + 2]) >= 200) {
+        if (x < x0) x0 = x;
+        if (x > x1) x1 = x;
+        if (y < y0) y0 = y;
+        if (y > y1) y1 = y;
+      }
+    }
+  }
+  if (x1 < 0) return img;
+  const area = (x1 - x0 + 1) * (y1 - y0 + 1) / (w * h);
+  if (area < .25) return img;                     // 白区太小 → 认为图里本来就没有白底框
+  const nw = x1 - x0 + 1, nh = y1 - y0 + 1;
+  if (nw === w && nh === h) return img;
+  const out = Buffer.alloc(nw * nh * 4);
+  for (let y = 0; y < nh; y++) {
+    rgba.copy(out, y * nw * 4, ((y + y0) * w + x0) * 4, ((y + y0) * w + x0 + nw) * 4);
+  }
+  return { w: nw, h: nh, rgba: out };
+}
+
 /* ---------- 裁掉四周透明留白 ---------- */
 function trim(img) {
   const { w, h, rgba } = img;
@@ -198,7 +225,7 @@ const outDir = path.join(__dirname, '..', 'libs');
 const img = decodePNG(fs.readFileSync(src));
 console.log('原始图：' + img.w + '×' + img.h);
 
-const cut = trim(whiteToAlpha(img));
+const cut = trim(whiteToAlpha(cropWhite(img)));
 console.log('去白底并裁留白后：' + cut.w + '×' + cut.h + '（宽高比 ' + (cut.w / cut.h).toFixed(2) + '）');
 
 const head = resize(cut, Math.round(128 * cut.w / cut.h), 128);
