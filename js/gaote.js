@@ -133,7 +133,9 @@ window.GaoteService = (function () {
     const bucket = st[instKey] || (st[instKey] = { _meta: info, _t: Date.now() });
     bucket._t = Date.now();
     /* 补传的历史帧时间戳比当前值旧：丢弃，避免界面在"当前值/历史值"之间来回跳。
-       设备按点位索引发报文（如 {"3":5,"38":1789…}），Ts 要通过点表找到对应索引再取 */
+       设备按点位索引发报文（如 {"3":5,"38":1789…}），Ts 要通过点表找到对应索引再取；
+       另外设备会周期性重发断网补传帧（几小时前的数据），超过 STALE_SEC 一律不采用 */
+    const STALE_SEC = 900;
     let ts = NaN;
     Object.keys(payload).forEach(function (k) {
       const i = parseInt(k, 10);
@@ -145,7 +147,8 @@ window.GaoteService = (function () {
       }
     });
     if (isFinite(ts)) {
-      if (bucket._ts && ts < bucket._ts) {
+      const nowSec = Math.floor(Date.now() / 1000);
+      if (ts < nowSec - STALE_SEC || (bucket._ts && ts < bucket._ts)) {
         return { info: info, instKey: instKey, bucket: bucket, devKey: dk, isActive: dk === activeKey, stale: true };
       }
       bucket._ts = ts;
