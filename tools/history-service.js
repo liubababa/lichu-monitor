@@ -114,6 +114,15 @@ function onMessage(topic, buf) {
   const d = devices[sn] || (devices[sn] = { soc: null, p: null, clu: [], ts: 0, lastSaved: 0 });
   const num = function (k) { const v = p[k]; const n = Number(v); return isFinite(n) ? n : null; };
 
+  /* 断网补传帧（几小时前的数据）不入库：设备会周期性重发，混进来会让曲线在两个值之间跳。
+     Ts 的位置各维度不同（emu=22、cluster=38…），这里直接取报文里最像 Unix 时间戳的那个值 */
+  let tsGuess = 0;
+  Object.keys(p).forEach(function (k) {
+    const v = Number(p[k]);
+    if (isFinite(v) && v > 1.7e9 && v < Date.now() / 1000 + 3600 && v > tsGuess) tsGuess = v;
+  });
+  if (tsGuess && Math.floor(Date.now() / 1000) - tsGuess > 900) return;
+
   if (dim === 'emu') {
     /* 汇总帧：SOC + 储能功率（按点位名或按索引两种写法都兼容） */
     const soc = (p.SumsSOC !== undefined) ? num('SumsSOC') : num('5');
