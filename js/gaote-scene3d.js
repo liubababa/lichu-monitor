@@ -17,7 +17,8 @@ window.GaoteScene3D = (function () {
 
   let scene, camera, renderer, labelRenderer, controls, composer;
   let host = null, raf = null;
-  let rot = { auto: true, speed: 0.05 }, labelsOn = true, activeCardKey = null;
+  /* 默认不自动旋转（用户要求），要用时点右上角「旋转」按钮 */
+  let rot = { auto: false, speed: 0.05 }, labelsOn = true, activeCardKey = null;
   const groups = {};        // key -> THREE.Group
   const labelEls = {};      // key -> .tag3d element
   const cardEls = {};       // key -> .card3d element
@@ -32,6 +33,8 @@ window.GaoteScene3D = (function () {
 
   /* 柜体数量按实际上报自动排布 */
   const MAXN = 8, GAP = 3.3, STACK_W = 2.5, STACK_H = 2.8, STACK_D = 1.5;
+  /* 汇流/PCS 柜位置（放在并网铁塔下面，储能柜与其排成横向一列）与半宽 */
+  const PCS_X = -6.4, PCS_Z = 2.6, PCS_HW = 2.3;
   let stackN = 5;
   const stackCables = [];   // { flow } 每柜到 PCS 的电缆
 
@@ -287,15 +290,16 @@ window.GaoteScene3D = (function () {
 
     g.userData.key = key;
     groups[key] = g;
-    addLabel(key, new THREE.Vector3(0, H + .95, 0));
+    /* 相邻柜子的浮标错开高度，避免排成一列时相互压住 */
+    addLabel(key, new THREE.Vector3(0, H + .95 + (parseInt(String(key).replace('stack', ''), 10) % 2) * .6, 0));
     addCard(key, new THREE.Vector3(0, H + .1, 0));
     return g;
   }
 
-  /* ---------------- 汇流 / PCS 柜 ---------------- */
+  /* ---------------- 汇流 / PCS 柜（放在铁塔下面，与储能柜排成横向一列） ---------------- */
   function buildPCS(root) {
     const g = new THREE.Group();
-    g.position.set(0, 0, 4.2);
+    g.position.set(PCS_X, 0, PCS_Z);
     const W = 4.6, H = 2.2, D = 1.4;
     const frontMat = new THREE.MeshStandardMaterial({ map: texCache.pcsFront, roughness: .5, metalness: .45 });
     const sideMat = new THREE.MeshStandardMaterial({ map: texCache.cabSide, roughness: .6, metalness: .35 });
@@ -323,59 +327,99 @@ window.GaoteScene3D = (function () {
     addCard('pcs', new THREE.Vector3(0, H + .1, 0));
   }
 
-  /* ---------------- 并网杆塔（格构式 + 绝缘子 + 进线弧垂） ---------------- */
+  /* ---------------- 并网铁塔（国网风格格构塔：收腰塔身 + 三层双侧横担 + 绝缘子串 + 架空线） ---------------- */
   function buildTower(root) {
     const g = new THREE.Group();
-    g.position.set(-10.5, 0, -2.5);
-    const hgt = 7.0, baseW = 1.6, topW = .5;
-    const legMat = std(0x1c4450, { roughness: .55, metalness: .55 });
-    const leg = function (a, b) {
+    g.position.set(-9.2, 0, -2.2);
+    const hgt = 9.2;
+    const legMat = std(0x6d8b93, { roughness: .55, metalness: .6 });
+    const braceMat = std(0x54737b, { roughness: .62, metalness: .55 });
+    const armMat = std(0x2ee6c8, { emissive: 0x0a5a4a, emissiveIntensity: .35, roughness: .5, metalness: .3 });
+    const insMat = std(0xd8e6e4, { roughness: .35, metalness: .1 });
+    const condMat = new THREE.LineBasicMaterial({ color: 0x2ee6c8, transparent: true, opacity: .32 });
+
+    /* 塔身半宽：底部宽 → 腰部收窄 → 上部略开（国网塔的收腰轮廓） */
+    const halfAt = function (y) {
+      const t = Math.max(0, Math.min(1, y / hgt));
+      const base = 1.5, waist = .62, top = .84;
+      return t < .6 ? base + (waist - base) * (t / .6) : waist + (top - waist) * ((t - .6) / .4);
+    };
+    const P = function (x, y, z) { return new THREE.Vector3(x * halfAt(y), y, z * halfAt(y)); };
+    const member = function (a, b, mat, r) {
       const len = a.distanceTo(b);
-      const m = new THREE.Mesh(new THREE.CylinderGeometry(.05, .07, len, 6), legMat);
+      if (len < .03) return;
+      const m = new THREE.Mesh(new THREE.CylinderGeometry(r || .04, r || .04, len, 5), mat || legMat);
       m.position.copy(a).lerp(b, .5);
       m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize());
       m.castShadow = true;
       g.add(m);
     };
-    [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(function (c) {
-      leg(new THREE.Vector3(c[0] * baseW / 2, 0, c[1] * baseW / 2), new THREE.Vector3(c[0] * topW / 2, hgt, c[1] * topW / 2));
+
+    const lv = 10;
+    [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(function (c) {                       // 四条主腿（跟随收腰轮廓）
+      for (let i = 0; i < lv; i++) {
+        member(P(c[0], hgt * i / lv, c[1]), P(c[0], hgt * (i + 1) / lv, c[1]), legMat, .045);
+      }
     });
-    for (let i = 1; i <= 4; i++) {                                    // 横撑
-      const y = i * hgt / 4.6;
-      const w = baseW + (topW - baseW) * (y / hgt);
-      g.add(box(w, .05, .05, legMat, 0, y, -w / 2));
-      g.add(box(w, .05, .05, legMat, 0, y, w / 2));
-      g.add(box(.05, .05, w, legMat, -w / 2, y, 0));
-      g.add(box(.05, .05, w, legMat, w / 2, y, 0));
+    for (let i = 1; i <= lv; i++) {                                                   // 横撑 + 交叉斜撑
+      const y = hgt * i / lv, w = halfAt(y);
+      g.add(box(w * 2, .04, .04, braceMat, 0, y, -w));
+      g.add(box(w * 2, .04, .04, braceMat, 0, y, w));
+      g.add(box(.04, .04, w * 2, braceMat, -w, y, 0));
+      g.add(box(.04, .04, w * 2, braceMat, w, y, 0));
+      if (i < lv) {
+        const yn = hgt * (i + 1) / lv, wn = halfAt(yn);
+        [[-1, 0], [1, 0], [0, -1], [0, 1]].forEach(function (f) {
+          const ax = f[0] * w, az = f[1] * w, bx = f[0] * wn, bz = f[1] * wn;
+          member(new THREE.Vector3(ax, y, az), new THREE.Vector3(bx, yn, bz), braceMat, .02);
+          member(new THREE.Vector3(ax, y, az), new THREE.Vector3(f[0] ? ax : bx, yn, f[1] ? az : bz), braceMat, .02);
+        });
+      }
     }
-    /* 三层横担 + 绝缘子 + 进线（带弧垂） */
-    const armMat = std(0x2ee6c8, { emissive: 0x0b6, emissiveIntensity: .3, roughness: .5 });
-    const insMat = std(0xd8e6e4, { roughness: .35, metalness: .1 });
-    const condMat = new THREE.LineBasicMaterial({ color: 0x2ee6c8, transparent: true, opacity: .35 });
-    for (let i = 0; i < 3; i++) {
-      const y = 5.2 + i * .75, w = 3.3 - i * .35;
-      g.add(box(w, .08, .08, armMat, 0, y, 0));
-      [-1, 1].forEach(function (s, si) {
-        const x = s * w / 2;
-        const ins = new THREE.Mesh(new THREE.CylinderGeometry(.06, .06, .3, 6), insMat);
-        ins.position.set(x, y - .19, 0);
-        ins.castShadow = true;
+
+    /* 三层横担（双回路：每层左右各一挑），端部下挂绝缘子串，导线沿线路方向穿越 */
+    const ARMS = [[5.9, 2.7], [6.9, 2.4], [7.9, 2.1]];
+    ARMS.forEach(function (a) {
+      const y = a[0], len = a[1], w = halfAt(y);
+      [-1, 1].forEach(function (s) {
+        const inn = new THREE.Vector3(s * w, y, 0);
+        const tip = new THREE.Vector3(s * (w + len), y, 0);
+        member(inn, tip, armMat, .055);
+        member(inn.clone().setY(y - .22), tip.clone().setY(y - .3), braceMat, .022);
+        const ins = new THREE.Group();                                                // 绝缘子串
+        ins.position.copy(tip);
+        for (let k = 0; k < 5; k++) {
+          const disc = new THREE.Mesh(new THREE.CylinderGeometry(.11, .11, .045, 8), insMat);
+          disc.position.y = -.12 - k * .08;
+          disc.castShadow = true;
+          ins.add(disc);
+        }
         g.add(ins);
-        const tip = new THREE.Vector3(x, y - .34, 0);
-        const from = new THREE.Vector3(-7.5, tip.y + .5, -1.2 + i * .6 + si * 0.4);
+        const wy = tip.y - .55, wx = tip.x;                                           // 导线（带垂弧，穿过塔位）
         const pts = [];
-        for (let k = 0; k <= 6; k++) {
-          const t = k / 6;
-          const p = from.clone().lerp(tip, t);
-          p.y -= Math.sin(t * Math.PI) * .7;               // 弧垂
-          pts.push(p);
+        for (let k = 0; k <= 24; k++) {
+          const z = -17 + (k / 24) * 34;
+          const sag = Math.sin(Math.min(1, Math.abs(z) / 17) * Math.PI / 2) * .85;
+          pts.push(new THREE.Vector3(wx, wy - sag, z));
         }
         g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), condMat));
       });
+    });
+    /* 塔顶地线支架 + 地线 */
+    const tw = halfAt(hgt);
+    member(new THREE.Vector3(-tw, hgt, 0), new THREE.Vector3(0, hgt + .9, 0), legMat, .04);
+    member(new THREE.Vector3(tw, hgt, 0), new THREE.Vector3(0, hgt + .9, 0), legMat, .04);
+    g.add(box(tw * 2.6, .06, .06, braceMat, 0, hgt + .55, 0));
+    const gpts = [];
+    for (let k = 0; k <= 24; k++) {
+      const z = -17 + (k / 24) * 34;
+      gpts.push(new THREE.Vector3(0, hgt + .9 - Math.sin(Math.min(1, Math.abs(z) / 17) * Math.PI / 2) * .55, z));
     }
+    g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(gpts), condMat));
+
     root.add(g);
     groups.grid = g;
-    addLabel('grid', new THREE.Vector3(0, hgt + .9, 0));
+    addLabel('grid', new THREE.Vector3(0, hgt + 1.5, 0));
   }
 
   /* ---------------- 厂房（工厂用电负荷：放电时给厂房供电） ---------------- */
@@ -474,8 +518,9 @@ window.GaoteScene3D = (function () {
     buildPCS(root);
     buildTower(root);
 
-    /* PCS → 杆塔 出线（全站口径，流向按总功率） */
-    const toTower = [new THREE.Vector3(0, .7, 3.6), new THREE.Vector3(-3.4, .8, 2.2), new THREE.Vector3(-7.2, 1.4, -.4), new THREE.Vector3(-10.5, 3.4, -2.5)];
+    /* PCS → 铁塔 出线（全站口径，流向按总功率） */
+    const toTower = [new THREE.Vector3(-8.5, 1.0, 2.6), new THREE.Vector3(-9.0, 2.6, 1.4),
+      new THREE.Vector3(-9.2, 4.2, -.6), new THREE.Vector3(-9.2, 5.9, -2.2)];
     addFlow(toTower, 3, root, -1);
 
     buildFactory(root);
@@ -498,8 +543,10 @@ window.GaoteScene3D = (function () {
       g.position.x = x;
       const sc = stackCables[i];
       if (sc && sc.flow) {
-        const pts = [new THREE.Vector3(0, .3, .9), new THREE.Vector3(0, .3, 2.6),
-          new THREE.Vector3(-x * .5, .32, 3.5), new THREE.Vector3(-x, .6, 3.6)];
+        /* 柜 → 汇流柜：柜台前下部引出，向前再折向汇流柜右侧（local 坐标 = root 坐标 - 本柜 x） */
+        const ex = PCS_X + PCS_HW + .15;                 // 汇流柜右侧接线点
+        const pts = [new THREE.Vector3(0, .3, .9), new THREE.Vector3(0, .3, 2.2),
+          new THREE.Vector3((ex - x) * .5, .5, 3.6), new THREE.Vector3(ex - x, .95, 2.6)];
         const curve = new THREE.CatmullRomCurve3(pts);
         const len = Math.max(1, curve.getLength());
         sc.flow.curve = curve;
@@ -739,7 +786,7 @@ window.GaoteScene3D = (function () {
     scene = new THREE.Scene();
     scene.fog = new THREE.Fog(0x04090c, 26, 60);
     camera = new THREE.PerspectiveCamera(46, w / h, .1, 300);
-    camera.position.set(13, 11, 18);
+    camera.position.set(16.5, 12.5, 23);
 
     renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
@@ -767,7 +814,7 @@ window.GaoteScene3D = (function () {
       controls.enableDamping = true; controls.dampingFactor = .08;
       controls.minDistance = 8; controls.maxDistance = 46;
       controls.maxPolarAngle = Math.PI / 2.15;
-      controls.target.set(0, 1.4, 0);
+      controls.target.set(0.5, 2.2, 0.5);
       controls.autoRotate = true; controls.autoRotateSpeed = rot.speed * 6;
     }
     if (typeof THREE.EffectComposer === 'function' && THREE.RenderPass && THREE.UnrealBloomPass) {
@@ -796,8 +843,8 @@ window.GaoteScene3D = (function () {
       return rot.auto;
     },
     resetView: function () {
-      camera.position.set(13, 11, 18);
-      if (controls) { controls.target.set(0, 1.4, 0); controls.update(); }
+      camera.position.set(16.5, 12.5, 23);
+      if (controls) { controls.target.set(0.5, 2.2, 0.5); controls.update(); }
     },
     setRotateSync: function (cb) { rot.sync = cb; }
   };
