@@ -4,6 +4,7 @@
  * 与场景对齐真实拓扑：储能柜（数量按上报自动排布）+ 汇流/PCS 柜 + 并网杆塔，
  * 数据全部来自 GaoteService（高特协议实时值）：
  *   柜顶色条   —— 充电(蓝) / 放电(青) / 待机(灰)
+ *   柜侧光柱   —— 该柜 SOC：高度从下往上按 SOC 生长，颜色随充放电状态
  *   电缆能量流 —— 每根柜线按该柜电流方向流动，并网线按全站功率方向流动；
  *                光纹沿电缆滚动 + 沿线发光粒子，速度随数值大小，待机时停下
  *   厂房       —— 工厂用电负荷：放电时进线光点流入厂房，待机/充电时停止
@@ -21,6 +22,7 @@ window.GaoteScene3D = (function () {
   const labelEls = {};      // key -> .tag3d element
   const cardEls = {};       // key -> .card3d element
   const strips = {};        // key -> 柜顶色条
+  const gauges = {};        // key -> 柜侧 SOC 光柱
   let inited = false;
   const clock = { last: 0 };
 
@@ -260,6 +262,21 @@ window.GaoteScene3D = (function () {
     const strip = box(W * .92, .12, D * .92, std(0x6f9a94, { emissive: 0x000000 }), 0, H + .2, 0);        // 柜顶色条
     g.add(strip);
     strips[key] = strip;
+
+    /* 柜侧 SOC 光柱：柜体左、右两侧各一条竖直光柱，高度按该柜 SOC 从下往上长。
+       两侧都装是因为场景会自动旋转，单侧只有半圈能看见（底槽让"空/满"看得清） */
+    const colH = H * .68, colZ = D * .2;
+    const colBase = .16 + H * .5 - colH / 2;
+    gauges[key] = [];
+    [-1, 1].forEach(function (sgn) {
+      g.add(box(.05, colH + .08, .3, std(0x061418, { roughness: .5 }), sgn * (W / 2 + .035), .16 + H * .5, colZ));
+      const socGeo = new THREE.BoxGeometry(.045, colH, .24);
+      socGeo.translate(0, colH / 2, 0);                     // 原点移到底部 → scale.y 即"从下往上长"
+      const socBar = new THREE.Mesh(socGeo, new THREE.MeshBasicMaterial({ color: 0x6f9a94 }));
+      socBar.position.set(sgn * (W / 2 + .062), colBase, colZ);
+      g.add(socBar);
+      gauges[key].push(socBar);
+    });
 
     const glow = new THREE.Mesh(new THREE.PlaneGeometry(W * 1.45, D * 1.7),
       new THREE.MeshBasicMaterial({ color: 0x2ee6c8, transparent: true, opacity: .06, blending: THREE.AdditiveBlending, depthWrite: false }));
@@ -594,6 +611,15 @@ window.GaoteScene3D = (function () {
         strip.material.color.setHex(col);
         strip.material.emissive.setHex(col);
         strip.material.emissiveIntensity = (chg || dis) ? .85 : .12;
+      }
+      /* 柜侧 SOC 光柱：高度按 SOC 从下往上长，颜色随充放电状态（左右各一条） */
+      const gg = gauges[key];
+      if (gg) {
+        const soc = (d.soc === null || d.soc === undefined) ? 0 : Math.max(0, Math.min(100, Number(d.soc)));
+        gg.forEach(function (b) {
+          b.scale.y = Math.max(.02, soc / 100);
+          b.material.color.setHex(col);
+        });
       }
       /* 柜底光晕随充放电强弱 */
       const gl = groups[key] && groups[key].userData.glow;
