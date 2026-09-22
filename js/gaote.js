@@ -162,7 +162,12 @@ window.GaoteService = (function () {
       /* 数据帧与状态帧的点位索引会撞号（如同一维度的 3 号点两边含义不同），
          状态点统一加 'S' 前缀分开存，避免后到的帧把先到的一类覆盖掉 */
       const slot = isStatus ? ('S' + i) : String(i);
-      bucket[slot] = { v: num(payload[k]), def: def, key: key };
+      /* 单体电芯是数组点位（一帧带 N 节电压/温度），数组要原样保留，不能被 Number() 变成 null */
+      const raw = payload[k];
+      const v = Array.isArray(raw)
+        ? raw.map(function (x) { const n = Number(x); return isFinite(n) ? n : null; })
+        : num(raw);
+      bucket[slot] = { v: v, def: def, key: key };
       n++;
     });
     const ls = lastSeenByDev[dk] || (lastSeenByDev[dk] = {});
