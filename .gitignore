@@ -55,3 +55,7 @@ tools/setup-tls-listener.sh
 # 网关配置（含 broker / 网页账号密码）
 tools/gateway.config.json
 tools/gateway.config.server.json
+
+# 阳光电源 iSolarCloud 接入凭据（AppKey / Secret）
+tools/solar.config.json
+tools/solar.config.server.json

@@ -17,7 +17,13 @@ const { Client } = require('ssh2');
 
 const HOST = process.env.SRV_HOST || '43.129.27.206';
 const USER = process.env.SRV_USER || 'ubuntu';
-const PASS = process.env.SRV_PASS || 'Lyk872373!';
+/* 服务器密码与 broker 口令只从环境变量取，不写进代码（仓库是公开的） */
+const PASS = process.env.SRV_PASS || '';
+const MQTT_PASS = process.env.HIST_MQTT_PASS || '';
+if (!PASS || !MQTT_PASS) {
+  console.error('缺少环境变量：SRV_PASS（服务器密码）、HIST_MQTT_PASS（历史服务 broker 口令）');
+  process.exit(1);
+}
 
 const DIR = '/opt/lichu-history';
 const DATA_DIR = '/var/lib/lichu-history';
