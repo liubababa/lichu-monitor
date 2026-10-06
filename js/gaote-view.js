@@ -200,6 +200,8 @@ window.GaoteView = (function () {
     const ok = function (v) { return typeof v === 'number' && isFinite(v) && v >= 0 && v < 1000; };
     const nums = function (a) { return (a || []).filter(ok); };
     const wrap = el('div', 'heat-wrap');
+    /* 每个堆/簇一条取样条：列宽必须相等，否则几条取样条长短不一（原来用 1.6fr/1fr 会不等宽） */
+    wrap.style.gridTemplateColumns = 'repeat(auto-fit,minmax(320px,1fr))';
     list.forEach(function (it) {
       const vol = barr(it.b, 'CelVol'), tem = barr(it.b, 'CelTem'), soc = barr(it.b, 'CelSOC');
       const n = (vol && vol.length) || (tem && tem.length) || 0;
