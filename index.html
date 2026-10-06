@@ -26,6 +26,23 @@ window.addEventListener('error', function (e) {
 </div></div>
 
 <div id="app">
+  <!-- ===== 站点目录（进门页：先选站，再进监控） ===== -->
+  <div id="portal" class="hidden">
+    <div class="pt-head">
+      <div class="pt-logo"><img src="libs/logo.png?v=20260923a" alt="力储未来"/></div>
+      <div class="pt-title">
+        <h1>力储未来能源综合管理系统</h1>
+        <span>请选择电站进入监控</span>
+      </div>
+      <div class="pt-head-r">
+        <span class="pt-mqtt" id="ptMqtt">MQTT 未连接</span>
+        <button class="ghost-btn" id="ptEnterLast">进入上次</button>
+      </div>
+    </div>
+    <div class="pt-body" id="ptBody"></div>
+    <div class="pt-foot" id="ptFoot">—</div>
+  </div>
+
   <!-- ===== 顶部栏 ===== -->
   <header id="topbar">
     <div class="tb-left">
@@ -70,6 +87,9 @@ window.addEventListener('error', function (e) {
         <span id="devChipText">设备</span>
       </button>
       <div class="clock"><b id="clockTime">--:--:--</b><span id="clockDate"></span></div>
+      <button class="icon-btn" id="btnPortal" title="返回站点目录">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+      </button>
       <button class="icon-btn" id="btnFullscreen" title="全屏">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
       </button>
@@ -261,6 +281,19 @@ window.addEventListener('error', function (e) {
   <div class="ov-body"><div id="detailBody" class="dt-body"></div></div>
 </section>
 
+<!-- ===== 设备列表页（自动发现，原侧边弹窗改成整页） ===== -->
+<section id="deviceView" class="hidden">
+  <div class="ov-bar">
+    <div class="tv-title">设备列表 <em>· 自动发现</em></div>
+    <div class="ov-bar-r">
+      <span class="ov-src" id="dvStats">—</span>
+      <button class="mq-btn" id="dvRefresh">刷新</button>
+      <button class="mq-btn" id="dvBack">返回监控</button>
+    </div>
+  </div>
+  <div class="ov-body"><div class="pt-cards pt-devpage" id="dvBody"></div></div>
+</section>
+
 <!-- ===== Tab 视图：充放电策略 / 电芯健康 ===== -->
 <section id="tabView" class="hidden">
   <div class="tv-bar">
@@ -309,7 +342,8 @@ window.addEventListener('error', function (e) {
 <script src="js/gaote-scene3d.js?v=20260923d"></script>
 <script src="js/gaote-strategy.js?v=20260917d"></script>
 <script src="js/overview.js?v=20260919b"></script>
-<script src="js/mqtt-ui.js?v=20260922a"></script>
+<script src="js/mqtt-ui.js?v=20261006a"></script>
+<script src="js/portal.js?v=20261006a"></script>
 <script src="js/scene3d.js?v=20260917d"></script>
 <script src="js/charts.js?v=20260917d"></script>
 <script src="js/main.js?v=20260921b"></script>

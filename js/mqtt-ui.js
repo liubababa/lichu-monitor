@@ -293,9 +293,36 @@ window.MqttUI = (function () {
     toast('已切换到设备 ' + d.dsn);
     renderDevList(); renderDevChip();
   }
+  /* 供「站点目录 / 设备列表页」调用：切换站点（并可选连接） */
+  function selectStation(o) {
+    o = o || {};
+    if (o.protocol) CFG.protocol = o.protocol;
+    if (o.psn !== undefined) CFG.psn = o.psn;
+    if (o.sn !== undefined) CFG.sn = o.sn;
+    if (o.stationName) CFG.stationName = o.stationName;
+    const proto = byId('mqProtocol'); if (proto) proto.value = CFG.protocol || 'gaote';
+    const psnEl = byId('mqPsn'); if (psnEl) psnEl.value = CFG.psn || '';
+    const snEl = byId('mqSn'); if (snEl) snEl.value = CFG.sn || '';
+    persist(false);
+    syncProtocolUI();
+    if (CFG.protocol === 'gaote' && CFG.sn && window.GaoteService && GaoteService.setActive) {
+      GaoteService.setActive(CFG.sn);
+    }
+    if (o.connect) {
+      if (!CFG.url) { toast('请先填 Broker 地址（如 wss://mqtt.ykdesign.top/mqtt）再连接'); togglePanel(true); }
+      else byId('mqConnect').click();
+    } else if (CFG.protocol === 'gaote' && window.GaoteView) {
+      GaoteView.open();
+    }
+    renderDevChip();
+  }
+
   function bindDevPanel() {
     const chip = byId('devChip');
-    if (chip) chip.addEventListener('click', function () { toggleDevPanel(); });
+    if (chip) chip.addEventListener('click', function () {
+      if (window.PortalUI) PortalUI.openDevices();    /* 设备列表改成整页 */
+      else toggleDevPanel();
+    });
     const close = byId('devPanelClose');
     if (close) close.addEventListener('click', function () { toggleDevPanel(false); });
   }
@@ -845,5 +872,5 @@ window.MqttUI = (function () {
       : '晶农EMS 北向协议接入就绪：' + (APP_CONFIG.vendor ? APP_CONFIG.vendor.company + ' · ' + APP_CONFIG.vendor.product : ''));
   }
 
-  return { init, openTab, setConn, logRow, protocol: () => CFG.protocol };
+  return { init, openTab, setConn, logRow, protocol: () => CFG.protocol, selectStation };
 })();
