@@ -514,11 +514,14 @@ window.GaoteService = (function () {
 
   /* ---------------- 告警（遥信） ----------------
      只认状态帧里"告警类"的点：
-       · 等级类（…WarnLevel / 预警等级 / 告警汇总等级 Err）：值 > 0 才算
+       · 告警汇总等级（Err）：值 > 0 才算
        · 标志类（…Fault / CommErr / alarm / 故障 / 报警…）：值 = 1 才算
-     编号（堆号/簇号/设备号）、工作状态、时间戳一律不算告警 */
-  const ALARM_NAME = /告警|报警|故障|异常|预警|警告|过压|欠压|过温|欠温|过流|缺液/;
+     不算告警的：
+       · 预警等级（…WarnLevel / xxx预警等级）—— 厂家设定的分级门限，不是告警
+       · 编号（堆号/簇号/设备号）、工作状态、时间戳 */
+  const ALARM_NAME = /告警|报警|故障|异常|警告|过压|欠压|过温|欠温|过流|缺液/;
   const SKIP_KEY = /^(ccuno|arrno|arrnum|cluno|clunum|devno|ts)$/i;
+  const SKIP_PREWARN = /warnlevel$/i;
   function alarms() {
     const st = activeState();
     const out = [];
@@ -532,12 +535,11 @@ window.GaoteService = (function () {
         if (!it || !it.def) return;
         const key = String(it.key || ''), name = String(it.def.n || '');
         if (SKIP_KEY.test(key)) return;
+        if (SKIP_PREWARN.test(key) || /预警等级$/.test(name)) return;   // 预警等级：厂家设定，不当告警
         const v = Number(it.v);
-        const isLevel = /warnlevel$/i.test(key) || /预警等级$/.test(name);
         const isFlag = /(fault|commerr|alarm|abn|trouble|detect)/i.test(key) || ALARM_NAME.test(name);
-        if (isLevel && v > 0) out.push({ dim: dim, name: name.replace(/等级$/, '') + '（等级 ' + v + '）', inst: inst });
-        else if (key === 'Err' && v > 0) out.push({ dim: dim, name: '告警汇总等级 ' + v, inst: inst });
-        else if (!isLevel && isFlag && v === 1) out.push({ dim: dim, name: name, inst: inst });
+        if (key === 'Err' && v > 0) out.push({ dim: dim, name: '告警汇总等级 ' + v, inst: inst });
+        else if (isFlag && v === 1) out.push({ dim: dim, name: name, inst: inst });
       });
     });
     return out;
