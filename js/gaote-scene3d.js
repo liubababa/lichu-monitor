@@ -677,14 +677,7 @@ window.GaoteScene3D = (function () {
     g.add(whirly);
     g.add(box(.62, .06, .62, M.bridge, -2.5, H + .84, .5));
 
-    /* 进线：两堆电池电缆汇到汇流柜右侧后，一路送到厂房（放电时电从这里进厂房）。
-       起点就落在两堆电缆的汇合点，否则线头悬在半空，看着像"电线断了" */
-    const cable = [
-      new THREE.Vector3(PCS_X + PCS_HW + .15 - fx, .95, PCS_Z - fz),
-      new THREE.Vector3(-1.0 - fx, .8, 3.9 - fz),
-      new THREE.Vector3(-W / 2, 1.0, .2)
-    ];
-    addFlow(cable, g, -3);
+    /* 厂房进线不单独画了：两堆电池的电缆各自从柜前走电缆沟到厂房（见 layoutStacks） */
 
     const wrap = document.createElement('div');
     const el = document.createElement('div');
@@ -802,22 +795,25 @@ window.GaoteScene3D = (function () {
       g.position.x = x;
       const sc = stackCables[i];
       if (sc && sc.flow) {
-        /* 柜 → 汇流柜：柜台前下部引出，向前再折向汇流柜右侧（local 坐标 = root 坐标 - 本柜 x） */
-        const ex = PCS_X + PCS_HW + .15;                 // 汇流柜右侧接线点
-        const pts = [new THREE.Vector3(0, .3, .9), new THREE.Vector3(0, .3, 2.2),
-          new THREE.Vector3((ex - x) * .5, .5, 3.6), new THREE.Vector3(ex - x, .95, 2.6)];
+        /* 堆 → 厂房：柜台前下部引出，向前落进电缆沟，沿沟向东进厂房（现场就是两堆电池的电缆送厂房）。
+           local 坐标 = 世界坐标 - 本柜 x */
+        const gz = 3.72 + i * .06;                       // 沟里并排走线，两根不叠在一起
+        const ex = 5.9 + i * .2;                         // 进厂房的接入点（正面墙左侧，避开门洞）
+        const pts = [new THREE.Vector3(0, .3, .95), new THREE.Vector3(0, .3, 2.3),
+          new THREE.Vector3(1.8, .34, gz), new THREE.Vector3(4.2 - x, .46, gz),
+          new THREE.Vector3(ex - x - 1.2, .8, 3.3), new THREE.Vector3(ex - x, 1.05, 2.95)];
         const curve = new THREE.CatmullRomCurve3(pts);
         const len = Math.max(1, curve.getLength());
         const seg = Math.max(14, Math.round(len * 4));
         sc.flow.curve = curve;
         sc.flow.len = len;
         sc.flow.tube.geometry.dispose();
-        sc.flow.tube.geometry = new THREE.TubeGeometry(curve, seg, .07, 6, false);
+        sc.flow.tube.geometry = new THREE.TubeGeometry(curve, seg, .105, 8, false);
         if (sc.flow.core) {
           sc.flow.core.geometry.dispose();
-          sc.flow.core.geometry = new THREE.TubeGeometry(curve, seg, .04, 6, false);
+          sc.flow.core.geometry = new THREE.TubeGeometry(curve, seg, .052, 6, false);
         }
-        sc.flow.map.repeat.set(Math.max(2, Math.round(len / 5)), 1);   // 光纹密度跟着线长走
+        sc.flow.map.repeat.set(Math.max(2, Math.round(len / 4.2)), 1);   // 光纹密度跟着线长走
       }
     }
     applyLabelVisibility();
@@ -971,10 +967,6 @@ window.GaoteScene3D = (function () {
         fl.speed = Math.min(4, Math.abs(cur) / 80);
       } else if (fl.stack === -1) {
         fl.dir = flow.dir;
-        fl.speed = flow.units;
-      } else if (fl.stack === -3) {
-        /* 厂房进线：只在放电时把电送进厂房 */
-        fl.dir = flow.dir > 0 ? 1 : 0;
         fl.speed = flow.units;
       }
     }
