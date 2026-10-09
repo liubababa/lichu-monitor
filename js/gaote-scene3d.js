@@ -679,6 +679,13 @@ window.GaoteScene3D = (function () {
     g.add(whirly);
     g.add(box(.62, .06, .62, M.bridge, -2.5, H + .84, .5));
 
+    /* 办公附房上的电缆进线箱：两堆电池的电缆就接在这里。
+       白天/夜里都用深一点的金属色，浅色墙面上才看得出这是个箱子（否则像线头悬空） */
+    const jbMat = std(0x4a5a5c, { roughness: .55, metalness: .45 });
+    const jbInner = std(0x27312f, { roughness: .7, metalness: .3 });
+    g.add(box(1.55, .7, .18, jbMat, -W / 2 - 1.1, 1.0, D / 2 - 1.1 + 1.19));
+    g.add(box(1.4, .56, .06, jbInner, -W / 2 - 1.1, 1.0, D / 2 - 1.1 + 1.30));
+
     /* 厂房进线不单独画了：两堆电池的电缆各自从柜前走电缆沟到厂房（见 layoutStacks） */
 
     const wrap = document.createElement('div');
@@ -821,14 +828,15 @@ window.GaoteScene3D = (function () {
         fl.map.repeat.set(Math.max(2, Math.round(len / 4.2)), 1);   // 光纹密度跟着线长走
       };
       /* ① 堆 → 厂房（放电）：柜正面右下引出，起步抬一下从柜前充电电缆上方跨过去；
-         西边的柜子先贴着汇流柜前面往东走（不穿汇流柜），到它东侧再转南进电缆沟，沿沟向东进厂房 */
+         西边的柜子先贴着汇流柜前面往东走（不穿汇流柜），到它东侧再转南进电缆沟，
+         沿沟向东后接进厂房左侧的办公附房（墙上带进线箱） */
       const gz = 3.75 + i * .24;                       // 沟里一列一列排开
-      const ex = 5.9 + i * .4;                         // 进厂房的接入点（墙面左侧，避开门洞）
+      const ex = Math.min(3.9 + i * .45, 4.95);         // 进办公附房进线箱的接入点（箱体范围内）
       const turnX = Math.max(x + .45, PCS_X + PCS_HW + .45);
       rebuild(sc.flow, [new THREE.Vector3(.45, .24, .9), new THREE.Vector3(.45, .68, 1.6),
         new THREE.Vector3(turnX - x, .5, 1.62 + i * .06), new THREE.Vector3(turnX - x + .5, .34, 3.3),
         new THREE.Vector3(turnX - x + 1.6, .32, gz), new THREE.Vector3(4.2 - x, .44, gz),
-        new THREE.Vector3(ex - x - 1.2, .8, 3.4), new THREE.Vector3(ex - x, 1.0, 2.98)]);
+        new THREE.Vector3(ex - x + .5, .6, 3.25), new THREE.Vector3(ex - x, .95, 2.96)]);
       /* ② 汇流柜 → 堆（充电）：从汇流柜右下出线，向北折进柜前走廊（贴地、两堆一前一后），
          走到本柜左前方进柜子进线箱；厂房电缆从它上方跨过，两条线不相交 */
       const pz = 1.2 + i * .22;                        // 柜前走廊（内侧一列）
