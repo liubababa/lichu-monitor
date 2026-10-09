@@ -38,21 +38,50 @@ window.GaoteScene3D = (function () {
       gridBg: '#04090c', gridLine: 'rgba(46,230,200,.14)',
       ground: 0xffffff, platform: 0x0b1a1e,
       hemiSky: 0xbfe9ff, hemiGround: 0x0a1a1e, hemiInt: 1.05,
-      sunInt: .85, fillColor: 0x2ee6c8, fillInt: .35, bloom: .62,
+      sunColor: 0xffffff, sunInt: .85, fillColor: 0x2ee6c8, fillInt: .35, bloom: .62, bloomTh: .82,
+      /* 状态色：充电(蓝) / 放电(青) / 待机(灰) */
+      stateChg: 0x8fd8ff, stateDis: 0x2ee6c8, stateIdle: 0x6f9a94,
       /* 电流光纹：放电(青) / 充电(蓝) / 待机(暗)；夜里用加色混合发光 */
-      flowDis: 0x2ee6c8, flowChg: 0x8fd8ff, flowIdle: 0x16303a, flowBlend: 1
+      flowDis: 0x2ee6c8, flowChg: 0x8fd8ff, flowIdle: 0x16303a, flowBlend: 1,
+      sky: null
     },
     day: {
-      bg: 0xd7e8f0, fog: 0xcfe0e8, fogNear: 34, fogFar: 90,
-      /* 浅色水泥地：整体压灰一点，避免阳光叠加过曝成纯白（网格线就看不清了） */
-      gridBg: '#cbd8db', gridLine: 'rgba(40,84,86,.55)',
-      ground: 0xbfccd0, platform: 0x9aa8ac,
-      hemiSky: 0xffffff, hemiGround: 0x77857f, hemiInt: .5,
-      sunInt: .72, fillColor: 0x8fd8ff, fillInt: .1, bloom: .3,
-      /* 白天浅底：光纹用更深的实色，普通混合才看得清（加色会被浅底冲淡） */
-      flowDis: 0x079a83, flowChg: 0x1668c4, flowIdle: 0x8fa3a5, flowBlend: 0
+      bg: 0xcfe4f0, fog: 0xe9f1f4, fogNear: 42, fogFar: 125,
+      /* 阳光下的水泥地：暖灰而不是冷灰蓝，网格线深一点才看得见 */
+      gridBg: '#e4e6e2', gridLine: 'rgba(102,116,112,.42)', patches: true,
+      ground: 0xffffff, platform: 0xd2d6d0,
+      /* 光照总量压在 1.0 附近：再高浅色地面就过曝成纯白，网格和阴影全丢。
+         环境光给足（阴面才不会发黑成剪影），直射光适度 */
+      hemiSky: 0xdfefff, hemiGround: 0xb9bdb6, hemiInt: .6,
+      sunColor: 0xfff0da, sunInt: .55, fillColor: 0xbfe6ff, fillInt: .15, bloom: .1, bloomTh: .97,
+      /* 白天：充电用橙色（浅底上最醒目），放电用深青，待机灰 */
+      stateChg: 0xd97700, stateDis: 0x0b8f76, stateIdle: 0x9aa9a9,
+      /* 电流光纹：白天浅底用更深的实色 + 普通混合，否则会被浅底冲淡 */
+      flowDis: 0x0b8f76, flowChg: 0xc96a00, flowIdle: 0x9aa9a9, flowBlend: 0,
+      /* 天空穹顶的竖直渐变：天顶蓝 → 地平线白雾（相机基本平视，
+         所以蓝色要压到接近地平线才看得见，否则整片都是白的） */
+      sky: { stops: [[0, '#4f9fd4'], [.36, '#7dbde3'], [.47, '#b6d9ee'], [.52, '#e6eff4'], [1, '#e6eff4']] }
     }
   };
+
+  /* 主题化材质登记：建场景时把每个材质"白天 / 夜里"两套配置登记进来，
+     切主题时统一替换（颜色 / 贴图 / 自发光），设备就不会白天还是一团黑 */
+  const themeMats = [];
+  function regMat(mat, night, day) { themeMats.push({ mat: mat, night: night, day: day }); return mat; }
+  let skyDome = null;
+  function makeSkyDome(sky) {
+    const t = tex(function (g, w, h) {
+      const grd = g.createLinearGradient(0, 0, 0, h);
+      sky.stops.forEach(function (s) { grd.addColorStop(s[0], s[1]); });
+      g.fillStyle = grd; g.fillRect(0, 0, w, h);
+    }, 16, 256);
+    const mesh = new THREE.Mesh(
+      new THREE.SphereGeometry(180, 24, 16),
+      new THREE.MeshBasicMaterial({ map: t, side: THREE.BackSide, depthWrite: false, fog: false, toneMapped: false })
+    );
+    mesh.renderOrder = -1;
+    return mesh;
+  }
 
   /* 能量流：每条电缆一根发光管，电流光纹沿线滚动，方向/速度各自按数据 */
   const flows = [];
@@ -95,49 +124,87 @@ window.GaoteScene3D = (function () {
         g.beginPath(); g.moveTo(q, 0); g.lineTo(q, h); g.stroke();
         g.beginPath(); g.moveTo(0, q); g.lineTo(w, q); g.stroke();
       }
+      /* 白天：水泥地加些深浅斑驳 + 轮迹，避免一大片死平 */
+      if (p.patches) {
+        for (let i = 0; i < 26; i++) {
+          const x = Math.random() * w, y = Math.random() * h, r = 18 + Math.random() * 70;
+          const rg = g.createRadialGradient(x, y, 0, x, y, r);
+          rg.addColorStop(0, 'rgba(118,124,118,.055)');
+          rg.addColorStop(1, 'rgba(118,124,118,0)');
+          g.fillStyle = rg; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill();
+        }
+      }
     }, 512, 512);
     tx.wrapS = tx.wrapT = THREE.RepeatWrapping;
     if (renderer && renderer.capabilities) tx.anisotropy = renderer.capabilities.getMaxAnisotropy();
     return tx;
   }
+  /* 设备贴图配色：白天 / 夜晚两套。
+     夜里是深色柜体 + 青色发光线；白天换成浅色柜体 + 深灰缝线，
+     否则深色设备在亮背景里就是一团剪影 */
+  const TEXPAL = {
+    night: {
+      cabBg: '#0f2731', cabPanel: 'rgba(7,22,28,.95)', seam: 'rgba(46,230,200,.18)',
+      seam2: 'rgba(46,230,200,.25)', slot: 'rgba(46,230,200,.20)', door: 'rgba(46,230,200,.34)',
+      doorIn: 'rgba(46,230,200,.13)', hinge: 'rgba(46,230,200,.55)', plate: 'rgba(46,230,200,.30)',
+      warn: 'rgba(255,176,32,.42)', sideBg: '#0c1f27', sideSeam: 'rgba(46,230,200,.12)',
+      sideEdge: 'rgba(46,230,200,.16)', sideVent: 'rgba(46,230,200,.14)', pcsBg: '#10262e',
+      pcsPanel: 'rgba(7,22,28,.95)', pcsVent: 'rgba(46,230,200,.16)', pcsFoot: 'rgba(46,230,200,.09)',
+      pcsWarn: 'rgba(255,176,32,.35)', facBg: '#122831', facSeam: 'rgba(46,230,200,.10)',
+      winFill: 'rgba(120,225,255,.16)', winLine: 'rgba(46,230,200,.22)', facDoor: 'rgba(8,20,26,.95)',
+      facDoorLine: 'rgba(46,230,200,.3)', facSlat: 'rgba(46,230,200,.14)', facWarn: 'rgba(255,176,32,.22)'
+    },
+    day: {
+      cabBg: '#eef1f0', cabPanel: 'rgba(206,216,218,.95)', seam: 'rgba(104,128,130,.30)',
+      seam2: 'rgba(104,128,130,.40)', slot: 'rgba(104,128,130,.26)', door: 'rgba(70,100,102,.45)',
+      doorIn: 'rgba(104,128,130,.18)', hinge: 'rgba(52,86,88,.55)', plate: 'rgba(16,160,138,.45)',
+      warn: 'rgba(224,148,16,.55)', sideBg: '#e4e9e9', sideSeam: 'rgba(104,128,130,.26)',
+      sideEdge: 'rgba(104,128,130,.34)', sideVent: 'rgba(104,128,130,.30)', pcsBg: '#eaeef0',
+      pcsPanel: 'rgba(202,212,214,.95)', pcsVent: 'rgba(104,128,130,.30)', pcsFoot: 'rgba(104,128,130,.16)',
+      pcsWarn: 'rgba(224,148,16,.50)', facBg: '#eaeeee', facSeam: 'rgba(104,128,130,.22)',
+      winFill: 'rgba(126,196,226,.50)', winLine: 'rgba(80,116,124,.45)', facDoor: 'rgba(184,193,195,.95)',
+      facDoorLine: 'rgba(104,128,130,.50)', facSlat: 'rgba(104,128,130,.25)', facWarn: 'rgba(224,148,16,.35)'
+    }
+  };
+
   /* 柜体正面：顶部空调、双开门、门缝把手、铭牌与警示条 */
-  function cabFrontTexture() {
+  function cabFrontTexture(P) {
     return tex(function (g, w, h) {
-      g.fillStyle = '#0f2731'; g.fillRect(0, 0, w, h);
-      g.strokeStyle = 'rgba(46,230,200,.18)'; g.lineWidth = 2; g.strokeRect(7, 7, w - 14, h - 14);
-      g.fillStyle = 'rgba(7,22,28,.95)'; g.fillRect(14, 14, w - 28, 46);
-      g.strokeStyle = 'rgba(46,230,200,.25)'; g.strokeRect(14, 14, w - 28, 46);
-      for (let i = 0; i < 5; i++) { g.fillStyle = 'rgba(46,230,200,.20)'; g.fillRect(24, 21 + i * 8, w - 48, 3); }
-      g.strokeStyle = 'rgba(46,230,200,.34)'; g.lineWidth = 3;
+      g.fillStyle = P.cabBg; g.fillRect(0, 0, w, h);
+      g.strokeStyle = P.seam; g.lineWidth = 2; g.strokeRect(7, 7, w - 14, h - 14);
+      g.fillStyle = P.cabPanel; g.fillRect(14, 14, w - 28, 46);
+      g.strokeStyle = P.seam2; g.strokeRect(14, 14, w - 28, 46);
+      for (let i = 0; i < 5; i++) { g.fillStyle = P.slot; g.fillRect(24, 21 + i * 8, w - 48, 3); }
+      g.strokeStyle = P.door; g.lineWidth = 3;
       g.beginPath(); g.moveTo(w / 2, 72); g.lineTo(w / 2, h - 18); g.stroke();
-      g.strokeStyle = 'rgba(46,230,200,.13)'; g.lineWidth = 2;
+      g.strokeStyle = P.doorIn; g.lineWidth = 2;
       g.strokeRect(18, 76, w / 2 - 28, h - 104);
       g.strokeRect(w / 2 + 10, 76, w / 2 - 28, h - 104);
-      g.fillStyle = 'rgba(46,230,200,.55)';
+      g.fillStyle = P.hinge;
       g.fillRect(w / 2 - 18, h / 2 - 8, 5, 30); g.fillRect(w / 2 + 13, h / 2 - 8, 5, 30);
-      g.fillStyle = 'rgba(46,230,200,.30)'; g.fillRect(22, h - 30, 66, 9);
-      g.fillStyle = 'rgba(255,176,32,.42)'; g.fillRect(w - 88, h - 30, 66, 9);
+      g.fillStyle = P.plate; g.fillRect(22, h - 30, 66, 9);
+      g.fillStyle = P.warn; g.fillRect(w - 88, h - 30, 66, 9);
     }, 256, 256);
   }
   /* 柜体侧面/顶面：钢板分块、竖向筋、底部散热百叶 */
-  function cabSideTexture() {
+  function cabSideTexture(P) {
     return tex(function (g, w, h) {
-      g.fillStyle = '#0c1f27'; g.fillRect(0, 0, w, h);
-      g.strokeStyle = 'rgba(46,230,200,.12)'; g.lineWidth = 2;
+      g.fillStyle = P.sideBg; g.fillRect(0, 0, w, h);
+      g.strokeStyle = P.sideSeam; g.lineWidth = 2;
       for (let i = 1; i < 4; i++) { const x = i * w / 4; g.beginPath(); g.moveTo(x, 6); g.lineTo(x, h - 6); g.stroke(); }
-      g.strokeStyle = 'rgba(46,230,200,.16)'; g.strokeRect(6, 6, w - 12, h - 12);
-      for (let i = 0; i < 6; i++) { g.fillStyle = 'rgba(46,230,200,.14)'; g.fillRect(16, h - 54 + i * 8, w - 32, 3); }
+      g.strokeStyle = P.sideEdge; g.strokeRect(6, 6, w - 12, h - 12);
+      for (let i = 0; i < 6; i++) { g.fillStyle = P.sideVent; g.fillRect(16, h - 54 + i * 8, w - 32, 3); }
     }, 256, 256);
   }
   /* PCS 柜正面：大百叶、门缝、警示条 */
-  function pcsFrontTexture() {
+  function pcsFrontTexture(P) {
     return tex(function (g, w, h) {
-      g.fillStyle = '#10262e'; g.fillRect(0, 0, w, h);
-      g.strokeStyle = 'rgba(46,230,200,.18)'; g.lineWidth = 2; g.strokeRect(8, 8, w - 16, h - 16);
-      g.fillStyle = 'rgba(7,22,28,.95)'; g.fillRect(16, 22, w - 32, h - 92);
-      for (let i = 0; i < 9; i++) { g.fillStyle = 'rgba(46,230,200,.16)'; g.fillRect(24, 32 + i * 12, w - 48, 4); }
-      g.fillStyle = 'rgba(46,230,200,.09)'; g.fillRect(16, h - 58, w - 32, 40);
-      g.fillStyle = 'rgba(255,176,32,.35)'; g.fillRect(16, h - 22, w - 32, 8);
+      g.fillStyle = P.pcsBg; g.fillRect(0, 0, w, h);
+      g.strokeStyle = P.seam; g.lineWidth = 2; g.strokeRect(8, 8, w - 16, h - 16);
+      g.fillStyle = P.pcsPanel; g.fillRect(16, 22, w - 32, h - 92);
+      for (let i = 0; i < 9; i++) { g.fillStyle = P.pcsVent; g.fillRect(24, 32 + i * 12, w - 48, 4); }
+      g.fillStyle = P.pcsFoot; g.fillRect(16, h - 58, w - 32, 40);
+      g.fillStyle = P.pcsWarn; g.fillRect(16, h - 22, w - 32, 8);
     }, 256, 256);
   }
   /* 电缆流动光纹（沿管滚动；每条电缆用独立副本以便各自滚动） */
@@ -250,23 +317,20 @@ window.GaoteScene3D = (function () {
   function buildStack(key) {
     const g = new THREE.Group();
     const W = STACK_W, H = STACK_H, D = STACK_D;
-    const frontMat = new THREE.MeshStandardMaterial({ map: texCache.cabFront, roughness: .55, metalness: .35 });
-    const sideMat = new THREE.MeshStandardMaterial({ map: texCache.cabSide, roughness: .6, metalness: .3 });
-    const topMat = std(0x0a1c23, { roughness: .8, metalness: .25 });
-    const dark = std(0x08171c, { roughness: .9, metalness: .2 });
-    const post = std(0x123642, { roughness: .5, metalness: .5 });
+    const M = texCache.mats;
+    const post = M.post;
 
-    g.add(box(W + .22, .16, D + .22, dark, 0, .08, 0));                                   // 底座
-    const body = new THREE.Mesh(new THREE.BoxGeometry(W, H, D), [sideMat, sideMat, topMat, sideMat, frontMat, sideMat]);
+    g.add(box(W + .22, .16, D + .22, M.dark, 0, .08, 0));                                 // 底座
+    const body = new THREE.Mesh(new THREE.BoxGeometry(W, H, D), [M.cabSide, M.cabSide, M.cabTop, M.cabSide, M.cabFront, M.cabSide]);
     body.position.y = H / 2 + .16;
     body.castShadow = body.receiveShadow = true;
     g.add(body);
     [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(function (c) {                            // 四角立柱
       g.add(box(.1, H + .04, .1, post, c[0] * (W / 2 - .02), H / 2 + .16, c[1] * (D / 2 - .02)));
     });
-    g.add(box(W * .72, .3, D * .78, std(0x0d222a, { roughness: .7, metalness: .35 }), 0, H + .33, 0));   // 顶部空调
+    g.add(box(W * .72, .3, D * .78, M.ac, 0, H + .33, 0));   // 顶部空调
     for (let k = 0; k < 4; k++) {
-      g.add(box(W * .6, .03, .06, std(0x0a1a20, { roughness: .9 }), 0, H + .47, -.2 + k * .13));
+      g.add(box(W * .6, .03, .06, M.acVent, 0, H + .47, -.2 + k * .13));
     }
 
     const strip = box(W * .92, .12, D * .92, std(0x6f9a94, { emissive: 0x000000 }), 0, H + .2, 0);        // 柜顶色条
@@ -279,7 +343,7 @@ window.GaoteScene3D = (function () {
     const colBase = .16 + H * .5 - colH / 2;
     gauges[key] = [];
     [-1, 1].forEach(function (sgn) {
-      g.add(box(.05, colH + .08, .3, std(0x061418, { roughness: .5 }), sgn * (W / 2 + .035), .16 + H * .5, colZ));
+      g.add(box(.05, colH + .08, .3, M.slot, sgn * (W / 2 + .035), .16 + H * .5, colZ));
       const socGeo = new THREE.BoxGeometry(.045, colH, .24);
       socGeo.translate(0, colH / 2, 0);                     // 原点移到底部 → scale.y 即"从下往上长"
       const socBar = new THREE.Mesh(socGeo, new THREE.MeshBasicMaterial({ color: 0x6f9a94 }));
@@ -295,10 +359,10 @@ window.GaoteScene3D = (function () {
       });
     });
     g.add(box(.07, .4, .06, post, W / 2 - .28, .16 + H * .5, D / 2 + .04));                                  // 门把手
-    g.add(box(.34, .18, .02, std(0x0a1a20, { roughness: .6 }), -W / 2 + .34, .16 + H * .76, D / 2 + .022));  // 铭牌底
+    g.add(box(.34, .18, .02, M.plate, -W / 2 + .34, .16 + H * .76, D / 2 + .022));                           // 铭牌底
     g.add(box(.3, .14, .03, new THREE.MeshBasicMaterial({ color: 0xd9a02a }), -W / 2 + .34, .16 + H * .76, D / 2 + .036));
-    g.add(box(W * .46, .2, .28, std(0x0d222a, { roughness: .8 }), 0, .2, D / 2 + .12));                      // 底部进线箱
-    g.add(box(W * .2, .06, .18, std(0x16404b, { roughness: .5, metalness: .4 }), -W * .3, H + .5, D * .1));   // 顶部风机
+    g.add(box(W * .46, .2, .28, M.ac, 0, .2, D / 2 + .12));                                                  // 底部进线箱
+    g.add(box(W * .2, .06, .18, M.fan, -W * .3, H + .5, D * .1));                                            // 顶部风机
 
     const glow = new THREE.Mesh(new THREE.PlaneGeometry(W * 1.45, D * 1.7),
       new THREE.MeshBasicMaterial({ color: 0x2ee6c8, transparent: true, opacity: .06, blending: THREE.AdditiveBlending, depthWrite: false }));
@@ -320,36 +384,35 @@ window.GaoteScene3D = (function () {
     const g = new THREE.Group();
     g.position.set(PCS_X, 0, PCS_Z);
     const W = 4.6, H = 2.2, D = 1.4;
-    const frontMat = new THREE.MeshStandardMaterial({ map: texCache.pcsFront, roughness: .5, metalness: .45 });
-    const sideMat = new THREE.MeshStandardMaterial({ map: texCache.cabSide, roughness: .6, metalness: .35 });
-    g.add(box(W + .3, .18, D + .3, std(0x08171c, { roughness: .9 }), 0, .09, 0));
-    const body = new THREE.Mesh(new THREE.BoxGeometry(W, H, D), [sideMat, sideMat, std(0x0b1f26), sideMat, frontMat, sideMat]);
+    const M = texCache.mats;
+    g.add(box(W + .3, .18, D + .3, M.dark, 0, .09, 0));
+    const body = new THREE.Mesh(new THREE.BoxGeometry(W, H, D), [M.cabSide, M.cabSide, M.pcsTop, M.cabSide, M.pcsFront, M.cabSide]);
     body.position.y = H / 2 + .18;
     body.castShadow = body.receiveShadow = true;
     body.userData.key = 'pcs';
     g.add(body);
     [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(function (c) {
-      g.add(box(.1, H, .1, std(0x143a46, { roughness: .5, metalness: .5 }), c[0] * (W / 2 - .02), H / 2 + .18, c[1] * (D / 2 - .02)));
+      g.add(box(.1, H, .1, M.post, c[0] * (W / 2 - .02), H / 2 + .18, c[1] * (D / 2 - .02)));
     });
-    g.add(box(W * .8, .16, .5, std(0x0d222a, { roughness: .8 }), 0, H + .26, -.5));                    // 顶部桥架
-    g.add(box(.5, .16, D + .4, std(0x0d222a, { roughness: .8 }), -W * .3, H + .26, 0));
-    g.add(box(.76, .4, .03, std(0x061418, { roughness: .5 }), -W * .18, H * .68, D / 2 + .005));        // 显示屏
+    g.add(box(W * .8, .16, .5, M.bridge, 0, H + .26, -.5));                    // 顶部桥架
+    g.add(box(.5, .16, D + .4, M.bridge, -W * .3, H + .26, 0));
+    g.add(box(.76, .4, .03, M.plate, -W * .18, H * .68, D / 2 + .005));        // 显示屏
     g.add(box(.7, .34, .04, new THREE.MeshBasicMaterial({ color: 0x14e0c0 }), -W * .18, H * .68, D / 2 + .03));
-    g.add(box(.08, .3, .08, std(0x1b4a56, { roughness: .4, metalness: .6 }), W * .32, H * .6, D / 2 + .06));  // 隔离开关
+    g.add(box(.08, .3, .08, M.gap, W * .32, H * .6, D / 2 + .06));             // 隔离开关
     /* 顶部出线套管（三相）+ 底部进线箱，近景下更像真设备 */
     [0, 1, 2].forEach(function (i) {
       const x = (i - 1) * 1.2;
-      const bush = new THREE.Mesh(new THREE.CylinderGeometry(.11, .15, .52, 8), std(0xd8e6e4, { roughness: .35, metalness: .1 }));
+      const bush = new THREE.Mesh(new THREE.CylinderGeometry(.11, .15, .52, 8), M.bush);
       bush.position.set(x, H + .5, 0);
       bush.castShadow = true;
       g.add(bush);
-      g.add(box(.3, .07, .3, std(0x1b4a56, { roughness: .45, metalness: .5 }), x, H + .22, 0));
+      g.add(box(.3, .07, .3, M.gap, x, H + .22, 0));
     });
-    g.add(box(W * .5, .22, .3, std(0x0d222a, { roughness: .85 }), 0, .21, D / 2 + .26));                      // 进线箱
-    g.add(box(.36, .2, .02, std(0x0a1a20, { roughness: .6 }), W * .3, H * .5, D / 2 + .012));                 // 铭牌
+    g.add(box(W * .5, .22, .3, M.bridge, 0, .21, D / 2 + .26));                // 进线箱
+    g.add(box(.36, .2, .02, M.plate, W * .3, H * .5, D / 2 + .012));           // 铭牌
     g.add(box(.32, .16, .03, new THREE.MeshBasicMaterial({ color: 0xd9a02a }), W * .3, H * .5, D / 2 + .026));
-    for (let k = 0; k < 8; k++) {                                                                       // 散热鳍片
-      g.add(box(.06, H * .5, .06, std(0x0a1a20, { roughness: .9 }), -W / 2 - .05, H * .55, -.5 + k * .16));
+    for (let k = 0; k < 8; k++) {                                              // 散热鳍片
+      g.add(box(.06, H * .5, .06, M.acVent, -W / 2 - .05, H * .55, -.5 + k * .16));
     }
     root.add(g);
     groups.pcs = g;
@@ -364,9 +427,11 @@ window.GaoteScene3D = (function () {
     const g = new THREE.Group();
     g.position.set(-9.2, 0, -2.2);
     const hgt = 9.2;
-    const legMat = std(0x6d8b93, { roughness: .55, metalness: .6 });
-    const braceMat = std(0x54737b, { roughness: .62, metalness: .55 });
-    const armMat = std(0x2ee6c8, { emissive: 0x0a5a4a, emissiveIntensity: .35, roughness: .5, metalness: .3 });
+    const legMat = regMat(std(0x6d8b93, { roughness: .55, metalness: .6 }), { color: 0x6d8b93 }, { color: 0x93a3a8 });
+    const braceMat = regMat(std(0x54737b, { roughness: .62, metalness: .55 }), { color: 0x54737b }, { color: 0x7d8f94 });
+    const armMat = regMat(std(0x2ee6c8, { emissive: 0x0a5a4a, emissiveIntensity: .35, roughness: .5, metalness: .3 }),
+      { color: 0x2ee6c8, emissive: 0x0a5a4a, emissiveIntensity: .35 },
+      { color: 0x18b39a, emissive: 0x000000, emissiveIntensity: 0 });
     const insMat = std(0xd8e6e4, { roughness: .35, metalness: .1 });
     const condMat = new THREE.LineBasicMaterial({ color: 0x2ee6c8, transparent: true, opacity: .32 });
     conductorMats.push(condMat);
@@ -469,19 +534,19 @@ window.GaoteScene3D = (function () {
   }
 
   /* ---------------- 厂房（工厂用电负荷：放电时给厂房供电） ---------------- */
-  function factoryWallTexture() {
+  function factoryWallTexture(P) {
     return tex(function (g, w, h) {
-      g.fillStyle = '#122831'; g.fillRect(0, 0, w, h);
-      g.strokeStyle = 'rgba(46,230,200,.10)'; g.lineWidth = 2;
+      g.fillStyle = P.facBg; g.fillRect(0, 0, w, h);
+      g.strokeStyle = P.facSeam; g.lineWidth = 2;
       for (let i = 1; i < 10; i++) { const x = i * w / 10; g.beginPath(); g.moveTo(x, 0); g.lineTo(x, h); g.stroke(); }
       for (let i = 0; i < 6; i++) {                      // 高窗带
-        g.fillStyle = 'rgba(120,225,255,.16)'; g.fillRect(14 + i * 40, 34, 30, 22);
-        g.strokeStyle = 'rgba(46,230,200,.22)'; g.strokeRect(14 + i * 40, 34, 30, 22);
+        g.fillStyle = P.winFill; g.fillRect(14 + i * 40, 34, 30, 22);
+        g.strokeStyle = P.winLine; g.strokeRect(14 + i * 40, 34, 30, 22);
       }
-      g.fillStyle = 'rgba(8,20,26,.95)'; g.fillRect(w / 2 - 46, h - 80, 92, 76);   // 卷帘门
-      g.strokeStyle = 'rgba(46,230,200,.3)'; g.strokeRect(w / 2 - 46, h - 80, 92, 76);
-      for (let i = 0; i < 8; i++) { g.fillStyle = 'rgba(46,230,200,.14)'; g.fillRect(w / 2 - 42, h - 76 + i * 9, 84, 3); }
-      g.fillStyle = 'rgba(255,176,32,.22)'; g.fillRect(0, h - 8, w, 6);
+      g.fillStyle = P.facDoor; g.fillRect(w / 2 - 46, h - 80, 92, 76);   // 卷帘门
+      g.strokeStyle = P.facDoorLine; g.strokeRect(w / 2 - 46, h - 80, 92, 76);
+      for (let i = 0; i < 8; i++) { g.fillStyle = P.facSlat; g.fillRect(w / 2 - 42, h - 76 + i * 9, 84, 3); }
+      g.fillStyle = P.facWarn; g.fillRect(0, h - 8, w, 6);
     }, 256, 256);
   }
 
@@ -489,32 +554,38 @@ window.GaoteScene3D = (function () {
     const g = new THREE.Group();
     const fx = 8.8, fz = .6;
     const W = 6.4, H = 3.4, D = 4.6;
-    const wall = new THREE.MeshStandardMaterial({ map: texCache.facWall, roughness: .78, metalness: .18 });
+    const M = texCache.mats;
+    const wall = M.facWall;
 
-    g.add(box(W + .5, .22, D + .5, std(0x08171c, { roughness: .9 }), 0, .11, 0));            // 基座
-    const hall = new THREE.Mesh(new THREE.BoxGeometry(W, H, D), [wall, wall, std(0x0b1f26), wall, wall, wall]);
+    g.add(box(W + .5, .22, D + .5, M.dark, 0, .11, 0));                                     // 基座
+    const hall = new THREE.Mesh(new THREE.BoxGeometry(W, H, D), [wall, wall, M.cabTop, wall, wall, wall]);
     hall.position.set(0, H / 2 + .22, 0);
     hall.castShadow = hall.receiveShadow = true;
     g.add(hall);
-    g.add(box(W + .2, .16, D + .2, std(0x0d222a), 0, H + .32, 0));                          // 女儿墙
+    g.add(box(W + .2, .16, D + .2, M.bridge, 0, H + .32, 0));                               // 女儿墙
     [[-1.6, -.8], [1.5, .9]].forEach(function (p) {                                         // 屋顶机组
-      g.add(box(1.5, .4, 1.1, std(0x123039, { roughness: .6, metalness: .35 }), p[0], H + .6, p[1]));
-      g.add(box(1.3, .06, .9, std(0x0a1a20), p[0], H + .82, p[1]));
+      g.add(box(1.5, .4, 1.1, M.roofUnit, p[0], H + .6, p[1]));
+      g.add(box(1.3, .06, .9, M.acVent, p[0], H + .82, p[1]));
     });
     const off = new THREE.Mesh(new THREE.BoxGeometry(2.2, 2.3, 2.2), wall);                  // 办公附房
     off.position.set(-W / 2 - .9, 1.37, D / 2 - 1.1);
     off.castShadow = true;
     g.add(off);
-    g.add(box(2.5, .14, 2.5, std(0x0d222a), -W / 2 - .9, 2.6, D / 2 - 1.1));
-    const stack = new THREE.Mesh(new THREE.CylinderGeometry(.34, .42, 4.2, 10), std(0x16323a, { roughness: .7, metalness: .35 }));  // 排风筒
+    g.add(box(2.5, .14, 2.5, M.bridge, -W / 2 - .9, 2.6, D / 2 - 1.1));
+    const stack = new THREE.Mesh(new THREE.CylinderGeometry(.34, .42, 4.2, 10), M.duct);     // 排风筒
     stack.position.set(W / 2 - .8, 2.3, -D / 2 + 1);
     stack.castShadow = true;
     g.add(stack);
-    g.add(box(.9, .1, .9, std(0x0d222a), W / 2 - .8, 4.45, -D / 2 + 1));
+    g.add(box(.9, .1, .9, M.bridge, W / 2 - .8, 4.45, -D / 2 + 1));
     g.add(box(2.6, .34, .06, new THREE.MeshBasicMaterial({ color: 0x14e0c0 }), 0, H * .62, D / 2 + .04));  // 厂牌
 
-    /* 进线：PCS → 厂房（放电时电从这里进厂房） */
-    const cable = [new THREE.Vector3(2.3 - fx, .7, 4.2 - fz), new THREE.Vector3(-3.4, .5, 1.4), new THREE.Vector3(-W / 2, 1.0, 0)];
+    /* 进线：PCS 柜右侧 → 厂房（放电时电从这里进厂房）。
+       起点必须落在 PCS 柜身上，否则线头悬在半空，看着就像"电线断了" */
+    const cable = [
+      new THREE.Vector3(PCS_X + PCS_HW - fx, .5, PCS_Z + .4 - fz),
+      new THREE.Vector3(-1.0 - fx, .45, 4.4 - fz),
+      new THREE.Vector3(-W / 2, 1.0, .2)
+    ];
     addFlow(cable, g, -3);
 
     const wrap = document.createElement('div');
@@ -542,8 +613,8 @@ window.GaoteScene3D = (function () {
     groundMat = new THREE.MeshStandardMaterial({
       map: gridTexture(), roughness: .95, metalness: .05, transparent: true, opacity: .96
     });
-    groundMat.map.repeat.set(6, 6);
-    const ground = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), groundMat);
+    groundMat.map.repeat.set(10, 10);
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(320, 320), groundMat);
     ground.rotation.x = -Math.PI / 2;
     ground.receiveShadow = true;
     root.add(ground);
@@ -551,10 +622,37 @@ window.GaoteScene3D = (function () {
     platformMat = std(0x0b1a1e, { roughness: .9 });
     root.add(box(34, .18, 16, platformMat, .4, .09, .6));    // 台面（顶面 0.18，设备坐在上面）
 
-    texCache.cabFront = cabFrontTexture();
-    texCache.cabSide = cabSideTexture();
-    texCache.pcsFront = pcsFrontTexture();
-    texCache.facWall = factoryWallTexture();
+    /* 设备贴图：白天 / 夜里各生成一套，切主题时换 map（浅色柜体 vs 深色柜体） */
+    texCache.cabFront = { night: cabFrontTexture(TEXPAL.night), day: cabFrontTexture(TEXPAL.day) };
+    texCache.cabSide = { night: cabSideTexture(TEXPAL.night), day: cabSideTexture(TEXPAL.day) };
+    texCache.pcsFront = { night: pcsFrontTexture(TEXPAL.night), day: pcsFrontTexture(TEXPAL.day) };
+    texCache.facWall = { night: factoryWallTexture(TEXPAL.night), day: factoryWallTexture(TEXPAL.day) };
+
+    /* 共用材质（柜体 / 汇流柜 / 厂房都从这里取，登记后跟着主题切换） */
+    texCache.mats = {
+      cabFront: regMat(new THREE.MeshStandardMaterial({ map: texCache.cabFront[theme], roughness: .55, metalness: .35 }),
+        { map: texCache.cabFront.night }, { map: texCache.cabFront.day }),
+      cabSide: regMat(new THREE.MeshStandardMaterial({ map: texCache.cabSide[theme], roughness: .6, metalness: .3 }),
+        { map: texCache.cabSide.night }, { map: texCache.cabSide.day }),
+      pcsFront: regMat(new THREE.MeshStandardMaterial({ map: texCache.pcsFront[theme], roughness: .5, metalness: .45 }),
+        { map: texCache.pcsFront.night }, { map: texCache.pcsFront.day }),
+      facWall: regMat(new THREE.MeshStandardMaterial({ map: texCache.facWall[theme], roughness: .78, metalness: .18 }),
+        { map: texCache.facWall.night }, { map: texCache.facWall.day }),
+      cabTop: regMat(std(0x0a1c23, { roughness: .8, metalness: .25 }), { color: 0x0a1c23 }, { color: 0xc3cacb }),
+      pcsTop: regMat(std(0x0b1f26, { roughness: .8, metalness: .25 }), { color: 0x0b1f26 }, { color: 0xbcc4c5 }),
+      dark: regMat(std(0x08171c, { roughness: .9, metalness: .2 }), { color: 0x08171c }, { color: 0x9aa5a6 }),
+      post: regMat(std(0x123642, { roughness: .5, metalness: .5 }), { color: 0x123642 }, { color: 0x93a3a5 }),
+      ac: regMat(std(0x0d222a, { roughness: .7, metalness: .35 }), { color: 0x0d222a }, { color: 0xb4bdbf }),
+      acVent: regMat(std(0x0a1a20, { roughness: .9 }), { color: 0x0a1a20 }, { color: 0x8d9a9c }),
+      slot: regMat(std(0x061418, { roughness: .5 }), { color: 0x061418 }, { color: 0x8a9598 }),
+      plate: regMat(std(0x0a1a20, { roughness: .6 }), { color: 0x0a1a20 }, { color: 0xa9b3b4 }),
+      fan: regMat(std(0x16404b, { roughness: .5, metalness: .4 }), { color: 0x16404b }, { color: 0x8fa0a2 }),
+      bridge: regMat(std(0x0d222a, { roughness: .8 }), { color: 0x0d222a }, { color: 0xaab4b6 }),
+      gap: regMat(std(0x1b4a56, { roughness: .45, metalness: .55 }), { color: 0x1b4a56 }, { color: 0x8ea0a3 }),
+      bush: regMat(std(0xd8e6e4, { roughness: .35, metalness: .1 }), { color: 0xd8e6e4 }, { color: 0xe6e9e6 }),
+      roofUnit: regMat(std(0x123039, { roughness: .6, metalness: .35 }), { color: 0x123039 }, { color: 0x9fadb0 }),
+      duct: regMat(std(0x16323a, { roughness: .7, metalness: .35 }), { color: 0x16323a }, { color: 0xa9b6b8 })
+    };
 
     for (let i = 0; i < MAXN; i++) {
       const key = 'stack' + i;
@@ -707,9 +805,10 @@ window.GaoteScene3D = (function () {
       const d = stackData(i);
       const key = 'stack' + i;
       const strip = strips[key];
-      /* 充电=蓝 放电=青 待机=灰 */
+      /* 充电 / 放电 / 待机的状态色：夜里是蓝/青，白天充电换成橙色（浅底上更醒目） */
       const chg = d.cur !== null && d.cur < -0.5, dis = d.cur !== null && d.cur > 0.5;
-      const col = chg ? 0x8fd8ff : (dis ? 0x2ee6c8 : 0x6f9a94);
+      const p = THEMES[theme];
+      const col = chg ? p.stateChg : (dis ? p.stateDis : p.stateIdle);
       if (strip) {
         strip.material.color.setHex(col);
         strip.material.emissive.setHex(col);
@@ -850,7 +949,7 @@ window.GaoteScene3D = (function () {
     if (groundMat) {
       const old = groundMat.map;
       const map = gridTexture();
-      map.repeat.set(6, 6);
+      map.repeat.set(10, 10);
       groundMat.map = map;
       groundMat.color.setHex(p.ground);
       groundMat.needsUpdate = true;
@@ -868,9 +967,35 @@ window.GaoteScene3D = (function () {
       m.opacity = p.flowBlend ? .32 : .6;
     });
     if (hemiLight) { hemiLight.color.setHex(p.hemiSky); hemiLight.groundColor.setHex(p.hemiGround); hemiLight.intensity = p.hemiInt; }
-    if (sunLight) sunLight.intensity = p.sunInt;
+    if (sunLight) { sunLight.color.setHex(p.sunColor); sunLight.intensity = p.sunInt; }
     if (fillLight) { fillLight.color.setHex(p.fillColor); fillLight.intensity = p.fillInt; }
-    if (bloomPass) bloomPass.strength = p.bloom;
+    if (bloomPass) {
+      /* 白天整体本来就亮：泛光阈值拉到 0.95 以上，否则地坪/天空会被泛光"洗白" */
+      bloomPass.strength = p.bloom;
+      bloomPass.threshold = p.bloomTh;
+    }
+
+    /* 天空：白天用渐变穹顶（顶部蓝 → 地平线雾白），夜里收回深色背景 */
+    if (p.sky) {
+      if (!skyDome) { skyDome = makeSkyDome(p.sky); scene.add(skyDome); }
+      skyDome.visible = true;
+      scene.background = null;
+    } else if (skyDome) {
+      skyDome.visible = false;
+      scene.background = new THREE.Color(p.bg);
+    } else {
+      scene.background = new THREE.Color(p.bg);
+    }
+
+    /* 设备材质：浅色柜体 / 深色柜体两套配置，一次切完 */
+    themeMats.forEach(function (e) {
+      const cfg = e[theme] || e.night;
+      if (cfg.color !== undefined) e.mat.color.setHex(cfg.color);
+      if (cfg.map) e.mat.map = cfg.map;
+      if (cfg.emissive !== undefined) e.mat.emissive.setHex(cfg.emissive);
+      if (cfg.emissiveIntensity !== undefined) e.mat.emissiveIntensity = cfg.emissiveIntensity;
+      e.mat.needsUpdate = true;
+    });
   }
 
   function init(el) {
