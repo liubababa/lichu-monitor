@@ -34,7 +34,7 @@ window.GaoteScene3D = (function () {
   let hemiLight = null, sunLight = null, fillLight = null, bloomPass = null;
   const THEMES = {
     night: {
-      bg: 0x04090c, fog: 0x04090c, fogNear: 26, fogFar: 60,
+      bg: 0x04090c, fog: 0x04090c, fogNear: 34, fogFar: 95,
       gridBg: '#04090c', gridLine: 'rgba(46,230,200,.14)',
       ground: 0xffffff, platform: 0x0b1a1e,
       hemiSky: 0xbfe9ff, hemiGround: 0x0a1a1e, hemiInt: 1.05,
@@ -46,7 +46,7 @@ window.GaoteScene3D = (function () {
       sky: null
     },
     day: {
-      bg: 0xcfe4f0, fog: 0xe9f1f4, fogNear: 42, fogFar: 125,
+      bg: 0xcfe4f0, fog: 0xe9f1f4, fogNear: 58, fogFar: 165,
       /* 阳光下的水泥地：暖灰而不是冷灰蓝，网格线深一点才看得见 */
       gridBg: '#e4e6e2', gridLine: 'rgba(102,116,112,.42)', patches: true,
       ground: 0xffffff, platform: 0xd2d6d0,
@@ -88,10 +88,16 @@ window.GaoteScene3D = (function () {
   const conductorMats = [];                // 铁塔导线材质（颜色随主题）
   const flow = { dir: 0, units: 0 };       // 全站口径（并网线用）
 
-  /* 柜体数量按实际上报自动排布 */
-  const MAXN = 8, GAP = 3.3, STACK_W = 2.5, STACK_H = 2.8, STACK_D = 1.5;
-  /* 汇流/PCS 柜位置（放在并网铁塔下面，储能柜与其排成横向一列）与半宽 */
-  const PCS_X = -6.4, PCS_Z = 2.6, PCS_HW = 2.3;
+  /* 柜体数量按实际上报自动排布；间距放大后设备之间不挤（柜宽 2.5，间距 5.2 → 净空 2.7） */
+  const MAXN = 8, GAP = 5.2, STACK_W = 2.5, STACK_H = 2.8, STACK_D = 1.5;
+  /* 汇流/PCS 柜位置（放在并网铁塔下面，与储能柜排成横向一列）与半宽 */
+  const PCS_X = -8.6, PCS_Z = 3.0, PCS_HW = 2.3;
+  /* 厂房（含办公附房）位置与尺寸：整体放大，走线、接入点都从这里取，改一处即可 */
+  const FAC_X = 13.6, FAC_Z = .8, FAC_W = 9.0, FAC_H = 4.6, FAC_D = 6.4, FAC_RH = 1.7;
+  /* 办公附房（厂房的左侧小楼）：正面墙上挂电缆进线箱 */
+  const OFF_X = -(FAC_W / 2 + 1.0), OFF_Z = FAC_D / 2 - 1.4, OFF_W = 3.2, OFF_H = 3.2, OFF_D = 2.6;
+  /* 铁塔位置 */
+  const TWR_X = -13.2, TWR_Z = -2.8;
   let stackN = 2;   // 默认按本站实际（2 堆）；连上后按上报的簇数自动排布
   const stackCables = [];   // { flow } 每柜到 PCS 的电缆
 
@@ -471,7 +477,7 @@ window.GaoteScene3D = (function () {
   /* ---------------- 并网铁塔（国网风格格构塔：收腰塔身 + 三层双侧横担 + 绝缘子串 + 架空线） ---------------- */
   function buildTower(root) {
     const g = new THREE.Group();
-    g.position.set(-9.2, 0, -2.2);
+    g.position.set(TWR_X, 0, TWR_Z);
     const hgt = 9.2;
     const legMat = regMat(std(0x6d8b93, { roughness: .55, metalness: .6 }), { color: 0x6d8b93 }, { color: 0x93a3a8 });
     const braceMat = regMat(std(0x54737b, { roughness: .62, metalness: .55 }), { color: 0x54737b }, { color: 0x7d8f94 });
@@ -626,74 +632,127 @@ window.GaoteScene3D = (function () {
 
   function buildFactory(root) {
     const g = new THREE.Group();
-    const fx = 8.8, fz = .6;
-    const W = 6.4, H = 3.4, D = 4.6;
+    const fx = FAC_X, fz = FAC_Z;
+    const W = FAC_W, H = FAC_H, D = FAC_D, RH = FAC_RH;
     const M = texCache.mats;
     const wall = M.facWall;
+    const top = .24;                                                                        // 基座顶面
 
-    g.add(box(W + .5, .22, D + .5, M.dark, 0, .11, 0));                                     // 基座
+    g.add(box(W + .7, top, D + .7, M.dark, 0, top / 2, 0));                                  // 基座
     const hall = new THREE.Mesh(new THREE.BoxGeometry(W, H, D), [wall, wall, M.cabTop, wall, wall, wall]);
-    hall.position.set(0, H / 2 + .22, 0);
+    hall.position.set(0, H / 2 + top, 0);
     hall.castShadow = hall.receiveShadow = true;
     g.add(hall);
-    g.add(box(W + .2, .16, D + .2, M.bridge, 0, H + .32, 0));                               // 女儿墙
-    [[-1.6, -.8], [1.5, .9]].forEach(function (p) {                                         // 屋顶机组
-      g.add(box(1.5, .4, 1.1, M.roofUnit, p[0], H + .6, p[1]));
-      g.add(box(1.3, .06, .9, M.acVent, p[0], H + .82, p[1]));
-    });
-    const off = new THREE.Mesh(new THREE.BoxGeometry(2.2, 2.3, 2.2), wall);                  // 办公附房
-    off.position.set(-W / 2 - .9, 1.37, D / 2 - 1.1);
-    off.castShadow = true;
-    g.add(off);
-    g.add(box(2.5, .14, 2.5, M.bridge, -W / 2 - .9, 2.6, D / 2 - 1.1));
-    const stack = new THREE.Mesh(new THREE.CylinderGeometry(.34, .42, 4.2, 10), M.duct);     // 排风筒
-    stack.position.set(W / 2 - .8, 2.3, -D / 2 + 1);
-    stack.castShadow = true;
-    g.add(stack);
-    g.add(box(.9, .1, .9, M.bridge, W / 2 - .8, 4.45, -D / 2 + 1));
-    g.add(box(2.6, .34, .06, new THREE.MeshBasicMaterial({ color: 0x14e0c0 }), 0, H * .62, D / 2 + .04));  // 厂牌
 
-    /* 卷帘门雨棚 + 门口坡道（贴图上卷帘门在正面底部中央） */
-    const canopy = box(3.0, .1, .95, M.bridge, 0, 1.62, D / 2 + .45);
-    canopy.rotation.x = -.14;
-    g.add(canopy);
-    [-1.3, 1.3].forEach(function (sx) {
-      g.add(box(.06, .42, .06, M.galv, sx, 1.42, D / 2 + .82));               // 雨棚斜撑
+    /* 双坡屋顶：两块坡板 + 屋脊盖板 + 前后山墙三角（深色收边，比平顶方盒像真厂房） */
+    const run = D / 2 + .4, slope = Math.sqrt(run * run + RH * RH), ang = Math.atan2(RH, run);
+    [-1, 1].forEach(function (sz) {
+      const p = box(W + .9, .14, slope, M.bridge, 0, top + H + RH / 2, sz * run / 2);
+      p.rotation.x = sz > 0 ? ang : -ang;
+      p.castShadow = true;
+      g.add(p);
     });
-    g.add(box(2.9, .12, .95, M.dark, 0, .18, D / 2 + .47));                   // 门口坡道
-    /* 落水管：两根，从女儿墙顺墙到基座，底部带个弯头（往外挪一点，别切进女儿墙） */
+    g.add(box(W + 1.0, .18, .36, M.bridge, 0, top + H + RH + .06, 0));                        // 屋脊
+    const tri = new THREE.Shape();
+    tri.moveTo(-D / 2, 0); tri.lineTo(D / 2, 0); tri.lineTo(0, RH); tri.closePath();
+    const triGeo = new THREE.ExtrudeGeometry(tri, { depth: .14, bevelEnabled: false });
     [-1, 1].forEach(function (sx) {
-      const dp = new THREE.Mesh(new THREE.CylinderGeometry(.07, .07, H + .1, 8), M.galv);
-      dp.position.set(sx * (W / 2 + .22), (H + .1) / 2 + .34, D / 2 + .02);
+      const m = new THREE.Mesh(triGeo, M.bridge);
+      m.rotation.y = sx > 0 ? -Math.PI / 2 : Math.PI / 2;
+      m.position.set(sx * (W / 2 - .07), top + H, 0);
+      m.castShadow = true;
+      g.add(m);
+    });
+
+    /* 外墙竖向壁柱 + 檐口线条：光板墙变成有竖向分格的工业立面 */
+    for (let k = -3; k <= 3; k++) {
+      const px = k * (W / 7);
+      [-1, 1].forEach(function (sz) {
+        g.add(box(.22, H * .94, .16, M.bridge, px, top + H * .5, sz * (D / 2 + .05)));
+      });
+    }
+    [-1, 1].forEach(function (sz) {
+      g.add(box(W + .5, .2, .24, M.bridge, 0, top + H - .1, sz * (D / 2 + .05)));
+    });
+
+    /* 屋顶通风器（两侧坡面各一） */
+    [-2.8, 2.8].forEach(function (px) {
+      const wh = new THREE.Mesh(new THREE.CylinderGeometry(.3, .34, .38, 10), M.galv);
+      wh.position.set(px, top + H + RH * .52 + .3, 1.0);
+      wh.castShadow = true;
+      g.add(wh);
+      g.add(box(.72, .06, .72, M.bridge, px, top + H + RH * .52 + .52, 1.0));
+    });
+
+    /* 排风筒（后侧穿出屋面，加高） */
+    const duct = new THREE.Mesh(new THREE.CylinderGeometry(.42, .5, 6.8, 12), M.duct);
+    duct.position.set(-W / 2 + 1.3, top + 3.4, -D / 2 + 1.1);
+    duct.castShadow = true;
+    g.add(duct);
+    g.add(box(1.2, .12, 1.2, M.bridge, -W / 2 + 1.3, top + 6.9, -D / 2 + 1.1));
+
+    /* 水塔（右侧后方，四腿落地） */
+    const tank = new THREE.Mesh(new THREE.CylinderGeometry(.95, .95, 1.6, 12), M.galv);
+    tank.position.set(W / 2 + 1.7, top + 5.4, -D / 2 + .9);
+    tank.castShadow = true;
+    g.add(tank);
+    [[-.6, -.6], [.6, -.6], [-.6, .6], [.6, .6]].forEach(function (l) {
+      g.add(box(.11, 4.6, .11, M.galv, W / 2 + 1.7 + l[0], top + 2.3, -D / 2 + .9 + l[1]));
+    });
+
+    /* 大门雨棚 + 装卸平台 + 台阶（贴图上卷帘门在正面底部中间） */
+    const canopy = box(4.8, .12, 1.5, M.bridge, 0, 2.6, D / 2 + .75);
+    canopy.rotation.x = -.12;
+    canopy.castShadow = true;
+    g.add(canopy);
+    [-2.1, 2.1].forEach(function (sx) {
+      g.add(box(.08, .6, .08, M.galv, sx, 2.3, D / 2 + 1.35));
+    });
+    g.add(box(5.4, .3, 1.2, M.dark, 0, top + .15, D / 2 + .9));                               // 装卸平台
+    g.add(box(1.8, .12, 1.1, M.galv, 3.6, top + .06, D / 2 + 1.85));                          // 台阶
+
+    /* 落水管（正面两根，从檐口顺墙到基座） */
+    [-1, 1].forEach(function (sx) {
+      const dp = new THREE.Mesh(new THREE.CylinderGeometry(.08, .08, H + .2, 8), M.galv);
+      dp.position.set(sx * (W / 2 + .3), top + (H + .2) / 2, D / 2 + .12);
       dp.castShadow = true;
       g.add(dp);
-      const elbow = new THREE.Mesh(new THREE.CylinderGeometry(.07, .07, .3, 8), M.galv);
+      const elbow = new THREE.Mesh(new THREE.CylinderGeometry(.08, .08, .34, 8), M.galv);
       elbow.rotation.x = Math.PI / 2;
-      elbow.position.set(sx * (W / 2 + .22), .3, D / 2 + .15);
+      elbow.position.set(sx * (W / 2 + .3), top + .3, D / 2 + .28);
       g.add(elbow);
     });
-    /* 屋顶无动力通风器 */
-    const whirly = new THREE.Mesh(new THREE.CylinderGeometry(.26, .3, .34, 10), M.galv);
-    whirly.position.set(-2.5, H + .62, .5);
-    whirly.castShadow = true;
-    g.add(whirly);
-    g.add(box(.62, .06, .62, M.bridge, -2.5, H + .84, .5));
 
-    /* 办公附房上的电缆进线箱：两堆电池的电缆就接在这里。
-       白天/夜里都用深一点的金属色，浅色墙面上才看得出这是个箱子（否则像线头悬空） */
+    /* 厂牌 + 铭牌 */
+    g.add(box(3.4, .5, .08, new THREE.MeshBasicMaterial({ color: 0x14e0c0 }), 0, top + H * .8, D / 2 + .12));
+    g.add(box(3.7, .64, .06, M.plate, 0, top + H * .8, D / 2 + .07));
+    g.add(box(1.7, .36, .05, M.plate, W / 2 - 1.5, top + H * .45, D / 2 + .07));
+
+    /* 办公附房（左侧小楼）：平屋顶 + 屋顶机组 + 墙上电缆进线箱 */
+    const off = new THREE.Mesh(new THREE.BoxGeometry(OFF_W, OFF_H, OFF_D), [wall, wall, M.cabTop, wall, wall, wall]);
+    off.position.set(OFF_X, OFF_H / 2 + top, OFF_Z);
+    off.castShadow = off.receiveShadow = true;
+    g.add(off);
+    g.add(box(OFF_W + .35, .18, OFF_D + .35, M.bridge, OFF_X, top + OFF_H + .09, OFF_Z));      // 女儿墙
+    const ac = new THREE.Mesh(new THREE.CylinderGeometry(.36, .4, .7, 10), M.roofUnit);
+    ac.position.set(OFF_X - .7, top + OFF_H + .55, OFF_Z - .3);
+    ac.castShadow = true;
+    g.add(ac);
+    g.add(box(.95, .1, .95, M.bridge, OFF_X - .7, top + OFF_H + .95, OFF_Z - .3));
+
     const jbMat = std(0x4a5a5c, { roughness: .55, metalness: .45 });
     const jbInner = std(0x27312f, { roughness: .7, metalness: .3 });
-    g.add(box(1.55, .7, .18, jbMat, -W / 2 - 1.1, 1.0, D / 2 - 1.1 + 1.19));
-    g.add(box(1.4, .56, .06, jbInner, -W / 2 - 1.1, 1.0, D / 2 - 1.1 + 1.30));
+    g.add(box(2.8, .82, .2, jbMat, OFF_X + .2, 1.3, OFF_Z + OFF_D / 2 + .1));                 // 电缆进线箱
+    g.add(box(2.6, .66, .06, jbInner, OFF_X + .2, 1.3, OFF_Z + OFF_D / 2 + .22));
 
-    /* 厂房进线不单独画了：两堆电池的电缆各自从柜前走电缆沟到厂房（见 layoutStacks） */
+    /* 厂房进线不单独画了：两堆电池的电缆各自从柜前走电缆沟到附房进线箱（见 layoutStacks） */
 
     const wrap = document.createElement('div');
     const el = document.createElement('div');
     el.className = 'tag3d tag3d-gt';
     wrap.appendChild(el);
     const o = new THREE.CSS2DObject(wrap);
-    o.position.set(0, H + 1.6, 0);
+    o.position.set(0, top + H + RH + 1.5, 0);
     g.add(o);
     facLabelEl = el;
 
@@ -702,7 +761,7 @@ window.GaoteScene3D = (function () {
     root.add(g);
     facGroup = g;
     groups.factory = g;
-    addCard('factory', new THREE.Vector3(0, H + .3, 0));
+    addCard('factory', new THREE.Vector3(0, top + H * .6, D / 2 + 1.6));
   }
 
   /* ---------------- 构建场景 ---------------- */
@@ -718,18 +777,18 @@ window.GaoteScene3D = (function () {
     ground.rotation.x = -Math.PI / 2;
     ground.receiveShadow = true;
     root.add(ground);
-    /* 场地（混凝土平台）：范围要盖住储能柜、汇流柜、杆塔与厂房，避免模型跑到地面外 */
+    /* 场地（混凝土平台）：要盖住储能柜、汇流柜、杆塔与厂房（含右侧水塔），别让模型跑到台面外 */
     platformMat = std(0x0b1a1e, { roughness: .9 });
-    root.add(box(34, .18, 16, platformMat, .4, .09, .6));    // 台面（顶面 0.18，设备坐在上面）
+    root.add(box(46, .18, 22, platformMat, 1.6, .09, 1.0));  // 台面（顶面 0.18，设备坐在上面）
 
     /* 电缆沟盖板：储能柜前 → 汇流柜 → 厂房，放电/充电两组电缆都在沟里走，地面干净 */
     const gutterMat = regMat(std(0x1a2a2f, { roughness: .85 }), { color: 0x1a2a2f }, { color: 0xb4bcbd });
     const gutterSeam = regMat(std(0x0f1c21, { roughness: .9 }), { color: 0x0f1c21 }, { color: 0x9ba5a6 });
-    const gutterW = 1.3, gutterZ = 4.15;   // 沟加宽：充电电缆走柜前走廊，厂房电缆在沟里一列列排开
-    root.add(box(19.4, .07, gutterW, gutterMat, -4.6, .215, gutterZ));
-    root.add(box(19.4, .075, .05, gutterSeam, -4.6, .22, gutterZ - gutterW / 2 + .02));
-    root.add(box(19.4, .075, .05, gutterSeam, -4.6, .22, gutterZ + gutterW / 2 - .02));
-    for (let x = -13.6; x < 4.8; x += 1.1) {
+    const gutterW = 1.4, gutterZ = 4.5;    // 沟加宽：充电电缆走柜前走廊，厂房电缆在沟里一列列排开
+    root.add(box(21.5, .07, gutterW, gutterMat, -1.5, .215, gutterZ));
+    root.add(box(21.5, .075, .05, gutterSeam, -1.5, .22, gutterZ - gutterW / 2 + .02));
+    root.add(box(21.5, .075, .05, gutterSeam, -1.5, .22, gutterZ + gutterW / 2 - .02));
+    for (let x = -12.0; x < 9.0; x += 1.2) {
       root.add(box(.05, .08, gutterW - .12, gutterSeam, x, .22, gutterZ));   // 盖板接缝
     }
 
@@ -787,8 +846,9 @@ window.GaoteScene3D = (function () {
     buildTower(root);
 
     /* PCS → 铁塔 出线（全站口径，流向按总功率） */
-    const toTower = [new THREE.Vector3(-8.5, 1.0, 2.6), new THREE.Vector3(-9.0, 2.6, 1.4),
-      new THREE.Vector3(-9.2, 4.2, -.6), new THREE.Vector3(-9.2, 5.9, -2.2)];
+    const toTower = [new THREE.Vector3(PCS_X - PCS_HW + .2, 1.0, PCS_Z),
+      new THREE.Vector3(-11.6, 2.6, 1.6), new THREE.Vector3(-12.6, 4.2, -.8),
+      new THREE.Vector3(TWR_X, 5.9, TWR_Z)];
     addFlow(toTower, root, -1);
 
     buildFactory(root);
@@ -830,20 +890,22 @@ window.GaoteScene3D = (function () {
       /* ① 堆 → 厂房（放电）：柜正面右下引出，起步抬一下从柜前充电电缆上方跨过去；
          西边的柜子先贴着汇流柜前面往东走（不穿汇流柜），到它东侧再转南进电缆沟，
          沿沟向东后接进厂房左侧的办公附房（墙上带进线箱） */
-      const gz = 3.75 + i * .24;                       // 沟里一列一列排开
-      const ex = Math.min(3.9 + i * .45, 4.95);         // 进办公附房进线箱的接入点（箱体范围内）
-      const turnX = Math.max(x + .45, PCS_X + PCS_HW + .45);
-      rebuild(sc.flow, [new THREE.Vector3(.45, .24, .9), new THREE.Vector3(.45, .68, 1.6),
-        new THREE.Vector3(turnX - x, .5, 1.62 + i * .06), new THREE.Vector3(turnX - x + .5, .34, 3.3),
-        new THREE.Vector3(turnX - x + 1.6, .32, gz), new THREE.Vector3(4.2 - x, .44, gz),
-        new THREE.Vector3(ex - x + .5, .6, 3.25), new THREE.Vector3(ex - x, .95, 2.96)]);
+      const gz = 4.2 + i * .3;                         // 电缆沟里一列列排开（间距也放大）
+      const annexX = FAC_X + OFF_X + .2 + (i % 2 ? .7 : -.7);   // 附房进线箱上的左/右接入点
+      const wallZ = FAC_Z + OFF_Z + OFF_D / 2;         // 附房正面墙
+      const turnX = Math.max(x + .45, PCS_X + PCS_HW + .6);
+      rebuild(sc.flow, [new THREE.Vector3(.45, .24, .9), new THREE.Vector3(.45, .78, 2.2),
+        new THREE.Vector3(turnX - x, .5, 2.25 + i * .06), new THREE.Vector3(turnX - x + .7, .34, 3.9),
+        new THREE.Vector3(turnX - x + 2.2, .32, gz), new THREE.Vector3(annexX - x - 2.6, .44, gz),
+        new THREE.Vector3(annexX - x + .5, .8, wallZ + 1.4), new THREE.Vector3(annexX - x, 1.1, wallZ - .05)]);
       /* ② 汇流柜 → 堆（充电）：从汇流柜右下出线，向北折进柜前走廊（贴地、两堆一前一后），
          走到本柜左前方进柜子进线箱；厂房电缆从它上方跨过，两条线不相交 */
       const pz = 1.2 + i * .22;                        // 柜前走廊（内侧一列）
-      rebuild(sc.pcs, [new THREE.Vector3(PCS_X + PCS_HW + .3 - x, .3, 3.3),
-        new THREE.Vector3(PCS_X + PCS_HW + .4 - x, .28, 2.5),
-        new THREE.Vector3(PCS_X + PCS_HW + .45 - x, .28, 1.55),   // 先绕到汇流柜正前方，再往西/东走
-        new THREE.Vector3(-2.4, .28, pz), new THREE.Vector3(-.45, .28, pz), new THREE.Vector3(-.45, .24, .9)]);
+      const cx = Math.min(-2.4, x - 1.2);              // 走廊往东走到本柜左前方为止，不走回头路
+      rebuild(sc.pcs, [new THREE.Vector3(PCS_X + PCS_HW + .3 - x, .3, 3.4),
+        new THREE.Vector3(PCS_X + PCS_HW + .4 - x, .28, 2.7),
+        new THREE.Vector3(PCS_X + PCS_HW + .45 - x, .28, 1.75),   // 先绕到汇流柜正前方，再往西/东走
+        new THREE.Vector3(cx - x, .28, pz), new THREE.Vector3(-.45, .28, pz), new THREE.Vector3(-.45, .24, .9)]);
     }
     applyLabelVisibility();
   }
@@ -1148,7 +1210,7 @@ window.GaoteScene3D = (function () {
     scene = new THREE.Scene();
     scene.fog = new THREE.Fog(THEMES.night.fog, THEMES.night.fogNear, THEMES.night.fogFar);
     camera = new THREE.PerspectiveCamera(46, w / h, .1, 300);
-    camera.position.set(11.6, 7.0, 15.9);
+    camera.position.set(15.2, 9.8, 21.5);
 
     renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
@@ -1182,10 +1244,10 @@ window.GaoteScene3D = (function () {
     if (typeof THREE.OrbitControls === 'function') {
       controls = new THREE.OrbitControls(camera, renderer.domElement);
       controls.enableDamping = true; controls.dampingFactor = .08;
-      controls.minDistance = 8; controls.maxDistance = 46;
+      controls.minDistance = 12; controls.maxDistance = 70;
       /* 视角限制在水平线以上：压低到最低也看不到台面下方与地坪边缘 */
       controls.maxPolarAngle = 1.35;
-      controls.target.set(0.2, 1.7, 0.6);
+      controls.target.set(1.6, 2.0, 1.0);
       controls.autoRotate = rot.auto; controls.autoRotateSpeed = rot.speed * 6;
     }
     if (typeof THREE.EffectComposer === 'function' && THREE.RenderPass && THREE.UnrealBloomPass) {
@@ -1221,7 +1283,7 @@ window.GaoteScene3D = (function () {
       return rot.auto;
     },
     resetView: function () {
-      camera.position.set(11.6, 7.0, 15.9);
+      camera.position.set(15.2, 9.8, 21.5);
       if (controls) { controls.target.set(0.2, 1.7, 0.6); controls.update(); }
     },
     setTheme: function (t) { applyTheme(t); },
