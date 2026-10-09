@@ -196,7 +196,7 @@ button{font-family:inherit;cursor:pointer;background:none;border:none;color:inhe
   position:relative;transform:translateY(-62%);
   background:linear-gradient(160deg,rgba(7,22,24,.92),rgba(4,12,14,.9));
   border:1px solid rgba(46,230,200,.45);border-left:3px solid var(--teal);
-  padding:7px 11px 6px;min-width:112px;white-space:nowrap;
+  padding:12px 16px 11px;min-width:134px;white-space:nowrap;
   box-shadow:0 4px 18px rgba(0,0,0,.5),0 0 12px rgba(46,230,200,.12);
   transition:box-shadow .2s,border-color .2s;
 }
@@ -205,14 +205,14 @@ button{font-family:inherit;cursor:pointer;background:none;border:none;color:inhe
   background:#071616;border-right:1px solid rgba(46,230,200,.45);
   border-bottom:1px solid rgba(46,230,200,.45);transform:rotate(45deg);
 }
-.tag3d b{display:block;font-size:13px;color:var(--teal);letter-spacing:1px;margin-bottom:3px;font-weight:normal}
-.tag3d span{display:flex;justify-content:space-between;gap:14px;font-size:11px;color:var(--dim);line-height:1.65}
+.tag3d b{display:block;font-size:14px;color:var(--teal);letter-spacing:1px;margin-bottom:7px;font-weight:normal}
+.tag3d span{display:flex;justify-content:space-between;gap:18px;font-size:11.5px;color:var(--dim);line-height:1.9}
 .tag3d span i{font-style:normal;font-family:var(--num);color:#d9fff6}
 .tag3d.hot{border-color:var(--teal);box-shadow:0 0 16px rgba(46,230,200,.35)}
 /* 高特场景浮标：名称 / 数值 / 状态三行；数值用等宽数字（此前 <i><em> 没吃到样式，
    数字是浏览器默认斜体、状态还跟在数值后面挤在同一行） */
-.tag3d-gt>i{display:block;font-style:normal;font-family:var(--num);font-size:12.5px;color:#d9fff6;letter-spacing:.4px;margin-top:1px}
-.tag3d-gt>em{display:block;font-style:normal;font-size:10.5px;color:var(--dim);letter-spacing:.4px;margin-top:1px}
+.tag3d-gt>i{display:block;font-style:normal;font-family:var(--num);font-size:14.5px;color:#d9fff6;letter-spacing:.4px;margin-top:5px}
+.tag3d-gt>em{display:block;font-style:normal;font-size:11.5px;color:var(--dim);letter-spacing:.4px;margin-top:4px}
 
 .card3d{
   position:relative;transform:translateY(-55%);width:228px;pointer-events:auto;
@@ -970,11 +970,11 @@ button{font-family:inherit;cursor:pointer;background:none;border:none;color:inhe
       只覆盖颜色相关属性，布局与动效保持原样
    ============================================================ */
 html[data-theme="day"]{
-  --teal:#0fa98c;
+  --teal:#0b8f76;
   --teal-soft:rgba(15,150,130,.32);
   --amber:#c07a00;
   --text:#1d3b41;
-  --dim:#5c7c80;
+  --dim:#4a686d;          /* 白天把次要文字压深一档：浅底上小字才看得清 */
 }
 html[data-theme="day"] body{background:#eef4f6;color:#1d3b41}
 html[data-theme="day"] ::selection{background:rgba(15,150,130,.25)}
@@ -1173,3 +1173,125 @@ html[data-theme="day"] .pt-empty{border-color:rgba(15,150,130,.28)}
 html[data-theme="day"] .pt-foot{border-top-color:rgba(15,150,130,.18)}
 html[data-theme="day"] .pt-devrow{background:rgba(255,255,255,.7);border-color:rgba(15,150,130,.22)}
 html[data-theme="day"] .pt-devrow.on{background:rgba(15,150,130,.1)}
+
+/* ---- 白天：清掉其余深色残留（按钮/卡片/进度条等），并把次要文字压深 ---- */
+html[data-theme="day"] .dt-chips button{background:#fff;border-color:rgba(15,150,130,.3);color:#47646a}
+html[data-theme="day"] .dt-chips button:hover{color:#0d8a72;border-color:rgba(15,150,130,.6)}
+html[data-theme="day"] .dt-ring{background:#f6fbfb;border-color:rgba(15,150,130,.22)}
+html[data-theme="day"] .dt-tou-col,
+html[data-theme="day"] .dt-panel,
+html[data-theme="day"] .cc-card{background:rgba(255,255,255,.72)}
+html[data-theme="day"] .dt-tariff{background:rgba(255,176,32,.1);border-color:rgba(196,125,0,.45)}
+html[data-theme="day"] .st-src{background:rgba(255,176,32,.12);border-color:rgba(196,125,0,.45);color:#8a5b00}
+html[data-theme="day"] .mq-btn{background:#fff;border-color:rgba(15,150,130,.3)}
+html[data-theme="day"] .mq-btn:hover{color:#0d8a72;border-color:rgba(15,150,130,.6)}
+html[data-theme="day"] .mq-sec{color:#0d8a72}
+html[data-theme="day"] .pt-dbadge,
+html[data-theme="day"] .pt-tag{color:#0d8a72}
+html[data-theme="day"] .dt-time,
+html[data-theme="day"] .dt-note,
+html[data-theme="day"] .hc-note,
+html[data-theme="day"] .hc-loc,
+html[data-theme="day"] .gv3-anote,
+html[data-theme="day"] .gs-thead code{color:#54737a}
+html[data-theme="day"] .lg-row.down .lg-head{color:#0b7a64}
+html[data-theme="day"] .lg-row.up .lg-head{color:#8a5b00}
+html[data-theme="day"] .lg-head{color:#3f6660}
+html[data-theme="day"] .gv-chip{color:#4a686d;border-color:rgba(15,150,130,.25);background:rgba(15,150,130,.06)}
+html[data-theme="day"] .bar-track{background:rgba(15,150,130,.16)}
+html[data-theme="day"] .sig-bars i{background:rgba(15,150,130,.22)}
+html[data-theme="day"] .gv3-socbar{background:rgba(15,150,130,.16)}
+html[data-theme="day"] .hc,
+html[data-theme="day"] .gv-cell{background:rgba(15,150,130,.09)}
+html[data-theme="day"] .lamp i,
+html[data-theme="day"] .pl i{background:#d5dfdf;border-color:rgba(15,150,130,.25)}
+html[data-theme="day"] .gv3-lamp::before,
+html[data-theme="day"] .gv3-dot::before{background:#d5dfdf}
+html[data-theme="day"] .dev-dot{background:#b9c8c6}
+html[data-theme="day"] .pt-dot{background:#b9c8c6}
+html[data-theme="day"] .ov-src.live{color:#0b7a64}
+html[data-theme="day"] .st-rsp{background:rgba(15,150,130,.06);border-color:rgba(15,150,130,.35);color:#4a686d}
+html[data-theme="day"] .st-rsp.ok{color:#0b7a64}
+html[data-theme="day"] .st-rsp.pending{color:#8a5b00;border-color:rgba(196,125,0,.45);background:rgba(255,176,32,.1)}
+html[data-theme="day"] .st-rsp.fail{color:#a83a22;border-color:rgba(214,86,60,.5);background:rgba(214,86,60,.08)}
+html[data-theme="day"] .hc-tag{color:#0d8a72}
+html[data-theme="day"] .ov-tagchip{color:#0d8a72;border-color:rgba(15,150,130,.3)}
+html[data-theme="day"] .gv-inst{color:#0d8a72;border-color:rgba(15,150,130,.28)}
+html[data-theme="day"] .gv-kv .en{color:#0d8a72}
+html[data-theme="day"] .ov-online.na{background:#c2cfcd}
+html[data-theme="day"] .gv3-ktag,
+html[data-theme="day"] .gv3-ttag{color:#0d8a72}
+html[data-theme="day"] .gv3-klabel,
+html[data-theme="day"] .gv3-kvrow span,
+html[data-theme="day"] .gv3-mitem span,
+html[data-theme="day"] .gv3-badge span{color:#4a686d}
+html[data-theme="day"] .dt-kv span,
+html[data-theme="day"] .dt-kpi span,
+html[data-theme="day"] .dt-kpi u,
+html[data-theme="day"] .dt-tf span,
+html[data-theme="day"] .dt-tf input,
+html[data-theme="day"] .kv .k,
+html[data-theme="day"] .sc-label,
+html[data-theme="day"] .panel-title em,
+html[data-theme="day"] .kpi-label,
+html[data-theme="day"] .kpi-num u{color:#4a686d}
+html[data-theme="day"] .dt-bar>b,
+html[data-theme="day"] .gv-card-head b,
+html[data-theme="day"] .gv-chead b,
+html[data-theme="day"] .ov-bar .tv-title,
+html[data-theme="day"] .dt-ptitle b{color:#0d7a66}
+html[data-theme="day"] .gv3-kunit,
+html[data-theme="day"] .hc-val u,
+html[data-theme="day"] .gv3-tile u,
+html[data-theme="day"] .m-big u,
+html[data-theme="day"] .m-pq u,
+html[data-theme="day"] .tl-node u,
+html[data-theme="day"] .dc-tile u,
+html[data-theme="day"] .gv3-mitem u{color:#54737a}
+
+/* ---- 白天：把原本"夜里发光"的浅色文字统一换成深色（否则浅底上等于看不见） ---- */
+html[data-theme="day"] .card3d .c-head span,
+html[data-theme="day"] .mq-head,
+html[data-theme="day"] .log-head,
+html[data-theme="day"] .st-gtitle,
+html[data-theme="day"] .cc-title,
+html[data-theme="day"] .dm-head,
+html[data-theme="day"] .heat-meta b,
+html[data-theme="day"] .aux-title,
+html[data-theme="day"] .gs-thead b,
+html[data-theme="day"] .gv-card-head b,
+html[data-theme="day"] .gv-chead b,
+html[data-theme="day"] .gv3-ahead,
+html[data-theme="day"] .dt-ptitle b,
+html[data-theme="day"] .dt-tou-col>b,
+html[data-theme="day"] .dt-bar>b{color:#0d7a66}
+html[data-theme="day"] .dev-badge,
+html[data-theme="day"] .eb-val.ok,
+html[data-theme="day"] .chip.ok,
+html[data-theme="day"] .bms-state b,
+html[data-theme="day"] .pcs-state-val.run,
+html[data-theme="day"] .dc-tile.out b,
+html[data-theme="day"] .dt-ring.on b,
+html[data-theme="day"] .dt-ok,
+html[data-theme="day"] .dt-kv.sum b,
+html[data-theme="day"] .gv3-badge b.ok,
+html[data-theme="day"] .pl.on,
+html[data-theme="day"] .gv3-lamp.on,
+html[data-theme="day"] .ov-src.live,
+html[data-theme="day"] .card3d .c-status,
+html[data-theme="day"] .gv3-ktag,
+html[data-theme="day"] .gv3-ttag{color:#0b7a64}
+html[data-theme="day"] .pf-num.neg,
+html[data-theme="day"] .dc-tile.in b,
+html[data-theme="day"] .m-big b.neg,
+html[data-theme="day"] .tms-mode b.cold,
+html[data-theme="day"] .tl-node.cold b,
+html[data-theme="day"] .gv3-kpi.chg .gv3-kval{color:#1668c4}
+html[data-theme="day"] .eb-val.warn,
+html[data-theme="day"] .bms-state b.warn,
+html[data-theme="day"] .gv3-badge b.warn,
+html[data-theme="day"] .ov-meter.accent .m-big b,
+html[data-theme="day"] .dt-kpi.money b,
+html[data-theme="day"] .dt-kv.money b,
+html[data-theme="day"] .st-src,
+html[data-theme="day"] .gs-warn{color:#8a5b00}

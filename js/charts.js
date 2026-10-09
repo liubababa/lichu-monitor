@@ -88,7 +88,7 @@ window.Charts = (function () {
 
   /* 白天主题下坐标轴文字加深一点，浅色面板上更清楚 */
   function setTheme(t) {
-    const ax = t === 'day' ? '#4b6f6c' : AX;
+    const ax = t === 'day' ? '#3d5c5a' : AX;
     const axis = { axisLabel: { color: ax } };
     if (pcs) pcs.setOption({ xAxis: axis, yAxis: axis, legend: { textStyle: { color: ax } } });
     if (load) load.setOption({ xAxis: axis, yAxis: axis, legend: { textStyle: { color: ax } } });
