@@ -95,6 +95,9 @@ window.GaoteScene3D = (function () {
   let stackN = 2;   // 默认按本站实际（2 堆）；连上后按上报的簇数自动排布
   const stackCables = [];   // { flow } 每柜到 PCS 的电缆
 
+  /* 汇流柜 → 堆 的直流电缆桥架（长度跟着实际堆数伸缩） */
+  const trayParts = [];
+
   /* 厂房（工厂用电负荷）：放电时电送进厂房，进线光点流动 */
   let facGroup = null, facLabelEl = null, facOn = false;
 
@@ -316,7 +319,9 @@ window.GaoteScene3D = (function () {
     for (let i = 0; i < flows.length; i++) {
       const fl = flows[i];
       const on = fl.dir !== 0;
-      fl.tubeMat.color.setHex(fl.dir > 0 ? p.flowDis : (fl.dir < 0 ? p.flowChg : p.flowIdle));
+      /* flip：几何方向与"充/放"语义相反（如"汇流柜 → 堆"的充电电缆），取色时翻一下 */
+      const sd = fl.flip ? -fl.dir : fl.dir;
+      fl.tubeMat.color.setHex(sd > 0 ? p.flowDis : (sd < 0 ? p.flowChg : p.flowIdle));
       /* 有电流时全亮（夜里再加一层加色发光），待机时暗下来但管线还在 */
       fl.tubeMat.opacity = on ? 1 : (p.flowBlend ? .26 : .42);
       if (on) fl.map.offset.x -= fl.dir * fl.speed * dt * .35;     // 光纹沿电缆滚动
@@ -724,6 +729,11 @@ window.GaoteScene3D = (function () {
       root.add(box(.05, .08, gutterW - .12, gutterSeam, x, .22, gutterZ));   // 盖板接缝
     }
 
+    /* 直流电缆桥架：汇流柜 → 各堆的充电电缆从桥架上走，跟贴地的厂房电缆分层走线 */
+    const trayMat = regMat(std(0x53696e, { roughness: .6, metalness: .5 }), { color: 0x53696e }, { color: 0xa8b2b4 });
+    [box(1, .06, .44, trayMat, 0, 1.42, 1.5), box(1, .12, .05, trayMat, 0, 1.47, 1.28), box(1, .12, .05, trayMat, 0, 1.47, 1.72)]
+      .forEach(function (m) { root.add(m); trayParts.push(m); });
+
     /* 设备贴图：白天 / 夜里各生成一套，切主题时换 map（浅色柜体 vs 深色柜体） */
     texCache.cabFront = { night: cabFrontTexture(TEXPAL.night), day: cabFrontTexture(TEXPAL.day) };
     texCache.cabSide = { night: cabSideTexture(TEXPAL.night), day: cabSideTexture(TEXPAL.day) };
@@ -762,9 +772,16 @@ window.GaoteScene3D = (function () {
       const key = 'stack' + i;
       const g = buildStack(key);
       root.add(g);
-      /* 柜 → PCS 电缆（本地坐标，终点在 layoutStacks 里对齐 PCS） */
-      const cpts = [new THREE.Vector3(0, .3, .9), new THREE.Vector3(0, .3, 2.6), new THREE.Vector3(-1, .32, 3.5), new THREE.Vector3(-2, .6, 3.6)];
-      stackCables.push({ flow: addFlow(cpts, g, i) });
+      /* 每个柜两条电缆（本地坐标，实际走向在 layoutStacks 里按柜位重算）：
+         ① 堆 → 厂房：放电回路，柜台右侧引出走电缆沟进厂房
+         ② 汇流柜 → 堆：充电回路，从汇流柜右侧接线点过来进柜子左下进线箱 */
+      const fpts = [new THREE.Vector3(.55, .3, .95), new THREE.Vector3(.55, .3, 2.4),
+        new THREE.Vector3(2.4, .34, 3.7), new THREE.Vector3(4.2, .46, 3.75)];
+      const ppts = [new THREE.Vector3(-.55, .3, .95), new THREE.Vector3(-1.2, .34, 1.5),
+        new THREE.Vector3(-3.0, .5, 1.8), new THREE.Vector3(-2.4, .85, 2.4)];
+      const pcsFlow = addFlow(ppts, g, i);
+      pcsFlow.pcs = true;                       // 标记：这条是"汇流柜 → 堆"的充电电缆
+      stackCables.push({ flow: addFlow(fpts, g, i), pcs: pcsFlow });
     }
 
     buildPCS(root);
@@ -785,6 +802,10 @@ window.GaoteScene3D = (function () {
   function layoutStacks(n) {
     stackN = Math.max(1, Math.min(MAXN, n || 2));
     const startX = -(stackN - 1) * GAP / 2;
+    /* 桥架长度跟着实际堆数：从汇流柜（或最左一堆）一直铺到最后一堆的左边 */
+    const trayX0 = Math.min(PCS_X + PCS_HW + .3, startX - 1.5), trayX1 = startX + (stackN - 1) * GAP - 1.1;
+    const trayLen = Math.max(1.2, trayX1 - trayX0), trayCx = (trayX0 + trayX1) / 2;
+    trayParts.forEach(function (m) { m.scale.x = trayLen; m.position.x = trayCx; });
     for (let i = 0; i < MAXN; i++) {
       const g = groups['stack' + i];
       if (!g) continue;
@@ -794,27 +815,35 @@ window.GaoteScene3D = (function () {
       const x = startX + i * GAP;
       g.position.x = x;
       const sc = stackCables[i];
-      if (sc && sc.flow) {
-        /* 堆 → 厂房：柜台前下部引出，向前落进电缆沟，沿沟向东进厂房（现场就是两堆电池的电缆送厂房）。
-           local 坐标 = 世界坐标 - 本柜 x */
-        const gz = 3.72 + i * .06;                       // 沟里并排走线，两根不叠在一起
-        const ex = 5.9 + i * .2;                         // 进厂房的接入点（正面墙左侧，避开门洞）
-        const pts = [new THREE.Vector3(0, .3, .95), new THREE.Vector3(0, .3, 2.3),
-          new THREE.Vector3(1.8, .34, gz), new THREE.Vector3(4.2 - x, .46, gz),
-          new THREE.Vector3(ex - x - 1.2, .8, 3.3), new THREE.Vector3(ex - x, 1.05, 2.95)];
+      if (!sc) continue;
+      /* 两条电缆都按本柜位置重算曲线（local 坐标 = 世界坐标 - 本柜 x） */
+      const rebuild = function (fl, pts) {
+        if (!fl) return;
         const curve = new THREE.CatmullRomCurve3(pts);
         const len = Math.max(1, curve.getLength());
         const seg = Math.max(14, Math.round(len * 4));
-        sc.flow.curve = curve;
-        sc.flow.len = len;
-        sc.flow.tube.geometry.dispose();
-        sc.flow.tube.geometry = new THREE.TubeGeometry(curve, seg, .105, 8, false);
-        if (sc.flow.core) {
-          sc.flow.core.geometry.dispose();
-          sc.flow.core.geometry = new THREE.TubeGeometry(curve, seg, .052, 6, false);
+        fl.curve = curve;
+        fl.len = len;
+        fl.tube.geometry.dispose();
+        fl.tube.geometry = new THREE.TubeGeometry(curve, seg, .105, 8, false);
+        if (fl.core) {
+          fl.core.geometry.dispose();
+          fl.core.geometry = new THREE.TubeGeometry(curve, seg, .052, 6, false);
         }
-        sc.flow.map.repeat.set(Math.max(2, Math.round(len / 4.2)), 1);   // 光纹密度跟着线长走
-      }
+        fl.map.repeat.set(Math.max(2, Math.round(len / 4.2)), 1);   // 光纹密度跟着线长走
+      };
+      /* ① 堆 → 厂房（放电）：柜右侧引出，落进电缆沟，沿沟向东进厂房正面墙 */
+      const gz = 3.72 + i * .06;                       // 沟里两根并排，不叠在一起
+      const ex = 5.9 + i * .2;                         // 进厂房的接入点（墙面左侧，避开门洞）
+      rebuild(sc.flow, [new THREE.Vector3(.55, .3, .95), new THREE.Vector3(.55, .3, 2.35),
+        new THREE.Vector3(1.9, .34, gz), new THREE.Vector3(4.2 - x, .46, gz),
+        new THREE.Vector3(ex - x - 1.2, .8, 3.3), new THREE.Vector3(ex - x, 1.05, 2.95)]);
+      /* ② 汇流柜 → 堆（充电）：从汇流柜顶部桥架出线，斜下到柜前电缆桥架，
+         沿桥架走到本柜左上方再落到柜门左下进线箱（跟贴地的厂房电缆分层，不打架） */
+      const px = PCS_X + PCS_HW + .1;
+      rebuild(sc.pcs, [new THREE.Vector3(px - x, 2.26, PCS_Z - .3),
+        new THREE.Vector3(px - x + .6, 1.5, 1.86 + i * .12),
+        new THREE.Vector3(-1.35, 1.47, 1.5 + i * .12), new THREE.Vector3(-.55, .3, .95)]);
     }
     applyLabelVisibility();
   }
@@ -957,17 +986,25 @@ window.GaoteScene3D = (function () {
       ], chg ? '充电中' : (dis ? '放电中' : '待机'));
     }
 
-    /* 各柜电缆按"该柜自己"的电流定方向与速度；并网线用全站功率 */
+    /* 各柜电缆按"该柜自己"的电流定方向与速度；并网线按并网点电表 */
     for (let i = 0; i < flows.length; i++) {
       const fl = flows[i];
       if (fl.stack >= 0 && fl.stack < MAXN) {
         const d = (fl.stack < stackN) ? stackData(fl.stack) : null;
         const cur = (d && d.cur !== null) ? Number(d.cur) : 0;
-        fl.dir = cur > 0.5 ? 1 : (cur < -0.5 ? -1 : 0);
+        /* 堆 → 厂房：按本堆电流方向；汇流柜 → 堆：充电（电流为负）时由汇流柜流向电池 */
+        fl.dir = fl.pcs
+          ? (cur < -0.5 ? 1 : (cur > 0.5 ? -1 : 0))
+          : (cur > 0.5 ? 1 : (cur < -0.5 ? -1 : 0));
+        fl.flip = !!fl.pcs;
         fl.speed = Math.min(4, Math.abs(cur) / 80);
       } else if (fl.stack === -1) {
-        fl.dir = flow.dir;
-        fl.speed = flow.units;
+        /* 并网线：按并网点电表的功率走（正 = 从电网取电，负 = 反向送电）。
+           原来用 PCS 功率，放电时会看着像往电网倒送，跟"放电送厂房"对不上 */
+        const gp = GaoteService.val('meter-lems-antireflux', 'meter_tot_p');
+        const gv = (gp === null || gp === undefined) ? 0 : Number(gp);
+        fl.dir = gv > 0.5 ? -1 : (gv < -0.5 ? 1 : 0);
+        fl.speed = Math.min(4, Math.abs(gv) / 80);
       }
     }
 
