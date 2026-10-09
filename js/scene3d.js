@@ -12,13 +12,28 @@ window.Scene3D = (function () {
   let flowTex, particles, hoverRing;
   let flowSpeed = 1, intro = 0;
   let labelsVisible = true, activeCardKey = null, hoveredKey = null;
+  let theme = 'night';
+  let groundMat = null, hemiLight = null, sunLight = null, pointLight = null;
+
+  /* 白天 / 夜晚双主题（与高特场景同一套语义：夜色 = 深色科技感，白天 = 浅色） */
+  const THEMES = {
+    night: {
+      bg: 0x04090c, groundFill: '#050d10', line: 'rgba(46,230,200,0.075)',
+      cell: 'rgba(46,230,200,', vignette: 'rgba(4,9,12,', hemiSky: 0xbfe8e0, hemiGround: 0x0a1013,
+      hemiInt: .85, sunInt: .75, pointInt: .5, bloom: .5
+    },
+    day: {
+      bg: 0xe4eff4, groundFill: '#edf3f4', line: 'rgba(64,132,134,0.22)',
+      cell: 'rgba(64,132,134,', vignette: 'rgba(228,239,244,', hemiSky: 0xffffff, hemiGround: 0x7d8a86,
+      hemiInt: .95, sunInt: 1.1, pointInt: .25, bloom: .28
+    }
+  };
 
   const deviceGroups = {};      // key -> Group
   const labelEls = {};          // key -> .tag3d 元素
   const labelWraps = {};        // key -> CSS2D wrapper
   const cardEls = {};           // key -> .card3d 元素
   const picking = [];           // 可点选的设备组
-  const pulses = [];            // 能流脉冲光点
   const scanRings = [];         // 扫描光环
   const blinkers = [];          // 闪烁灯材质 {mat, phase}
   const pulseLamps = [];        // 呼吸灯材质 {mat, phase}
@@ -65,9 +80,10 @@ window.Scene3D = (function () {
   }
 
   /* ---------------- 纹理 ---------------- */
-  function groundTexture() {
+  function groundTexture(t) {
+    const p = THEMES[t || theme] || THEMES.night;
     return tex((g, w, h) => {
-      g.fillStyle = '#050d10'; g.fillRect(0, 0, w, h);
+      g.fillStyle = p.groundFill; g.fillRect(0, 0, w, h);
       const s = 34, dx = Math.sqrt(3) * s, dy = 1.5 * s;
       function hex(cx, cy, r) {
         g.beginPath();
@@ -78,7 +94,7 @@ window.Scene3D = (function () {
         }
         g.closePath();
       }
-      g.strokeStyle = 'rgba(46,230,200,0.075)'; g.lineWidth = 1;
+      g.strokeStyle = p.line; g.lineWidth = 1;
       for (let row = 0; row * dy < h + s; row++) {
         for (let col = 0; col * dx < w + dx; col++) {
           hex(col * dx + (row % 2 ? dx / 2 : 0), row * dy, s - 1.5);
@@ -87,12 +103,12 @@ window.Scene3D = (function () {
       }
       for (let i = 0; i < 46; i++) {
         hex(Math.random() * w, Math.random() * h, s - 2);
-        g.fillStyle = 'rgba(46,230,200,' + (0.02 + Math.random() * 0.05).toFixed(3) + ')';
+        g.fillStyle = p.cell + (0.02 + Math.random() * 0.05).toFixed(3) + ')';
         g.fill();
       }
       const v = g.createRadialGradient(w / 2, h / 2, w * .18, w / 2, h / 2, w * .55);
-      v.addColorStop(0, 'rgba(4,9,12,0)');
-      v.addColorStop(1, 'rgba(4,9,12,.97)');
+      v.addColorStop(0, p.vignette + '0)');
+      v.addColorStop(1, p.vignette + '.97)');
       g.fillStyle = v; g.fillRect(0, 0, w, h);
     }, 1024, 1024);
   }
@@ -309,6 +325,7 @@ window.Scene3D = (function () {
   }
 
   /* ---------------- 能流线缆 ---------------- */
+  /* 只保留"电流在线缆上流动"的光纹，不挂沿线光球 */
   function addCable(pts) {
     const curve = new THREE.CatmullRomCurve3(pts.map(p => new THREE.Vector3(p[0], p[1], p[2])));
     scene.add(new THREE.Mesh(new THREE.TubeGeometry(curve, 40, 0.09, 6), basic(0x123236)));
@@ -320,16 +337,6 @@ window.Scene3D = (function () {
       })
     );
     scene.add(flow);
-    for (let i = 0; i < 2; i++) {
-      const s = glowSprite(0x8cffef, 0.9);
-      s.userData = { curve: curve, off: i / 2 };
-      pulses.push(s); scene.add(s);
-    }
-    [pts[0], pts[pts.length - 1]].forEach(p => {
-      const s = glowSprite(0x55ffd8, 0.55);
-      s.position.set(p[0], p[1] + 0.05, p[2]);
-      scene.add(s);
-    });
   }
 
   /* ---------------- 标签 / 详情卡 ---------------- */
@@ -377,10 +384,8 @@ window.Scene3D = (function () {
   }
   function buildAll() {
     // 地面
-    const ground = new THREE.Mesh(
-      new THREE.PlaneGeometry(300, 300),
-      new THREE.MeshBasicMaterial({ map: groundTexture(), toneMapped: false })
-    );
+    groundMat = new THREE.MeshBasicMaterial({ map: groundTexture(), toneMapped: false });
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(300, 300), groundMat);
     ground.rotation.x = -Math.PI / 2;
     scene.add(ground);
 
@@ -518,7 +523,7 @@ window.Scene3D = (function () {
     mouse = new THREE.Vector2();
 
     scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x04090c);
+    scene.background = new THREE.Color(THEMES.night.bg);
 
     camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 1, 700);
     const dir = new THREE.Vector3(1, 0.85, 1).normalize();
@@ -551,11 +556,12 @@ window.Scene3D = (function () {
     });
 
     // 灯光
-    scene.add(new THREE.HemisphereLight(0xbfe8e0, 0x0a1013, .85));
-    const dl = new THREE.DirectionalLight(0xffffff, .75);
-    dl.position.set(40, 70, 30); scene.add(dl);
-    const pt = new THREE.PointLight(TEAL, .5, 130, 2);
-    pt.position.set(0, 18, 0); scene.add(pt);
+    hemiLight = new THREE.HemisphereLight(0xbfe8e0, 0x0a1013, .85);
+    scene.add(hemiLight);
+    sunLight = new THREE.DirectionalLight(0xffffff, .75);
+    sunLight.position.set(40, 70, 30); scene.add(sunLight);
+    pointLight = new THREE.PointLight(TEAL, .5, 130, 2);
+    pointLight.position.set(0, 18, 0); scene.add(pointLight);
 
     flowTex = makeFlowTexture();
     buildAll();
@@ -564,13 +570,32 @@ window.Scene3D = (function () {
     // 辉光后期
     composer = new THREE.EffectComposer(renderer);
     composer.addPass(new THREE.RenderPass(scene, camera));
-    bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(W, H), 0.5, 0.55, 0.85);
+    bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(W, H), THEMES.night.bloom, 0.55, 0.85);
     composer.addPass(bloomPass);
 
+    applyTheme(theme);
     setFrustum();
     controls.saveState();
     showCard('storage');
     animate();
+  }
+
+  /* ---------------- 白天 / 夜晚主题 ---------------- */
+  function applyTheme(t) {
+    theme = THEMES[t] ? t : 'night';
+    const p = THEMES[theme];
+    if (!scene) return;
+    scene.background = new THREE.Color(p.bg);
+    if (groundMat) {
+      const old = groundMat.map;
+      groundMat.map = groundTexture();
+      groundMat.needsUpdate = true;
+      if (old) old.dispose();
+    }
+    if (hemiLight) { hemiLight.color.setHex(p.hemiSky); hemiLight.groundColor.setHex(p.hemiGround); hemiLight.intensity = p.hemiInt; }
+    if (sunLight) sunLight.intensity = p.sunInt;
+    if (pointLight) pointLight.intensity = p.pointInt;
+    if (bloomPass) bloomPass.strength = p.bloom;
   }
 
   function setFrustum() {
@@ -596,11 +621,6 @@ window.Scene3D = (function () {
     controls.update();
 
     flowTex.offset.x = -(t * 0.35 * flowSpeed) % 1;
-    pulses.forEach(s => {
-      const u = s.userData;
-      const k = (t * 0.14 * flowSpeed + u.off) % 1;
-      s.position.copy(u.curve.getPointAt(k));
-    });
     scanRings.forEach(r => {
       const k = (t * 0.42 + r.userData.phase) % 1;
       r.scale.setScalar(1 + k * 9.5);
@@ -674,6 +694,8 @@ window.Scene3D = (function () {
 
   return {
     init, update, resize, toggleLabels, toggleRotate, resetView,
+    setTheme(t) { applyTheme(t); },
+    getTheme() { return theme; },
     setRotateSync(fn) { syncRotateBtn = fn; }
   };
 })();

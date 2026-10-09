@@ -209,6 +209,10 @@ button{font-family:inherit;cursor:pointer;background:none;border:none;color:inhe
 .tag3d span{display:flex;justify-content:space-between;gap:14px;font-size:11px;color:var(--dim);line-height:1.65}
 .tag3d span i{font-style:normal;font-family:var(--num);color:#d9fff6}
 .tag3d.hot{border-color:var(--teal);box-shadow:0 0 16px rgba(46,230,200,.35)}
+/* 高特场景浮标：名称 / 数值 / 状态三行；数值用等宽数字（此前 <i><em> 没吃到样式，
+   数字是浏览器默认斜体、状态还跟在数值后面挤在同一行） */
+.tag3d-gt>i{display:block;font-style:normal;font-family:var(--num);font-size:12.5px;color:#d9fff6;letter-spacing:.4px;margin-top:1px}
+.tag3d-gt>em{display:block;font-style:normal;font-size:10.5px;color:var(--dim);letter-spacing:.4px;margin-top:1px}
 
 .card3d{
   position:relative;transform:translateY(-55%);width:228px;pointer-events:auto;
@@ -959,3 +963,213 @@ button{font-family:inherit;cursor:pointer;background:none;border:none;color:inhe
 .pt-dmain span{font-size:11px;color:var(--dim);font-family:var(--num)}
 .pt-dbadge{font-size:11px;color:var(--teal);border:1px solid var(--teal-soft);border-radius:12px;padding:3px 10px;white-space:nowrap}
 .pt-dbadge.off{color:#ff8b70;border-color:rgba(255,110,80,.4)}
+
+/* ============================================================
+   白天主题（html[data-theme="day"]）
+   —— 页面底色 / 面板 / 浮标 / 文字换成浅色系，和 3D 场景的白天主题配套；
+      只覆盖颜色相关属性，布局与动效保持原样
+   ============================================================ */
+html[data-theme="day"]{
+  --teal:#0fa98c;
+  --teal-soft:rgba(15,150,130,.32);
+  --amber:#c07a00;
+  --text:#1d3b41;
+  --dim:#5c7c80;
+}
+html[data-theme="day"] body{background:#eef4f6;color:#1d3b41}
+html[data-theme="day"] ::selection{background:rgba(15,150,130,.25)}
+
+/* ---- 启动加载 ---- */
+html[data-theme="day"] #bootLoading{background:#eef4f6}
+html[data-theme="day"] .bl-name{color:#0e3a38}
+html[data-theme="day"] .bl-ring{border-color:rgba(15,150,130,.2)}
+
+/* ---- 顶栏 ---- */
+html[data-theme="day"] #topbar{
+  background:linear-gradient(180deg,#f8fbfc 0%,#e9f2f4 100%);
+  border-bottom-color:rgba(15,150,130,.3);
+}
+html[data-theme="day"] .site-title h1{background:linear-gradient(90deg,#0d3b3a,#128a76);-webkit-background-clip:text;background-clip:text;color:transparent}
+html[data-theme="day"] .tab{color:#4a6f6f;background:rgba(15,150,130,.06);border-color:rgba(15,150,130,.2)}
+html[data-theme="day"] .tab:hover{color:#0d8a72}
+html[data-theme="day"] .clock b{color:#0f3a3a}
+html[data-theme="day"] .icon-btn{border-color:rgba(15,150,130,.35);color:#3c6464}
+html[data-theme="day"] .icon-btn:hover{color:#0d8a72;box-shadow:0 0 10px rgba(15,150,130,.2)}
+
+/* ---- 主体 / 场景上的浮层 ---- */
+html[data-theme="day"] #left{background:#e2eef4}
+html[data-theme="day"] .scene-title{color:#0e3a38}
+html[data-theme="day"] .ghost-btn{background:rgba(255,255,255,.82);border-color:rgba(15,150,130,.3);color:#3c6464}
+html[data-theme="day"] .ghost-btn:hover,
+html[data-theme="day"] .ghost-btn.active{color:#0d8a72;border-color:rgba(15,150,130,.6);box-shadow:0 0 8px rgba(15,150,130,.18)}
+html[data-theme="day"] .alarm{
+  border-color:rgba(15,150,130,.35);border-left-color:var(--teal);color:#0b7a64;
+  background:linear-gradient(90deg,rgba(15,150,130,.13),rgba(15,150,130,.03));
+}
+html[data-theme="day"] .alarm.bad{
+  border-color:rgba(214,86,60,.5);border-left-color:#d6563c;color:#a83a22;
+  background:linear-gradient(90deg,rgba(214,86,60,.14),rgba(214,86,60,.03));
+}
+html[data-theme="day"] .scene-tip{color:rgba(46,78,80,.95)}
+
+/* ---- 右侧数据面板 / 通用面板 ---- */
+html[data-theme="day"] #right,
+html[data-theme="day"] .panel,
+html[data-theme="day"] #logPanel,
+html[data-theme="day"] #devPanel,
+html[data-theme="day"] #mqttPanel,
+html[data-theme="day"] .dm-box{
+  background:linear-gradient(165deg,rgba(255,255,255,.97),rgba(238,246,247,.98));
+  border-color:rgba(15,150,130,.26);
+  box-shadow:0 10px 28px rgba(24,66,66,.12);
+}
+html[data-theme="day"] .panel-title{color:#0e3a38}
+html[data-theme="day"] .kpi{border-color:rgba(15,150,130,.2);background:linear-gradient(160deg,rgba(15,150,130,.07),rgba(15,150,130,.02))}
+html[data-theme="day"] .kpi-num{color:#0d3030}
+html[data-theme="day"] .ring-wrap b{color:#0d3030}
+html[data-theme="day"] .panel-title::before{background:linear-gradient(180deg,var(--teal),rgba(15,150,130,.15));box-shadow:0 0 6px rgba(15,150,130,.5)}
+
+/* ---- 3D 浮标 / 详情卡片 ---- */
+html[data-theme="day"] .tag3d{
+  background:linear-gradient(160deg,rgba(255,255,255,.95),rgba(238,246,247,.93));
+  border-color:rgba(15,150,130,.5);
+  box-shadow:0 4px 16px rgba(24,66,66,.16),0 0 10px rgba(15,150,130,.1);
+}
+html[data-theme="day"] .tag3d::after{background:#fbfeff;border-color:rgba(15,150,130,.5)}
+html[data-theme="day"] .tag3d b{color:#0d8a72}
+html[data-theme="day"] .tag3d span i{color:#123c3c}
+html[data-theme="day"] .tag3d-gt>i{color:#123c3c}
+html[data-theme="day"] .card3d{
+  background:linear-gradient(165deg,rgba(255,255,255,.97),rgba(236,245,246,.97));
+  border-color:rgba(15,150,130,.55);
+  box-shadow:0 10px 30px rgba(24,66,66,.2),0 0 18px rgba(15,150,130,.12);
+}
+html[data-theme="day"] .card3d::after{background:#fbfeff;border-color:rgba(15,150,130,.55)}
+html[data-theme="day"] .card3d .c-head{background:linear-gradient(90deg,rgba(15,150,130,.18),rgba(15,150,130,.04));border-bottom-color:rgba(15,150,130,.35)}
+html[data-theme="day"] .card3d .c-head span{color:#0d7a66}
+html[data-theme="day"] .card3d .c-row i{color:#123c3c}
+html[data-theme="day"] .card3d .c-status{color:#0b7a64;background:rgba(15,150,130,.1);border-color:rgba(15,150,130,.45)}
+
+/* ---- Toast / 数据源状态 ---- */
+html[data-theme="day"] #toast{color:#0e3a38;background:rgba(255,255,255,.97);border-color:rgba(15,150,130,.5);box-shadow:0 0 18px rgba(15,150,130,.2)}
+html[data-theme="day"] .ds-chip{background:rgba(255,255,255,.7);border-color:rgba(15,150,130,.3)}
+html[data-theme="day"] .ds-chip.connected{color:#0b7a64}
+html[data-theme="day"] .ds-chip.disconnected{color:#7d9a99}
+
+/* ---- 面板里的输入框 / 日志 / 表格 ---- */
+html[data-theme="day"] .mq-row input,
+html[data-theme="day"] .st-field input,
+html[data-theme="day"] .st-seg input,
+html[data-theme="day"] .gs-field input,
+html[data-theme="day"] .gs-field select,
+html[data-theme="day"] .dt-tf input{
+  background:#fff;color:#123c3c;border-color:rgba(15,150,130,.3);
+}
+html[data-theme="day"] .mq-row input:focus,
+html[data-theme="day"] .st-field input:focus,
+html[data-theme="day"] .gs-field input:focus,
+html[data-theme="day"] .gs-field select:focus{border-color:var(--teal);box-shadow:0 0 8px rgba(15,150,130,.2)}
+html[data-theme="day"] .mq-head,
+html[data-theme="day"] .log-head,
+html[data-theme="day"] .dm-head,
+html[data-theme="day"] .tv-bar,
+html[data-theme="day"] .ov-bar{
+  background:linear-gradient(90deg,rgba(15,150,130,.16),rgba(15,150,130,.03));
+  border-bottom-color:rgba(15,150,130,.3);
+}
+html[data-theme="day"] .mq-head,
+html[data-theme="day"] .log-head,
+html[data-theme="day"] .dm-head,
+html[data-theme="day"] .ov-bar .tv-title,
+html[data-theme="day"] .tv-title{color:#0e3a38}
+html[data-theme="day"] .mq-hint,
+html[data-theme="day"] .mq-sec{color:#3f6a68}
+html[data-theme="day"] .mq-hint{background:rgba(15,150,130,.05);border-color:rgba(15,150,130,.24)}
+html[data-theme="day"] .mq-foot{color:#7a6a44;border-top-color:rgba(15,150,130,.2)}
+html[data-theme="day"] .lg-head{color:#2f6660}
+html[data-theme="day"] .lg-text{color:#33565a;background:#f7fbfb;border-color:rgba(15,150,130,.15)}
+html[data-theme="day"] .dev-sn{color:#123c3c}
+html[data-theme="day"] .dev-row{background:rgba(255,255,255,.6);border-color:rgba(15,150,130,.22)}
+html[data-theme="day"] .dev-row:hover{background:rgba(15,150,130,.08)}
+html[data-theme="day"] .dm-table th{background:#f2f8f9}
+html[data-theme="day"] .dm-table td{color:#1d3b41}
+
+/* ---- 二级视图（总览 / 策略 / 健康 / 详情 / 设备页） ---- */
+html[data-theme="day"] #overviewView,
+html[data-theme="day"] #gaoteView,
+html[data-theme="day"] #tabView,
+html[data-theme="day"] #detailView,
+html[data-theme="day"] #deviceView{
+  background:linear-gradient(165deg,rgba(255,255,255,.98),rgba(238,246,247,.99));
+  border-color:rgba(15,150,130,.3);
+  box-shadow:0 14px 36px rgba(24,66,66,.14);
+}
+html[data-theme="day"] .ov-sec{border-color:rgba(15,150,130,.2);background:linear-gradient(165deg,rgba(15,150,130,.06),rgba(15,150,130,.015))}
+html[data-theme="day"] .ov-sec-head b,
+html[data-theme="day"] .gv3-shead b,
+html[data-theme="day"] .gv3-ahead,
+html[data-theme="day"] .gv3-tlabel{color:#0e3a38}
+html[data-theme="day"] .gv3-kval,
+html[data-theme="day"] .gv3-tval,
+html[data-theme="day"] .gv3-ring b,
+html[data-theme="day"] .gv3-socnum,
+html[data-theme="day"] .gv3-kvrow b,
+html[data-theme="day"] .gv3-mbig b,
+html[data-theme="day"] .gv3-mitem b,
+html[data-theme="day"] .gv3-atemp b,
+html[data-theme="day"] .gv3-amode,
+html[data-theme="day"] .gv3-badge b,
+html[data-theme="day"] .gv-kv .v,
+html[data-theme="day"] .hc-val,
+html[data-theme="day"] .sc-val,
+html[data-theme="day"] .bms-ring b,
+html[data-theme="day"] .tl-node b,
+html[data-theme="day"] .dc-tile b,
+html[data-theme="day"] .m-big b,
+html[data-theme="day"] .pf-num,
+html[data-theme="day"] .ems-soc b,
+html[data-theme="day"] .phase-table td,
+html[data-theme="day"] .dt-kpi b,
+html[data-theme="day"] .dt-ring b,
+html[data-theme="day"] .dt-kv b,
+html[data-theme="day"] .dt-ptitle b,
+html[data-theme="day"] .st-gtitle,
+html[data-theme="day"] .cc-title,
+html[data-theme="day"] .csj-item b{color:#0d3030}
+html[data-theme="day"] .phase-table th,
+html[data-theme="day"] .phase-table td{border-color:rgba(15,150,130,.18)}
+html[data-theme="day"] .phase-table thead th{color:#0d8a72}
+html[data-theme="day"] .bms-state b,
+html[data-theme="day"] .pcs-state-val.run,
+html[data-theme="day"] .dt-ring.on b,
+html[data-theme="day"] .dt-ok,
+html[data-theme="day"] .st-rsp.ok{color:#0b7a64}
+html[data-theme="day"] .cc-card{background:rgba(255,255,255,.6);border-color:rgba(15,150,130,.2)}
+html[data-theme="day"] .st-group{border-color:rgba(15,150,130,.2);background:linear-gradient(160deg,rgba(15,150,130,.05),rgba(15,150,130,.012))}
+html[data-theme="day"] .dt-panel,
+html[data-theme="day"] .gv3-stack,
+html[data-theme="day"] .gv3-kpi,
+html[data-theme="day"] .gv3-tile,
+html[data-theme="day"] .hc-card,
+html[data-theme="day"] .dt-ring,
+html[data-theme="day"] .gv3-auxcard,
+html[data-theme="day"] .gv3-mitem{border-color:rgba(15,150,130,.2)}
+html[data-theme="day"] .dm-table tr:hover td{background:rgba(15,150,130,.06)}
+html[data-theme="day"] #devModal{background:rgba(210,226,230,.72)}
+
+/* ---- 站点目录（进门页） ---- */
+html[data-theme="day"] #portal{
+  background:radial-gradient(1200px 600px at 18% -10%,rgba(15,150,130,.12),transparent 60%),
+             linear-gradient(180deg,#f4fafb,#e6f0f2 55%,#edf4f5);
+}
+html[data-theme="day"] .pt-head{border-bottom-color:rgba(15,150,130,.2)}
+html[data-theme="day"] .pt-title h1{color:#0e3a38}
+html[data-theme="day"] .pt-card{background:rgba(255,255,255,.78);border-color:rgba(15,150,130,.25)}
+html[data-theme="day"] .pt-card:hover{background:#fff;box-shadow:0 10px 22px rgba(24,66,66,.14)}
+html[data-theme="day"] .pt-chead b,
+html[data-theme="day"] .pt-dmain b{color:#0e3a38}
+html[data-theme="day"] .pt-crow span{color:#5c8a86}
+html[data-theme="day"] .pt-empty{border-color:rgba(15,150,130,.28)}
+html[data-theme="day"] .pt-foot{border-top-color:rgba(15,150,130,.18)}
+html[data-theme="day"] .pt-devrow{background:rgba(255,255,255,.7);border-color:rgba(15,150,130,.22)}
+html[data-theme="day"] .pt-devrow.on{background:rgba(15,150,130,.1)}

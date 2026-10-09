@@ -6,7 +6,7 @@
 <title>力储未来能源综合管理系统</title>
 <link rel="icon" type="image/png" sizes="64x64" href="libs/logo-64.png?v=20260923a"/>
 <link rel="apple-touch-icon" href="libs/logo-180.png?v=20260923a"/>
-<link rel="stylesheet" href="css/style.css?v=20260923a"/>
+<link rel="stylesheet" href="css/style.css?v=20261009a"/>
 <script>
 /* 加载期错误收集（便于排查依赖/脚本问题） */
 window.__loadErrs = [];
@@ -36,6 +36,7 @@ window.addEventListener('error', function (e) {
       </div>
       <div class="pt-head-r">
         <span class="pt-mqtt" id="ptMqtt">MQTT 未连接</span>
+        <button class="ghost-btn" data-theme-toggle title="切换白天 / 夜晚主题">夜晚</button>
         <button class="ghost-btn" id="ptEnterLast">进入上次</button>
       </div>
     </div>
@@ -86,6 +87,7 @@ window.addEventListener('error', function (e) {
       <button class="ds-chip dev hidden" id="devChip" title="设备列表（点击切换查看的设备）">
         <span id="devChipText">设备</span>
       </button>
+      <button class="ghost-btn" data-theme-toggle title="切换白天 / 夜晚主题">夜晚</button>
       <div class="clock"><b id="clockTime">--:--:--</b><span id="clockDate"></span></div>
       <button class="icon-btn" id="btnPortal" title="返回站点目录">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
@@ -108,6 +110,7 @@ window.addEventListener('error', function (e) {
           <div class="station-chip">电站名称：<b id="stationName">--</b></div>
         </div>
         <div class="sh-right">
+          <button class="ghost-btn" data-theme-toggle title="切换白天 / 夜晚主题">夜晚</button>
           <button class="ghost-btn" id="btnMqttLog" title="MQTT 收发报文日志">报文</button>
           <button class="ghost-btn active" id="btnLabels" title="显示 / 隐藏设备标签">标签</button>
           <button class="ghost-btn" id="btnRotate" title="自动旋转开/关">旋转</button>
@@ -339,13 +342,13 @@ window.addEventListener('error', function (e) {
 <script src="js/gaote.js?v=20261006a"></script>
 <script src="js/gaote-view.js?v=20261006a"></script>
 <script src="js/gaote-detail.js?v=20260922z"></script>
-<script src="js/gaote-scene3d.js?v=20260923d"></script>
+<script src="js/gaote-scene3d.js?v=20261009a"></script>
 <script src="js/gaote-strategy.js?v=20260917d"></script>
 <script src="js/overview.js?v=20260919b"></script>
 <script src="js/mqtt-ui.js?v=20261006a"></script>
 <script src="js/portal.js?v=20261006a"></script>
-<script src="js/scene3d.js?v=20260917d"></script>
-<script src="js/charts.js?v=20260917d"></script>
-<script src="js/main.js?v=20260921b"></script>
+<script src="js/scene3d.js?v=20261009a"></script>
+<script src="js/charts.js?v=20261009a"></script>
+<script src="js/main.js?v=20261009a"></script>
 </body>
 </html>

@@ -87,6 +87,23 @@
   /* ---------- 应用状态 ---------- */
   const WEEK = ['日', '一', '二', '三', '四', '五', '六'];
 
+  /* ---------- 白天 / 夜晚双主题：页面（CSS 变量）+ 3D 场景一起切 ---------- */
+  const THEME_KEY = 'dianzhan.theme';
+  let theme = 'night';
+  try { theme = localStorage.getItem(THEME_KEY) === 'day' ? 'day' : 'night'; } catch (_) {}
+  function applyTheme(t, save) {
+    theme = t === 'day' ? 'day' : 'night';
+    document.documentElement.setAttribute('data-theme', theme);
+    if (save) { try { localStorage.setItem(THEME_KEY, theme); } catch (_) {} }
+    document.querySelectorAll('[data-theme-toggle]').forEach(function (b) {
+      b.textContent = theme === 'day' ? '白天' : '夜晚';
+    });
+    if (window.Scene3D && Scene3D.setTheme) Scene3D.setTheme(theme);
+    if (window.GaoteScene3D && GaoteScene3D.setTheme) GaoteScene3D.setTheme(theme);
+    if (window.Charts && Charts.setTheme) Charts.setTheme(theme);
+  }
+  function toggleTheme() { applyTheme(theme === 'day' ? 'night' : 'day', true); }
+
   function startClock() {
     const tick = () => {
       const d = new Date();
@@ -151,6 +168,10 @@
     });
     S3D().setRotateSync(on => byId('btnRotate').classList.toggle('active', on));
     byId('btnReset').addEventListener('click', () => { S3D().resetView(); toast('视角已重置'); });
+    // 白天 / 夜晚主题
+    document.querySelectorAll('[data-theme-toggle]').forEach(function (b) {
+      b.addEventListener('click', toggleTheme);
+    });
     // 全屏
     byId('btnFullscreen').addEventListener('click', () => {
       if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => {});
@@ -171,6 +192,7 @@
     byId('sceneTitle').textContent = APP_CONFIG.stationName + '运行监测图';
 
     try { Charts.init(); } catch (e) { console.error(e); }
+    applyTheme(theme, false);            // 恢复上次选择的主题（页面 + 3D 场景）
     try { S3D().init(byId('scene3d')); } catch (e) {
       console.error(e);
       toast('3D 场景初始化失败（WebGL 不可用？），图表功能不受影响');
