@@ -532,7 +532,7 @@ window.GaoteScene3D = (function () {
 
     /* 三层横担（双回路：每层左右各一挑），端部下挂绝缘子串，导线沿线路方向穿越 */
     const ARMS = [[5.9, 2.7], [6.9, 2.4], [7.9, 2.1]];
-    ARMS.forEach(function (a) {
+    ARMS.forEach(function (a, ai) {
       const y = a[0], len = a[1], w = halfAt(y);
       [-1, 1].forEach(function (s) {
         const inn = new THREE.Vector3(s * w, y, 0);
@@ -547,10 +547,6 @@ window.GaoteScene3D = (function () {
           disc.castShadow = true;
           ins.add(disc);
         }
-        const clamp = new THREE.Mesh(new THREE.BoxGeometry(.16, .12, .16), insMat);   // 悬垂线夹
-        clamp.position.set(0, -.52, 0);
-        clamp.castShadow = true;
-        ins.add(clamp);
         g.add(ins);
         const wy = tip.y - .55, wx = tip.x;                                           // 导线（带垂弧，穿过塔位）
         const pts = [];
@@ -560,7 +556,9 @@ window.GaoteScene3D = (function () {
           pts.push(new THREE.Vector3(wx, wy - sag, z));
         }
         g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), condMat));
-        [-11, -6.5, 6.5, 11].forEach(function (zz) {                                  // 防振锤（吊在导线下方）
+        /* 防振锤只在中层横担两侧各挂一个示意（挂满一排反而假） */
+        if (ai === 1) {
+          const zz = 6.5;
           const sag = Math.sin(Math.min(1, Math.abs(zz) / 17) * Math.PI / 2) * .85;
           const dm = new THREE.Group();
           dm.position.set(wx, wy - sag, zz);
@@ -572,7 +570,7 @@ window.GaoteScene3D = (function () {
             dm.add(wgt);
           });
           g.add(dm);
-        });
+        }
       });
     });
     /* 塔顶地线支架 + 地线 */
@@ -679,11 +677,11 @@ window.GaoteScene3D = (function () {
     g.add(whirly);
     g.add(box(.62, .06, .62, M.bridge, -2.5, H + .84, .5));
 
-    /* 进线：PCS 柜右侧 → 厂房（放电时电从这里进厂房）。
-       起点必须落在 PCS 柜身上，否则线头悬在半空，看着就像"电线断了" */
+    /* 进线：两堆电池电缆汇到汇流柜右侧后，一路送到厂房（放电时电从这里进厂房）。
+       起点就落在两堆电缆的汇合点，否则线头悬在半空，看着像"电线断了" */
     const cable = [
-      new THREE.Vector3(PCS_X + PCS_HW - fx, .5, PCS_Z + .4 - fz),
-      new THREE.Vector3(-1.0 - fx, .45, 4.4 - fz),
+      new THREE.Vector3(PCS_X + PCS_HW + .15 - fx, .95, PCS_Z - fz),
+      new THREE.Vector3(-1.0 - fx, .8, 3.9 - fz),
       new THREE.Vector3(-W / 2, 1.0, .2)
     ];
     addFlow(cable, g, -3);
