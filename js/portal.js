@@ -5,7 +5,8 @@
  *   目录分组：莒南站 / 洙边卫生院站 / 其他电站（自动发现，不在上面的都归这里）
  *
  *   配置：STATIONS 里的 sn 填现场设备号；填了才显示"在线/离线"，
- *         留空表示该站还没接入（例如洙边卫生院站的光伏还没授权完成）。
+ *         留空表示该站还没接入。kind:'solar' 的是光伏站（阳光电源
+ *         iSolarCloud 接入服务，走 HTTP 接口，不连 MQTT）。
  * ============================================================ */
 window.PortalUI = (function () {
   'use strict';
@@ -21,8 +22,8 @@ window.PortalUI = (function () {
       tag: '储能 · 高特 CCU', note: '液冷储能 125kW / 261kWh'
     },
     {
-      group: '洙边卫生院站', name: '洙边卫生院站', sn: '', psn: '',
-      tag: '光伏 · 阳光电源', note: 'iSolarCloud，待完成授权接入'
+      kind: 'solar', group: '洙边卫生院站', name: '洙边卫生院站', sn: '', psn: '',
+      tag: '光伏 · 阳光电源', note: '分布式光伏 110.16 kWp · iSolarCloud 已接入'
     }
   ];
   const OTHER_GROUP = '其他电站';
@@ -54,6 +55,7 @@ window.PortalUI = (function () {
   /* ---------------- 进入某个站点/设备 ---------------- */
   function enter(opt) {
     /* opt = { sn, psn, name, protocol } */
+    if (window.SolarUI) SolarUI.hide();                 /* 从光伏站切回储能站视图 */
     const c = cfgOf();
     if (window.MqttUI && MqttUI.selectStation) {
       MqttUI.selectStation({
@@ -66,33 +68,47 @@ window.PortalUI = (function () {
     closePortal();
   }
 
+  /* 光伏站（阳光电源 iSolarCloud）：不连 MQTT，直接进光伏监控页 */
+  function enterSolar(st) {
+    try { localStorage.setItem(LS_KEY, JSON.stringify({ name: st.name, sn: '', at: Date.now() })); } catch (_) {}
+    const p = byId('portal');
+    if (p) p.classList.add('hidden');
+    if (window.SolarUI) SolarUI.open();
+  }
+
   /* ---------------- 目录页 ---------------- */
   function card(st) {
+    const solar = st.kind === 'solar';
     const dev = st.sn ? findDev(st.sn) : null;
     const online = !!(dev && dev.online);
-    const state = !st.sn ? 'off' : (online ? 'on' : (dev ? 'off' : 'na'));
-    const stateText = !st.sn ? '未接入' : (online ? '在线' : (dev ? '离线' : '未上报'));
+    const state = solar ? 'on' : (!st.sn ? 'off' : (online ? 'on' : (dev ? 'off' : 'na')));
+    const stateText = solar ? '已接入' : (!st.sn ? '未接入' : (online ? '在线' : (dev ? '离线' : '未上报')));
 
     const c = el('div', 'pt-card pt-' + state);
     const head = el('div', 'pt-chead');
     head.appendChild(el('b', '', st.name));
     head.appendChild(el('span', 'pt-tag', st.tag || ''));
     c.appendChild(head);
-    c.appendChild(el('div', 'pt-crow', '<span>设备号</span>' + (st.sn || '—')));
+    c.appendChild(el('div', 'pt-crow', '<span>' + (solar ? '电站' : '设备号') + '</span>' + (solar ? '洙边卫生院 · ps_id 2355743' : (st.sn || '—'))));
     if (st.note) c.appendChild(el('div', 'pt-crow', '<span>说明</span>' + st.note));
     const stat = el('div', 'pt-cstat');
     stat.innerHTML = '<i class="pt-dot ' + state + '"></i>' + stateText
-      + (dev ? '　报文 ' + dev.msgs + ' 条　最后上报 ' + fmtTime(dev.lastSeen) : '');
+      + (solar ? '　数据源 阳光云接入服务（5 分钟一更）'
+        : (dev ? '　报文 ' + dev.msgs + ' 条　最后上报 ' + fmtTime(dev.lastSeen) : ''));
     c.appendChild(stat);
-    const btn = el('button', 'mq-btn primary pt-enter', st.sn ? '进入监控' : '未接入');
-    btn.disabled = !st.sn;
+    const btn = el('button', 'mq-btn primary pt-enter', (solar || st.sn) ? '进入监控' : '未接入');
+    btn.disabled = !solar && !st.sn;
     btn.addEventListener('click', function (e) {
       e.stopPropagation();
+      if (solar) { enterSolar(st); return; }
       if (!st.sn) return;
       enter({ sn: st.sn, psn: st.psn, name: st.name });
     });
     c.appendChild(btn);
-    if (st.sn) c.addEventListener('click', function () { enter({ sn: st.sn, psn: st.psn, name: st.name }); });
+    c.addEventListener('click', function () {
+      if (solar) { enterSolar(st); return; }
+      if (st.sn) enter({ sn: st.sn, psn: st.psn, name: st.name });
+    });
     return c;
   }
 
@@ -208,6 +224,7 @@ window.PortalUI = (function () {
     openMonitor();
   }
   function openMonitor() {
+    if (window.SolarUI) SolarUI.hide();
     const dev = byId('deviceView');
     if (dev) dev.classList.add('hidden');
     if (window.MqttUI && MqttUI.openTab) MqttUI.openTab('monitor');
@@ -235,7 +252,10 @@ window.PortalUI = (function () {
     const b4 = byId('ptEnterLast');
     if (b4) b4.addEventListener('click', function () {
       const sel = savedSel();
-      if (sel && sel.sn) enter({ sn: sel.sn, name: sel.name });
+      if (!sel || !sel.name) return;
+      const st = STATIONS.filter(function (s) { return s.name === sel.name && s.kind === 'solar'; })[0];
+      if (st) { enterSolar(st); return; }
+      if (sel.sn) enter({ sn: sel.sn, name: sel.name });
     });
     openPortal();                       /* 打开网站先看目录 */
     setInterval(function () { if (!byId('portal').classList.contains('hidden')) renderPortal(); }, 3000);

@@ -6,7 +6,7 @@
 <title>力储未来能源综合管理系统</title>
 <link rel="icon" type="image/png" sizes="64x64" href="libs/logo-64.png?v=20260923a"/>
 <link rel="apple-touch-icon" href="libs/logo-180.png?v=20260923a"/>
-<link rel="stylesheet" href="css/style.css?v=20261009a"/>
+<link rel="stylesheet" href="css/style.css?v=20261010b"/>
 <script>
 /* 加载期错误收集（便于排查依赖/脚本问题） */
 window.__loadErrs = [];
@@ -284,6 +284,48 @@ window.addEventListener('error', function (e) {
   <div class="ov-body"><div id="detailBody" class="dt-body"></div></div>
 </section>
 
+<!-- ===== 洙边卫生院站（分布式光伏 · 阳光电源 iSolarCloud） ===== -->
+<section id="solarView" class="hidden">
+  <div class="ov-bar">
+    <div class="tv-title">洙边卫生院站 <em>· 分布式光伏 · 阳光电源 iSolarCloud</em></div>
+    <div class="ov-bar-r">
+      <span class="ov-src" id="slSrc">正在读取…</span>
+      <button class="mq-btn" id="slRefresh">刷新</button>
+      <button class="mq-btn" id="slBack">返回目录</button>
+    </div>
+  </div>
+  <div class="ov-body">
+    <div class="sl-kpis" id="slKpis"></div>
+    <div class="sl-main">
+      <div class="cc-card sl-trend">
+        <div class="cc-title">发电趋势
+          <em id="slTrendMeta">--</em>
+          <span class="sl-ranges" id="slRanges">
+            <button data-range="today" class="on">今日</button>
+            <button data-range="yesterday">昨日</button>
+            <button data-range="days3">近三日</button>
+          </span>
+        </div>
+        <div class="cc-chart" id="slTrendChart"></div>
+      </div>
+      <div class="sl-side">
+        <div class="cc-card">
+          <div class="cc-title">设备 <em id="slDevMeta">--</em></div>
+          <div class="sl-devs" id="slDevs"></div>
+        </div>
+        <div class="cc-card">
+          <div class="cc-title">减排贡献 <em>累计</em></div>
+          <div class="sl-green" id="slGreen"></div>
+        </div>
+        <div class="cc-card">
+          <div class="cc-title">电站信息</div>
+          <div class="sl-info" id="slInfo"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- ===== 设备列表页（自动发现，原侧边弹窗改成整页） ===== -->
 <section id="deviceView" class="hidden">
   <div class="ov-bar">
@@ -346,7 +388,8 @@ window.addEventListener('error', function (e) {
 <script src="js/gaote-strategy.js?v=20260917d"></script>
 <script src="js/overview.js?v=20260919b"></script>
 <script src="js/mqtt-ui.js?v=20261006a"></script>
-<script src="js/portal.js?v=20261006a"></script>
+<script src="js/portal.js?v=20261010a"></script>
+<script src="js/solar.js?v=20261010h"></script>
 <script src="js/scene3d.js?v=20261009a"></script>
 <script src="js/charts.js?v=20261009a"></script>
 <script src="js/main.js?v=20261009a"></script>

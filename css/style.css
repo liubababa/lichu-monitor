@@ -1099,6 +1099,7 @@ html[data-theme="day"] #overviewView,
 html[data-theme="day"] #gaoteView,
 html[data-theme="day"] #tabView,
 html[data-theme="day"] #detailView,
+html[data-theme="day"] #solarView,
 html[data-theme="day"] #deviceView{
   background:linear-gradient(165deg,rgba(255,255,255,.98),rgba(238,246,247,.99));
   border-color:rgba(15,150,130,.3);
@@ -1295,3 +1296,69 @@ html[data-theme="day"] .dt-kpi.money b,
 html[data-theme="day"] .dt-kv.money b,
 html[data-theme="day"] .st-src,
 html[data-theme="day"] .gs-warn{color:#8a5b00}
+
+/* ============================================================
+   洙边卫生院站（分布式光伏）：KPI + 趋势 + 设备 / 减排 / 电站信息
+   ============================================================ */
+#solarView{
+  position:fixed;left:12px;right:12px;top:74px;bottom:12px;z-index:60;display:flex;flex-direction:column;
+  background:linear-gradient(165deg,rgba(8,23,26,.985),rgba(4,11,13,.99));
+  border:1px solid rgba(46,230,200,.34);box-shadow:0 16px 46px rgba(0,0,0,.66)}
+.sl-kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;margin-bottom:12px}
+@media (max-width:1500px){.sl-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media (max-width:820px){.sl-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.sl-kpi{border:1px solid rgba(46,230,200,.18);background:rgba(4,12,14,.6);padding:10px 12px 9px;min-width:0}
+.sl-kpi.hi{border-color:rgba(255,176,32,.35);background:linear-gradient(180deg,rgba(255,176,32,.08),rgba(4,12,14,.6))}
+.sl-kv{display:flex;align-items:baseline;gap:4px}
+.sl-kv b{font-family:var(--num);font-size:26px;line-height:1.15;color:#eafaf6;letter-spacing:.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sl-kpi.hi .sl-kv b{color:var(--amber)}
+.sl-kv u{font-style:normal;text-decoration:none;font-size:11px;color:var(--dim)}
+.sl-kl{font-size:12px;color:#9fdcd2;margin-top:3px}
+.sl-ks{font-size:11px;color:var(--dim);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sl-ks i{font-style:normal;color:var(--teal);border-bottom:1px dashed rgba(46,230,200,.5);cursor:pointer}
+.sl-main{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:12px}
+@media (max-width:1100px){.sl-main{grid-template-columns:minmax(0,1fr)}}
+.sl-trend .cc-chart{height:330px}
+.sl-side{display:flex;flex-direction:column;gap:12px;min-width:0}
+.sl-ranges{display:inline-flex;gap:4px;margin-left:8px}
+.sl-ranges button{font:inherit;font-size:11px;color:var(--dim);background:transparent;border:1px solid rgba(46,230,200,.22);padding:2px 9px;cursor:pointer}
+.sl-ranges button:hover{color:var(--text);border-color:rgba(46,230,200,.5)}
+.sl-ranges button.on{color:#04120f;background:var(--teal);border-color:var(--teal);font-weight:600}
+.sl-devs{display:flex;flex-direction:column;gap:7px}
+.sl-dev{display:flex;align-items:center;justify-content:space-between;gap:8px;border:1px solid rgba(46,230,200,.14);background:rgba(4,12,14,.45);padding:7px 9px}
+.sl-devmain{min-width:0}
+.sl-devmain b{display:block;font-size:12.5px;color:#dff7f1}
+.sl-devmain span{display:block;font-size:10.5px;color:var(--dim);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sl-badge{font-style:normal;font-size:10.5px;padding:2px 8px;border:1px solid rgba(46,230,200,.35);color:var(--teal);flex:none}
+.sl-badge.warn{border-color:rgba(255,176,32,.5);color:var(--amber)}
+.sl-green{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.sl-green-row{text-align:center;border:1px solid rgba(46,230,200,.14);background:rgba(4,12,14,.45);padding:8px 4px}
+.sl-green-row b{font-family:var(--num);font-size:19px;color:#3df0a0}
+.sl-green-row u{font-style:normal;text-decoration:none;font-size:10px;color:var(--dim);margin-left:3px}
+.sl-green-row span{display:block;font-size:10.5px;color:var(--dim);margin-top:3px}
+.sl-info{display:flex;flex-direction:column}
+.sl-row{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;font-size:11.5px;padding:4px 0;border-bottom:1px dashed rgba(46,230,200,.1)}
+.sl-row:last-child{border-bottom:0}
+.sl-row span{color:var(--dim);flex:none}
+.sl-row b{font-weight:500;color:#dff7f1;text-align:right;word-break:break-all}
+.sl-empty{font-size:12px;color:var(--dim);padding:8px 2px}
+
+/* 光伏站页面里不显示储能专属的顶栏入口 */
+body.solar-mode #mainTabs,
+body.solar-mode #dsChip,
+body.solar-mode #devChip{display:none}
+
+html[data-theme="day"] .sl-kpi{background:rgba(255,255,255,.72);border-color:rgba(15,150,130,.2)}
+html[data-theme="day"] .sl-kpi.hi{background:linear-gradient(180deg,rgba(192,122,0,.1),rgba(255,255,255,.8));border-color:rgba(192,122,0,.3)}
+html[data-theme="day"] .sl-kv b{color:#123c40}
+html[data-theme="day"] .sl-kpi.hi .sl-kv b{color:#a86400}
+html[data-theme="day"] .sl-kl{color:#2c5b57}
+html[data-theme="day"] .sl-dev,
+html[data-theme="day"] .sl-green-row{background:rgba(255,255,255,.6);border-color:rgba(15,150,130,.18)}
+html[data-theme="day"] .sl-devmain b,
+html[data-theme="day"] .sl-row b{color:#163b3e}
+html[data-theme="day"] .sl-badge{color:#0b8f76;border-color:rgba(15,150,130,.4)}
+html[data-theme="day"] .sl-badge.warn{color:#a86400;border-color:rgba(192,122,0,.45)}
+html[data-theme="day"] .sl-green-row b{color:#0b8f76}
+html[data-theme="day"] .sl-ranges button.on{color:#fff}
+html[data-theme="day"] .sl-row{border-bottom-color:rgba(15,150,130,.14)}
