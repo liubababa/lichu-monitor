@@ -102,13 +102,20 @@ async function api(pathname, params, opt) {
 }
 
 async function fetchToken(code) {
+  const body = { appkey: OPT.appkey, code: code, grant_type: 'authorization_code', redirect_uri: OPT.redirect };
+  log('换取 token：code=' + String(code).slice(0, 60) + ' len=' + String(code).length +
+    ' appkey=' + String(OPT.appkey).slice(0, 8) + '.. secretLen=' + String(OPT.secret || '').length +
+    ' redirect=' + OPT.redirect);
   const res = await fetch(GW + '/openapi/apiManage/token', {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-access-key': OPT.secret },
-    body: JSON.stringify({ appkey: OPT.appkey, code: code, grant_type: 'authorization_code', redirect_uri: OPT.redirect })
+    body: JSON.stringify(body)
   });
-  const json = await res.json();
-  if (!json.access_token) throw new Error('换取 token 失败：' + JSON.stringify(json).slice(0, 300));
+  const raw = await res.text();
+  log('token 响应 http=' + res.status + ' ' + raw.slice(0, 300));
+  let json = null;
+  try { json = JSON.parse(raw); } catch (_) {}
+  if (!json || !json.access_token) throw new Error('换取 token 失败：' + raw.slice(0, 300));
   const tk = {
     access_token: json.access_token,
     refresh_token: json.refresh_token,
