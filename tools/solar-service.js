@@ -208,32 +208,42 @@ async function getRealtime(psId) {
   return out;
 }
 
-/* 分钟级历史（start/end 为 Date） */
+/* 分钟级历史（start/end 为 Date）：接口限制单次查询跨度（6 小时会报 exceeds the
+   maximum limit），按 3 小时分段拉取再合并；某段失败不影响其它段 */
 async function getHistory(psId, start, end, intervalMin) {
   const ids = Object.keys(POINTS);
   const fmt = function (d) {
     const p = function (n) { return String(n).padStart(2, '0'); };
     return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds());
   };
-  const j = await api('/openapi/platform/getPowerStationPointMinuteDataList', {
-    ps_id_list: [String(psId)], points: ids.map(function (i) { return 'p' + i; }).join(','),
-    is_get_point_dict: '1', start_time_stamp: fmt(start), end_time_stamp: fmt(end), minute_interval: String(intervalMin || 5)
-  });
-  const rd = j.result_data || {};
-  const rows = rd[String(psId)] || rd[Number(psId)] || [];
-  return rows.map(function (frame) {
-    const ts = frame.time_stamp;
-    const t = ts && ts.length === 14
-      ? new Date(Number(ts.slice(0, 4)), Number(ts.slice(4, 6)) - 1, Number(ts.slice(6, 8)), Number(ts.slice(8, 10)), Number(ts.slice(10, 12)), Number(ts.slice(12, 14)))
-      : new Date(ts);
-    const o = { t: t.getTime() };
-    Object.keys(frame).forEach(function (k) {
-      if (k === 'time_stamp' || k[0] !== 'p') return;
-      const code = POINTS[k.slice(1)];
-      if (code) o[code] = Number(frame[k]);
-    });
-    return o;
-  }).filter(function (r) { return isFinite(r.t); }).sort(function (a, b) { return a.t - b.t; });
+  const span = 3 * 3600 * 1000;
+  const out = [];
+  for (let t0 = start.getTime(); t0 < end.getTime(); t0 += span) {
+    const s = new Date(t0), e = new Date(Math.min(t0 + span, end.getTime()));
+    try {
+      const j = await api('/openapi/platform/getPowerStationPointMinuteDataList', {
+        ps_id_list: [String(psId)], points: ids.map(function (i) { return 'p' + i; }).join(','),
+        is_get_point_dict: '1', start_time_stamp: fmt(s), end_time_stamp: fmt(e), minute_interval: String(intervalMin || 5)
+      });
+      const rd = j.result_data || {};
+      const rows = rd[String(psId)] || rd[Number(psId)] || [];
+      rows.forEach(function (frame) {
+        const ts = frame.time_stamp;
+        const t = ts && ts.length === 14
+          ? new Date(Number(ts.slice(0, 4)), Number(ts.slice(4, 6)) - 1, Number(ts.slice(6, 8)), Number(ts.slice(8, 10)), Number(ts.slice(10, 12)), Number(ts.slice(12, 14)))
+          : new Date(ts);
+        if (!isFinite(t.getTime())) return;
+        const o = { t: t.getTime() };
+        Object.keys(frame).forEach(function (k) {
+          if (k === 'time_stamp' || k[0] !== 'p') return;
+          const code = POINTS[k.slice(1)];
+          if (code) o[code] = Number(frame[k]);
+        });
+        out.push(o);
+      });
+    } catch (_) { /* 该段无数据或超限，跳过 */ }
+  }
+  return out.sort(function (a, b) { return a.t - b.t; });
 }
 
 /* 一次完整拉取：电站实时 + 设备 + 当日历史增量，全部落盘 */
@@ -261,7 +271,13 @@ async function poll() {
 
     const rec = {
       t: Date.now(), ps_id: psId,
-      plant: detail ? { name: detail.ps_name, capacity: detail.ps_capacity || detail.capacity, status: detail.ps_status } : null,
+      plant: detail ? {
+        name: detail.ps_name,
+        capacity: detail.install_power ? detail.install_power / 1000 : (detail.ps_capacity || detail.capacity),
+        location: detail.ps_location, type: detail.ps_type_name,
+        online: detail.online_status, alarms: detail.alarm_count, faults: detail.fault_count,
+        install_date: detail.install_date
+      } : null,
       rt: rt,
       devices: devices.map(function (d) {
         return { sn: d.device_sn || d.device_sn_str, name: d.device_name, type: d.device_type,
@@ -275,12 +291,18 @@ async function poll() {
     state.summary = {
       ps_id: psId,
       plant: rec.plant,
+      capacity: rec.plant ? rec.plant.capacity : null,
+      location: rec.plant ? rec.plant.location : null,
+      online: rec.plant ? rec.plant.online : null,
+      alarms: rec.plant ? rec.plant.alarms : null,
       power: rt.power ? rt.power.value : null,
       daily_yield: rt.daily_yield ? rt.daily_yield.value : null,
       total_yield: rt.total_yield ? rt.total_yield.value : null,
       daily_hours: rt.daily_hours ? rt.daily_hours.value : null,
       ambient_temp: rt.ambient_temp ? rt.ambient_temp.value : null,
       module_temp: rt.module_temp ? rt.module_temp.value : null,
+      radiation: rt.radiation ? rt.radiation.value : null,
+      daily_irradiation: rt.daily_irradiation ? rt.daily_irradiation.value : null,
       devices: rec.devices.length,
       updated_at: now.toISOString()
     };
@@ -306,7 +328,8 @@ function prune() {
   });
 }
 
-/* 读某天的曲线（把多次拉取的 hist 合并去重） */
+/* 读某天的曲线：历史接口的数据 + 每次拉取的实时快照（功率 / 当日发电）合并去重。
+   快照是 5 分钟一条，够画当天的功率曲线；历史接口一旦有数据会自动一起合并进来 */
 function readTrend(fromMs, toMs) {
   const map = {};
   for (let d = new Date(fromMs).setHours(0, 0, 0, 0); d <= toMs; d += 86400000) {
@@ -321,6 +344,17 @@ function readTrend(fromMs, toMs) {
         map[p.t] = map[p.t] || { t: p.t };
         Object.keys(p).forEach(function (k) { if (k !== 't' && p[k] !== null && p[k] !== undefined) map[p.t][k] = p[k]; });
       });
+      const rt = r.rt || {}, t = r.t;
+      if (t && t >= fromMs && t <= toMs) {
+        const o = {};
+        if (rt.power && rt.power.value !== null && rt.power.value !== undefined) o.power_kw = Number(rt.power.value) / 1000;
+        if (rt.daily_yield && rt.daily_yield.value !== null && rt.daily_yield.value !== undefined) o.daily_yield_kwh = Number(rt.daily_yield.value) / 1000;
+        if (rt.total_yield && rt.total_yield.value !== null && rt.total_yield.value !== undefined) o.total_yield_kwh = Number(rt.total_yield.value) / 1000;
+        if (Object.keys(o).length) {
+          map[t] = map[t] || { t: t };
+          Object.keys(o).forEach(function (k) { map[t][k] = o[k]; });
+        }
+      }
     });
   }
   return Object.keys(map).map(function (k) { return map[k]; }).sort(function (a, b) { return a.t - b.t; });
