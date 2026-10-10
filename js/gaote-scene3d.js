@@ -638,31 +638,16 @@ window.GaoteScene3D = (function () {
     const top = .24;                                                                        // 基座顶面
 
     g.add(box(W + .7, top, D + .7, M.dark, 0, top / 2, 0));                                  // 基座
-    /* 两层厂房（参考图"橙色 + 黑色"工业风）：
-       上层主体浅灰白 + 下层橙色基座段 + 炭黑收边/窗框，立面用贴墙浅肋做竖向分格 */
-    const wallMat = regMat(std(0xb9c0c1, { roughness: .68, metalness: .18 }),
-      { color: 0x5c6a6c }, { color: 0xc8cccc });                                             // 主体：浅灰白
-    const baseMat = regMat(std(0x8f4a12, { roughness: .62, metalness: .25 }),
-      { color: 0x8f4a12 }, { color: 0xc96f22 });                                             // 下层：橙
-    const trimMat = regMat(std(0x14171a, { roughness: .55, metalness: .35 }),
-      { color: 0x14171a }, { color: 0x1d2124 });                                             // 收边：炭黑
+    /* 两层厂房（参考图：现代工业风 —— 白色主墙 + 灰色分段 + 竖向长条窗 + 平顶，
+       夜里窗户随"用电"发光，就是参考图那种暖光 + 黑剪影的效果） */
+    const wallMat = regMat(std(0xd7dbdc, { roughness: .72, metalness: .12 }),
+      { color: 0x9aa3a5 }, { color: 0xe8ecee });                                              // 主墙：白
+    const trimMat = regMat(std(0x6b7476, { roughness: .6, metalness: .3 }),
+      { color: 0x4a5457 }, { color: 0x8d9598 });                                              // 灰带 / 窗框
     const hall = new THREE.Mesh(new THREE.BoxGeometry(W, H, D), [wallMat, wallMat, trimMat, wallMat, wallMat, wallMat]);
     hall.position.set(0, H / 2 + top, 0);
     hall.castShadow = hall.receiveShadow = true;
     g.add(hall);
-    /* 下层橙色段（一层高度 ≈ H/2） */
-    const baseH = H / 2 - .08;
-    const base = new THREE.Mesh(new THREE.BoxGeometry(W + .12, baseH, D + .12), baseMat);
-    base.position.set(0, top + baseH / 2, 0);
-    base.castShadow = base.receiveShadow = true;
-    g.add(base);
-    /* 竖向浅肋：贴着墙面做分格（不是外挂的立杆） */
-    for (let k = -4; k <= 4; k++) {
-      const px = k * (W / 9.2);
-      [-1, 1].forEach(function (sz) {
-        g.add(box(.14, H - .5, .06, trimMat, px, top + H / 2, sz * (D / 2 + .035)));
-      });
-    }
 
     /* 楼层线（两层之间一道横向腰线） */
     const floorY = top + H / 2;
@@ -682,64 +667,51 @@ window.GaoteScene3D = (function () {
     [-1, 1].forEach(function (sx) {
       g.add(box(.26, parH, D + .6, trimMat, sx * (W / 2 + .05), top + H + .18 + parH / 2, 0));
     });
-    [[-2.6, -1.5], [1.8, 1.4]].forEach(function (p) {
-      g.add(box(1.7, .62, 1.25, M.roofUnit, p[0], top + H + .55, p[1]));
-      g.add(box(1.45, .08, 1.0, M.acVent, p[0], top + H + .9, p[1]));
-    });
 
-    /* 窗户：正/背面 6 列 × 2 层，侧面 3 列 × 2 层；用电时玻璃发光 */
+    /* 窗户：竖向长条窗，正/背面每层 6 扇、侧面每层 3 扇；用电时玻璃发光 */
     const winMat = regMat(new THREE.MeshStandardMaterial({
       color: 0x1b2b33, roughness: .18, metalness: .35,
       emissive: new THREE.Color(0x000000), emissiveIntensity: 0
     }), { color: 0x16242c, emissive: new THREE.Color(0x000000), emissiveIntensity: 0 },
       { color: 0x2b3d45, emissive: new THREE.Color(0xffcf8a), emissiveIntensity: .25 });
     facWinMat = winMat;
-    const frame = trimMat;
-    function windowRow(cx, cy, cz, alongX, n, span) {
-      for (let i = 0; i < n; i++) {
-        const off = (i - (n - 1) / 2) * span;
-        const px = alongX ? cx + off : cx;
-        const pz = alongX ? cz : cz + off;
-        const ww = alongX ? 1.05 : .14;
-        const dd = alongX ? .14 : 1.05;
-        g.add(box(ww + .1, 1.45, dd + .1, frame, px, cy, pz));                               // 窗框
-        const pane = box(ww, 1.3, dd, winMat, px, cy, pz);
-        g.add(pane);
-      }
+    /* 竖向长条窗（参考图特征）…… */
+    function vWindow(cx, cy, cz, alongX, wdt, hgt) {
+      const ww = alongX ? wdt : .16;
+      const dd = alongX ? .16 : wdt;
+      g.add(box(ww + .12, hgt + .12, dd + .12, trimMat, cx, cy, cz));       // 窗框
+      g.add(box(ww, hgt, dd + .02, winMat, cx, cy, cz));                    // 玻璃
     }
+    const winW = .78, winH = 1.92;
+    const lvY = [top + 1.78, top + 4.72];
     [-1, 1].forEach(function (sz) {
-      windowRow(0, top + 1.75, sz * (D / 2 + .20), true, 6, 1.42);                           // 一层（橙色段，窗面外凸一点）
-      windowRow(0, top + 4.65, sz * (D / 2 + .06), true, 6, 1.42);                           // 二层
+      const z = sz * (D / 2 + .07);
+      lvY.forEach(function (cy) {
+        for (let i = 0; i < 6; i++) vWindow(-3.75 + i * 1.5, cy, z, true, winW, winH);
+      });
     });
     [-1, 1].forEach(function (sx) {
-      windowRow(sx * (W / 2 + .20), top + 1.75, 0, false, 3, 1.7);
-      windowRow(sx * (W / 2 + .06), top + 4.65, 0, false, 3, 1.7);
+      const x = sx * (W / 2 + .07);
+      lvY.forEach(function (cy) {
+        for (let i = 0; i < 3; i++) vWindow(x, cy, -1.9 + i * 1.9, false, winW, winH);
+      });
     });
 
-    /* 排风筒（后侧穿出平屋顶） */
-    const duct = new THREE.Mesh(new THREE.CylinderGeometry(.42, .5, 9.4, 12), M.duct);
-    duct.position.set(-W / 2 + 1.3, top + 4.7, -D / 2 + 1.1);
-    duct.castShadow = true;
-    g.add(duct);
-    g.add(box(1.2, .12, 1.2, M.bridge, -W / 2 + 1.3, top + 9.5, -D / 2 + 1.1));
+    /* 参考图里屋顶是干净的平顶（无设备），也不设外挂水塔/排风筒 */
 
-    /* 水塔（右侧后方）：圆柱水箱 + 整体基座（不再用四根细腿） */
-    g.add(box(1.7, 3.9, 1.7, M.bridge, W / 2 + 1.7, top + 1.95, -D / 2 + .9));
-    const tank = new THREE.Mesh(new THREE.CylinderGeometry(.95, .95, 1.6, 12), M.galv);
-    tank.position.set(W / 2 + 1.7, top + 5.55, -D / 2 + .9);
-    tank.castShadow = true;
-    g.add(tank);
-
-    /* 大门雨棚 + 装卸平台 + 台阶（贴图上卷帘门在正面底部中间） */
-    const canopy = box(4.8, .12, 1.5, M.bridge, 0, 2.6, D / 2 + .75);
+    /* 大门/卷帘门 + 雨棚 + 装卸平台：按参考图放在正面偏右一侧 */
+    const doorX = 3.0;
+    const canopy = box(4.4, .12, 1.5, trimMat, doorX, 2.7, D / 2 + .75);
     canopy.rotation.x = -.12;
     canopy.castShadow = true;
     g.add(canopy);
-    [-2.1, 2.1].forEach(function (sx) {
-      g.add(box(.08, .6, .08, M.galv, sx, 2.3, D / 2 + 1.35));
+    [doorX - 1.9, doorX + 1.9].forEach(function (sx) {
+      g.add(box(.08, .6, .08, M.galv, sx, 2.4, D / 2 + 1.35));
     });
-    g.add(box(5.4, .3, 1.2, M.dark, 0, top + .15, D / 2 + .9));                               // 装卸平台
-    g.add(box(1.8, .12, 1.1, M.galv, 3.6, top + .06, D / 2 + 1.85));                          // 台阶
+    g.add(box(4.6, .26, 1.2, M.dark, doorX, top + .13, D / 2 + .9));                          // 装卸平台
+    g.add(box(1.8, .12, 1.1, M.galv, doorX + 3.0, top + .06, D / 2 + 1.85));                  // 台阶
+    /* 卷帘门门板（正面右侧，夜间有灯光时更明显） */
+    g.add(box(3.6, 2.2, .08, trimMat, doorX, top + 1.35, D / 2 + .06));
 
     /* 落水管（正面两根，从檐口顺墙到基座） */
     [-1, 1].forEach(function (sx) {
