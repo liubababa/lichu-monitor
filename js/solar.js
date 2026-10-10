@@ -22,7 +22,7 @@ window.SolarUI = (function () {
   const REFRESH_MS = 60000;           // 汇总与设备 1 分钟刷一次（服务端 5 分钟一拉）
 
   let chart = null, timer = null, range = 'today', busyUntil = 0, last = null;
-  let sum = null, devices = [], trend = [];
+  let sum = null, devices = [], trend = [], wx = null, sceneOn = true;
 
   /* ---------------- 小工具 ---------------- */
   const num = v => (v === null || v === undefined || v === '' || isNaN(Number(v))) ? null : Number(v);
@@ -83,8 +83,9 @@ window.SolarUI = (function () {
     if (v) v.classList.remove('hidden');
     document.body.classList.add('solar-mode');
     refresh();
+    if (sceneOn) setTimeout(ensureScene, 80);
     if (!timer) timer = setInterval(refresh, REFRESH_MS);
-    setTimeout(function () { if (chart) chart.resize(); }, 80);
+    setTimeout(function () { if (chart) chart.resize(); if (window.SolarScene) SolarScene.resize(); }, 220);
   }
   function hide() {
     const v = byId('solarView');
@@ -108,6 +109,10 @@ window.SolarUI = (function () {
       if (d && d.data) devices = d.data;
       const t = await getJSON('trend?range=' + range);
       if (t && t.points) trend = t.points;
+      try {                                   /* 天气失败不影响其余数据 */
+        const w = await getJSON('weather');
+        if (w && w.data) wx = w.data;
+      } catch (_) {}
       render();
       if (src) src.textContent = sum ? ('阳光云接入 · 更新 ' + fmtTime(sum.updated_at)) : '服务未就绪';
     } catch (e) {
@@ -227,7 +232,43 @@ window.SolarUI = (function () {
       + '<div class="sl-green-row"><b>' + (trees === null ? '--' : trees) + '</b><u>棵</u><span>等效植树</span></div>';
   }
 
-  function render() { renderKpis(); renderTrend(); renderDevices(); renderInfo(); renderGreen(); }
+  function renderWeather() {
+    const box = byId('slWx'), meta = byId('slWxMeta');
+    if (!box) return;
+    if (!wx) { box.innerHTML = '<div class="sl-empty">天气暂不可用</div>'; return; }
+    if (meta) meta.textContent = 'Open-Meteo · ' + String(wx.time || '').slice(11, 16);
+    const row = (k, v) => '<div class="sl-wx-row"><span>' + k + '</span><b>' + v + '</b></div>';
+    box.innerHTML =
+      '<div class="sl-wx-top"><b>' + (wx.text || '--') + '</b><span>' + fmt(num(wx.temp), 1) + '<u>℃</u></span></div>'
+      + row('体感温度', fmt(num(wx.feels), 1) + ' ℃')
+      + row('湿度', fmt(num(wx.humidity), 0) + ' %')
+      + row('风速', fmt(num(wx.wind), 1) + ' m/s')
+      + row('云量', fmt(num(wx.cloud), 0) + ' %')
+      + row('辐照度', fmt(num(wx.radiation), 0) + ' W/㎡')
+      + row('日出 / 日落', (wx.sunrise || '--') + ' / ' + (wx.sunset || '--'));
+  }
+
+  /* 把实时功率与天气推给三维场景 */
+  function pushScene() {
+    const meta = byId('slSceneMeta');
+    if (meta) {
+      meta.textContent = wx
+        ? (wx.text + ' · 云量 ' + Math.round(num(wx.cloud) || 0) + '% · 辐照 ' + Math.round(num(wx.radiation) || 0) + ' W/㎡')
+        : '--';
+    }
+    if (!window.SolarScene || !sceneOn) return;
+    const pKw = sum ? (num(sum.power) || 0) / 1000 : 0;
+    SolarScene.setPower(pKw, sum ? num(sum.capacity) : null);
+    if (wx) SolarScene.setWeather(wx);
+  }
+
+  function ensureScene() {
+    if (!sceneOn || !window.SolarScene || !byId('solar3d')) return;
+    SolarScene.init(function () { pushScene(); });
+    setTimeout(function () { if (window.SolarScene) SolarScene.resize(); }, 120);
+  }
+
+  function render() { renderKpis(); renderTrend(); renderDevices(); renderInfo(); renderGreen(); renderWeather(); pushScene(); }
 
   /* ---------------- 图表：与站内其它曲线同一套配色 ---------------- */
   function initChart() {
@@ -304,6 +345,20 @@ window.SolarUI = (function () {
         range = btn.getAttribute('data-range');
         [].forEach.call(ranges.querySelectorAll('button'), function (x) { x.classList.toggle('on', x === btn); });
         refresh();
+      });
+    }
+    const sceneBtns = byId('slSceneBtns');
+    if (sceneBtns) {
+      sceneBtns.addEventListener('click', function (e) {
+        const btn = e.target.closest('button[data-scene]');
+        if (!btn) return;
+        sceneOn = btn.getAttribute('data-scene') === '3d';
+        [].forEach.call(sceneBtns.querySelectorAll('button'), function (x) { x.classList.toggle('on', x === btn); });
+        const host = byId('solar3d');
+        const tip = document.querySelector('.sl-scene-tip');
+        if (host) host.style.display = sceneOn ? '' : 'none';
+        if (tip) tip.style.display = sceneOn ? '' : 'none';
+        if (sceneOn) setTimeout(ensureScene, 60);
       });
     }
     /* 主题切换时重画坐标轴颜色 */

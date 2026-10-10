@@ -6,7 +6,7 @@
 <title>力储未来能源综合管理系统</title>
 <link rel="icon" type="image/png" sizes="64x64" href="libs/logo-64.png?v=20260923a"/>
 <link rel="apple-touch-icon" href="libs/logo-180.png?v=20260923a"/>
-<link rel="stylesheet" href="css/style.css?v=20261010b"/>
+<link rel="stylesheet" href="css/style.css?v=20261010c"/>
 <script>
 /* 加载期错误收集（便于排查依赖/脚本问题） */
 window.__loadErrs = [];
@@ -294,24 +294,40 @@ window.addEventListener('error', function (e) {
       <button class="mq-btn" id="slBack">返回目录</button>
     </div>
   </div>
-  <div class="ov-body">
+  <div class="ov-body sl-body">
     <div class="sl-kpis" id="slKpis"></div>
     <div class="sl-main">
-      <div class="cc-card sl-trend">
-        <div class="cc-title">发电趋势
-          <em id="slTrendMeta">--</em>
-          <span class="sl-ranges" id="slRanges">
-            <button data-range="today" class="on">今日</button>
-            <button data-range="yesterday">昨日</button>
-            <button data-range="days3">近三日</button>
-          </span>
+      <div class="sl-left">
+        <div class="cc-card sl-scene-card">
+          <div class="cc-title">三维监控 <em id="slSceneMeta">--</em>
+            <span class="sl-ranges" id="slSceneBtns">
+              <button data-scene="3d" class="on">3D</button>
+              <button data-scene="off">关闭</button>
+            </span>
+          </div>
+          <div class="sl-scene" id="solar3d"></div>
+          <div class="sl-scene-tip">左键拖拽旋转 · 滚轮缩放 · 画面随真实天气与发电功率变化</div>
         </div>
-        <div class="cc-chart" id="slTrendChart"></div>
+        <div class="cc-card sl-trend">
+          <div class="cc-title">发电趋势
+            <em id="slTrendMeta">--</em>
+            <span class="sl-ranges" id="slRanges">
+              <button data-range="today" class="on">今日</button>
+              <button data-range="yesterday">昨日</button>
+              <button data-range="days3">近三日</button>
+            </span>
+          </div>
+          <div class="cc-chart" id="slTrendChart"></div>
+        </div>
       </div>
       <div class="sl-side">
         <div class="cc-card">
           <div class="cc-title">设备 <em id="slDevMeta">--</em></div>
           <div class="sl-devs" id="slDevs"></div>
+        </div>
+        <div class="cc-card">
+          <div class="cc-title">天气 <em id="slWxMeta">--</em></div>
+          <div class="sl-wx" id="slWx"></div>
         </div>
         <div class="cc-card">
           <div class="cc-title">减排贡献 <em>累计</em></div>
@@ -389,7 +405,8 @@ window.addEventListener('error', function (e) {
 <script src="js/overview.js?v=20260919b"></script>
 <script src="js/mqtt-ui.js?v=20261006a"></script>
 <script src="js/portal.js?v=20261010a"></script>
-<script src="js/solar.js?v=20261010h"></script>
+<script src="js/solar.js?v=20261010i"></script>
+<script src="js/solar-scene3d.js?v=20261010b"></script>
 <script src="js/scene3d.js?v=20261009a"></script>
 <script src="js/charts.js?v=20261009a"></script>
 <script src="js/main.js?v=20261009a"></script>
