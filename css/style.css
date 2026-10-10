@@ -1301,9 +1301,31 @@ html[data-theme="day"] .gs-warn{color:#8a5b00}
    洙边卫生院站（分布式光伏）：KPI + 趋势 + 设备 / 减排 / 电站信息
    ============================================================ */
 #solarView{
-  position:fixed;left:12px;right:12px;top:74px;bottom:12px;z-index:60;display:flex;flex-direction:column;
+  position:fixed;left:12px;right:12px;top:74px;bottom:12px;z-index:60;display:flex;flex-direction:row;overflow:hidden;
   background:linear-gradient(165deg,rgba(8,23,26,.985),rgba(4,11,13,.99));
   border:1px solid rgba(46,230,200,.34);box-shadow:0 16px 46px rgba(0,0,0,.66)}
+#slLeft{position:relative;flex:1;min-width:0;background:#04090c;overflow:hidden}
+#solar3d{position:absolute;inset:0}
+#solar3d canvas{display:block}
+#slRight{
+  --panel-w:clamp(340px,24vw,460px);
+  position:absolute;top:12px;right:12px;bottom:12px;z-index:20;width:26px;overflow:hidden;
+  transition:width .26s ease;border:1px solid rgba(46,230,200,.18);border-radius:2px;
+  background:linear-gradient(165deg,rgba(10,26,30,.92),rgba(5,13,16,.94));
+  box-shadow:-6px 0 18px rgba(0,0,0,.35)}
+#slRight:hover,#slRight.pinned{width:calc(var(--panel-w) + 26px)}
+#slRight:hover .side-handle,#slRight.pinned .side-handle{opacity:0}
+#slRight .side-inner{
+  position:absolute;left:26px;top:0;bottom:0;width:var(--panel-w);
+  padding:10px;display:flex;flex-direction:column;gap:12px;min-height:0;overflow-y:auto;overflow-x:hidden}
+#slPanel .chart{height:190px;min-height:190px}
+#slDataView,#slDevView{flex:1;min-width:0;display:flex;flex-direction:column}
+#slDataBody,#slDevBody{display:flex;flex-direction:column;gap:12px}
+#slDataBody .kpi-grid{grid-template-columns:repeat(6,minmax(0,1fr))}
+#slDataBody .chart{height:340px;min-height:340px}
+#slDataBody .panel,#slDevBody .panel{backdrop-filter:none}
+#slDataBody .panel.grow{flex:none}
+#slDevBody .cc-card{background:transparent;border:none;padding:0}
 .sl-kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;margin-bottom:12px}
 @media (max-width:1500px){.sl-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media (max-width:820px){.sl-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
@@ -1375,3 +1397,13 @@ html[data-theme="day"] .sl-badge.warn{color:#a86400;border-color:rgba(192,122,0,
 html[data-theme="day"] .sl-green-row b{color:#0b8f76}
 html[data-theme="day"] .sl-ranges button.on{color:#fff}
 html[data-theme="day"] .sl-row{border-bottom-color:rgba(15,150,130,.14)}
+
+/* ---- 光伏三维监控页：白天主题 ---- */
+html[data-theme="day"] #solarView{
+  background:linear-gradient(165deg,rgba(255,255,255,.98),rgba(238,246,247,.99));
+  border-color:rgba(15,150,130,.3);box-shadow:0 14px 36px rgba(24,66,66,.14)}
+html[data-theme="day"] #slLeft{background:#e8eef0}
+html[data-theme="day"] #slRight{
+  background:linear-gradient(165deg,rgba(255,255,255,.96),rgba(240,246,247,.97));
+  border-color:rgba(15,150,130,.25);box-shadow:-6px 0 18px rgba(24,66,66,.12)}
+html[data-theme="day"] #slRight .side-handle{color:#0b8f76;background:linear-gradient(180deg,rgba(15,150,130,.16),rgba(15,150,130,.04))}

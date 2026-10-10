@@ -82,15 +82,32 @@ window.SolarUI = (function () {
     const v = byId('solarView');
     if (v) v.classList.remove('hidden');
     document.body.classList.add('solar-mode');
+    /* 顶栏换成光伏自己的标签页 */
+    const st = byId('solarTabs'), mt = byId('mainTabs');
+    if (st) {
+      st.style.display = '';
+      [].forEach.call(st.querySelectorAll('button'), function (x) {
+        x.classList.toggle('active', x.getAttribute('data-stab') === 'monitor');
+      });
+    }
+    if (mt) mt.style.display = 'none';
+    mountTab('monitor');
     refresh();
     if (sceneOn) setTimeout(ensureScene, 80);
     if (!timer) timer = setInterval(refresh, REFRESH_MS);
-    setTimeout(function () { if (chart) chart.resize(); if (window.SolarScene) SolarScene.resize(); }, 220);
+    setTimeout(function () {
+      if (chart) chart.resize();
+      if (window.SolarScene) { SolarScene.resize(); SolarScene.setActive(true); }
+    }, 220);
   }
   function hide() {
     const v = byId('solarView');
     if (v) v.classList.add('hidden');
     document.body.classList.remove('solar-mode');
+    const st = byId('solarTabs'), mt = byId('mainTabs');
+    if (st) st.style.display = 'none';
+    if (mt) mt.style.display = '';
+    if (window.SolarScene) SolarScene.setActive(false);
     if (timer) { clearInterval(timer); timer = null; }
   }
 
@@ -121,12 +138,14 @@ window.SolarUI = (function () {
   }
 
   /* ---------------- 渲染 ---------------- */
+  /* KPI 卡片（沿用莒南站的 .kpi 版式，右栏 2 列、整页 6 列） */
   function card(label, value, unit, sub, cls) {
-    return '<div class="sl-kpi ' + (cls || '') + '">'
-      + '<div class="sl-kv"><b>' + value + '</b>' + (unit ? '<u>' + unit + '</u>' : '') + '</div>'
-      + '<div class="sl-kl">' + label + '</div>'
+    return '<div class="kpi ' + (cls || '') + '">'
+      + '<div class="kpi-body">'
+      + '<div class="kpi-num' + (cls === 'hi' ? '' : ' sm') + '"><b>' + value + '</b>' + (unit ? '<u>' + unit + '</u>' : '') + '</div>'
+      + '<div class="kpi-label">' + label + '</div>'
       + (sub ? '<div class="sl-ks">' + sub + '</div>' : '')
-      + '</div>';
+      + '</div></div>';
   }
 
   function renderKpis() {
@@ -268,7 +287,50 @@ window.SolarUI = (function () {
     setTimeout(function () { if (window.SolarScene) SolarScene.resize(); }, 120);
   }
 
-  function render() { renderKpis(); renderTrend(); renderDevices(); renderInfo(); renderGreen(); renderWeather(); pushScene(); }
+  /* ---------------- 三个标签页：同一套卡片移动挂载，只渲染一份 ---------------- */
+  let tab = 'monitor';
+  function mountTab(which) {
+    tab = which || tab;
+    const conf = {
+      monitor: ['slPanel', ['slKpisBlock', 'slTrendBlock', 'slWxBlock', 'slDevBlock', 'slBattBlock', 'slInfoBlock']],
+      data: ['slDataBody', ['slKpisBlock', 'slTrendBlock', 'slGreenBlock', 'slInfoBlock']],
+      devices: ['slDevBody', ['slDevBlock', 'slWxBlock', 'slGreenBlock', 'slInfoBlock']]
+    }[tab] || null;
+    if (!conf) return;
+    const host = byId(conf[0]);
+    if (host) conf[1].forEach(function (id) { const el = byId(id); if (el) host.appendChild(el); });
+    const isMon = tab === 'monitor';
+    const L = byId('slLeft'); if (L) L.style.display = isMon ? '' : 'none';
+    const R = byId('slRight'); if (R) R.style.display = isMon ? '' : 'none';
+    const dv = byId('slDataView'); if (dv) dv.classList.toggle('hidden', tab !== 'data');
+    const ev = byId('slDevView'); if (ev) ev.classList.toggle('hidden', tab !== 'devices');
+    if (isMon && sceneOn) setTimeout(ensureScene, 60);
+    setTimeout(function () {
+      if (chart) chart.resize();
+      if (window.SolarScene) SolarScene.resize();
+    }, 90);
+  }
+
+  function render() {
+    renderKpis(); renderTrend(); renderDevices(); renderInfo(); renderGreen(); renderWeather(); renderAlarm(); pushScene();
+  }
+
+  function renderAlarm() {
+    const bar = byId('slAlarmBar'), txt = byId('slAlarmText');
+    const station = byId('slStation');
+    if (station && sum && sum.plant && sum.plant.name) station.textContent = sum.plant.name;
+    if (!txt) return;
+    const parts = [];
+    if (wx) {
+      parts.push(wx.text + ' ' + fmt(num(wx.temp), 1) + '℃'
+        + (num(wx.wind) === null ? '' : '　风速 ' + fmt(num(wx.wind), 1) + ' m/s')
+        + (num(wx.radiation) === null ? '' : '　辐照 ' + fmt(num(wx.radiation), 0) + ' W/㎡'));
+    } else parts.push('天气读取中…');
+    const alarms = sum ? num(sum.alarms) : null;
+    parts.push(alarms ? ('告警 ' + alarms + ' 条') : '无告警');
+    txt.textContent = parts.join('　·　');
+    if (bar) bar.className = 'alarm ' + (alarms ? 'bad' : 'ok');
+  }
 
   /* ---------------- 图表：与站内其它曲线同一套配色 ---------------- */
   function initChart() {
@@ -347,20 +409,32 @@ window.SolarUI = (function () {
         refresh();
       });
     }
-    const sceneBtns = byId('slSceneBtns');
-    if (sceneBtns) {
-      sceneBtns.addEventListener('click', function (e) {
-        const btn = e.target.closest('button[data-scene]');
+    /* 光伏站自己的顶栏标签页 */
+    const stabs = byId('solarTabs');
+    if (stabs) {
+      stabs.addEventListener('click', function (e) {
+        const btn = e.target.closest('button[data-stab]');
         if (!btn) return;
-        sceneOn = btn.getAttribute('data-scene') === '3d';
-        [].forEach.call(sceneBtns.querySelectorAll('button'), function (x) { x.classList.toggle('on', x === btn); });
-        const host = byId('solar3d');
-        const tip = document.querySelector('.sl-scene-tip');
-        if (host) host.style.display = sceneOn ? '' : 'none';
-        if (tip) tip.style.display = sceneOn ? '' : 'none';
-        if (sceneOn) setTimeout(ensureScene, 60);
+        [].forEach.call(stabs.querySelectorAll('button'), function (x) { x.classList.toggle('active', x === btn); });
+        mountTab(btn.getAttribute('data-stab'));
       });
     }
+    /* 三维视图控制：标签 / 旋转 / 重置视角 */
+    const bl = byId('slBtnLabels');
+    if (bl) {
+      bl.classList.add('active');
+      bl.addEventListener('click', function () {
+        const on = bl.classList.toggle('active');
+        if (window.SolarScene) SolarScene.setLabels(on);
+      });
+    }
+    const br = byId('slBtnRotate');
+    if (br) br.addEventListener('click', function () {
+      const on = br.classList.toggle('active');
+      if (window.SolarScene) SolarScene.setRotate(on);
+    });
+    const bs = byId('slBtnReset');
+    if (bs) bs.addEventListener('click', function () { if (window.SolarScene) SolarScene.resetView(); });
     /* 主题切换时重画坐标轴颜色 */
     new MutationObserver(function () { setTimeout(function () { applyTheme(); if (chart) chart.resize(); }, 60); })
       .observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });

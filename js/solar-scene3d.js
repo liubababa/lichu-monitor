@@ -377,6 +377,7 @@ window.SolarScene = (function () {
   /* ---------------- 主循环 ---------------- */
   function loop() {
     raf = requestAnimationFrame(loop);
+    if (!active) return;                       /* 切到别的标签页时暂停渲染 */
     const T = THREE_();
     const t = performance.now() / 1000;
     const ratio = Math.max(0, Math.min(1, cur.power / (cur.cap || 1)));
@@ -422,6 +423,25 @@ window.SolarScene = (function () {
   }
 
   /* ---------------- 对外 ---------------- */
+  let active = true, labelsOn = true, autoRot = false;
+
+  function setActive(on) { active = !!on; }
+  function setLabels(on) {
+    labelsOn = !!on;
+    if (!root) return;
+    root.traverse(function (o) { if (o.isCSS2DObject) o.visible = labelsOn; });
+  }
+  function setRotate(on) {
+    autoRot = !!on;
+    if (controls) { controls.autoRotate = autoRot; controls.autoRotateSpeed = .8; }
+  }
+  function resetView() {
+    if (!camera || !controls) return;
+    camera.position.set(26, 17, 32);
+    controls.target.set(0, 3, 0);
+    controls.update();
+  }
+
   function init(onReady) {
     if (inited) { resize(); return; }
     if (typeof THREE === 'undefined') { setTimeout(function () { init(onReady); }, 300); return; }
@@ -432,5 +452,5 @@ window.SolarScene = (function () {
     if (onReady) onReady();
   }
 
-  return { init, resize, setWeather, setPower, applyTheme };
+  return { init, resize, setWeather, setPower, applyTheme, setActive, setLabels, setRotate, resetView };
 })();
