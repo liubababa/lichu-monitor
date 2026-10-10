@@ -93,7 +93,7 @@ window.GaoteScene3D = (function () {
   /* 汇流/PCS 柜位置（放在并网铁塔下面，与储能柜排成横向一列）与半宽 */
   const PCS_X = -8.6, PCS_Z = 3.0, PCS_HW = 2.3;
   /* 厂房（含办公附房）位置与尺寸：整体放大，走线、接入点都从这里取，改一处即可 */
-  const FAC_X = 13.6, FAC_Z = .8, FAC_W = 9.0, FAC_H = 4.6, FAC_D = 6.4, FAC_RH = 1.7;
+  const FAC_X = 13.6, FAC_Z = .8, FAC_W = 9.0, FAC_H = 6.2, FAC_D = 6.4, FAC_RH = 1.7;
   /* 办公附房（厂房的左侧小楼）：正面墙上挂电缆进线箱 */
   const OFF_X = -(FAC_W / 2 + 1.0), OFF_Z = FAC_D / 2 - 1.4, OFF_W = 3.2, OFF_H = 3.2, OFF_D = 2.6;
   /* 铁塔位置 */
@@ -102,7 +102,7 @@ window.GaoteScene3D = (function () {
   const stackCables = [];   // { flow } 每柜到 PCS 的电缆
 
   /* 厂房（工厂用电负荷）：放电时电送进厂房，进线光点流动 */
-  let facGroup = null, facLabelEl = null, facOn = false;
+  let facGroup = null, facLabelEl = null, facOn = false, facWinMat = null;
 
   /* ---------------- 基础工具 ---------------- */
   function std(c, o) { return new THREE.MeshStandardMaterial(Object.assign({ color: c, roughness: .6, metalness: .35 }, o || {})); }
@@ -633,72 +633,84 @@ window.GaoteScene3D = (function () {
   function buildFactory(root) {
     const g = new THREE.Group();
     const fx = FAC_X, fz = FAC_Z;
-    const W = FAC_W, H = FAC_H, D = FAC_D, RH = FAC_RH;
+    const W = FAC_W, H = FAC_H, D = FAC_D;
     const M = texCache.mats;
-    const wall = M.facWall;
     const top = .24;                                                                        // 基座顶面
 
     g.add(box(W + .7, top, D + .7, M.dark, 0, top / 2, 0));                                  // 基座
-    const hall = new THREE.Mesh(new THREE.BoxGeometry(W, H, D), [wall, wall, M.cabTop, wall, wall, wall]);
+    /* 两层厂房：光板墙 + 几何窗户（窗户能跟着"用电"发光，所以不再用带窗贴图） */
+    const hall = new THREE.Mesh(new THREE.BoxGeometry(W, H, D), [M.bridge, M.bridge, M.cabTop, M.bridge, M.bridge, M.bridge]);
     hall.position.set(0, H / 2 + top, 0);
     hall.castShadow = hall.receiveShadow = true;
     g.add(hall);
 
-    /* 双坡屋顶：两块坡板 + 屋脊盖板 + 前后山墙三角（深色收边，比平顶方盒像真厂房） */
-    const run = D / 2 + .4, slope = Math.sqrt(run * run + RH * RH), ang = Math.atan2(RH, run);
+    /* 楼层线（两层之间一道横向腰线） */
+    const floorY = top + H / 2;
     [-1, 1].forEach(function (sz) {
-      const p = box(W + .9, .14, slope, M.bridge, 0, top + H + RH / 2, sz * run / 2);
-      p.rotation.x = sz > 0 ? ang : -ang;
-      p.castShadow = true;
-      g.add(p);
+      g.add(box(W + .22, .16, .18, M.bridge, 0, floorY, sz * (D / 2 + .04)));
     });
-    g.add(box(W + 1.0, .18, .36, M.bridge, 0, top + H + RH + .06, 0));                        // 屋脊
-    const tri = new THREE.Shape();
-    tri.moveTo(-D / 2, 0); tri.lineTo(D / 2, 0); tri.lineTo(0, RH); tri.closePath();
-    const triGeo = new THREE.ExtrudeGeometry(tri, { depth: .14, bevelEnabled: false });
     [-1, 1].forEach(function (sx) {
-      const m = new THREE.Mesh(triGeo, M.bridge);
-      m.rotation.y = sx > 0 ? -Math.PI / 2 : Math.PI / 2;
-      m.position.set(sx * (W / 2 - .07), top + H, 0);
-      m.castShadow = true;
-      g.add(m);
+      g.add(box(.18, .16, D + .22, M.bridge, sx * (W / 2 + .04), floorY, 0));
     });
 
-    /* 外墙竖向壁柱 + 檐口线条：光板墙变成有竖向分格的工业立面 */
-    for (let k = -3; k <= 3; k++) {
-      const px = k * (W / 7);
-      [-1, 1].forEach(function (sz) {
-        g.add(box(.22, H * .94, .16, M.bridge, px, top + H * .5, sz * (D / 2 + .05)));
-      });
+    /* 平屋顶：屋面板 + 女儿墙 + 屋顶机组（替换原来的双坡屋顶与山墙） */
+    const parH = .55;
+    g.add(box(W + .5, .18, D + .5, M.cabTop, 0, top + H + .09, 0));                            // 屋面板
+    [-1, 1].forEach(function (sz) {
+      g.add(box(W + .6, parH, .26, M.bridge, 0, top + H + .18 + parH / 2, sz * (D / 2 + .05)));
+    });
+    [-1, 1].forEach(function (sx) {
+      g.add(box(.26, parH, D + .6, M.bridge, sx * (W / 2 + .05), top + H + .18 + parH / 2, 0));
+    });
+    [[-2.6, -1.5], [1.8, 1.4]].forEach(function (p) {
+      g.add(box(1.7, .62, 1.25, M.roofUnit, p[0], top + H + .55, p[1]));
+      g.add(box(1.45, .08, 1.0, M.acVent, p[0], top + H + .9, p[1]));
+    });
+
+    /* 窗户：正/背面 6 列 × 2 层，侧面 3 列 × 2 层；用电时玻璃发光 */
+    const winMat = regMat(new THREE.MeshStandardMaterial({
+      color: 0x1b2b33, roughness: .18, metalness: .35,
+      emissive: new THREE.Color(0x000000), emissiveIntensity: 0
+    }), { color: 0x16242c, emissive: new THREE.Color(0x000000), emissiveIntensity: 0 },
+      { color: 0x2b3d45, emissive: new THREE.Color(0xffcf8a), emissiveIntensity: .25 });
+    facWinMat = winMat;
+    const frame = M.plate;
+    function windowRow(cx, cy, cz, alongX, n, span) {
+      for (let i = 0; i < n; i++) {
+        const off = (i - (n - 1) / 2) * span;
+        const px = alongX ? cx + off : cx;
+        const pz = alongX ? cz : cz + off;
+        const ww = alongX ? 1.05 : .14;
+        const dd = alongX ? .14 : 1.05;
+        g.add(box(ww + .1, 1.45, dd + .1, frame, px, cy, pz));                               // 窗框
+        const pane = box(ww, 1.3, dd, winMat, px, cy, pz);
+        g.add(pane);
+      }
     }
     [-1, 1].forEach(function (sz) {
-      g.add(box(W + .5, .2, .24, M.bridge, 0, top + H - .1, sz * (D / 2 + .05)));
+      const z = sz * (D / 2 + .06);
+      windowRow(0, top + 1.75, z, true, 6, 1.42);                                            // 一层
+      windowRow(0, top + 4.65, z, true, 6, 1.42);                                            // 二层
+    });
+    [-1, 1].forEach(function (sx) {
+      const x = sx * (W / 2 + .06);
+      windowRow(x, top + 1.75, 0, false, 3, 1.7);
+      windowRow(x, top + 4.65, 0, false, 3, 1.7);
     });
 
-    /* 屋顶通风器（两侧坡面各一） */
-    [-2.8, 2.8].forEach(function (px) {
-      const wh = new THREE.Mesh(new THREE.CylinderGeometry(.3, .34, .38, 10), M.galv);
-      wh.position.set(px, top + H + RH * .52 + .3, 1.0);
-      wh.castShadow = true;
-      g.add(wh);
-      g.add(box(.72, .06, .72, M.bridge, px, top + H + RH * .52 + .52, 1.0));
-    });
-
-    /* 排风筒（后侧穿出屋面，加高） */
-    const duct = new THREE.Mesh(new THREE.CylinderGeometry(.42, .5, 6.8, 12), M.duct);
-    duct.position.set(-W / 2 + 1.3, top + 3.4, -D / 2 + 1.1);
+    /* 排风筒（后侧穿出平屋顶） */
+    const duct = new THREE.Mesh(new THREE.CylinderGeometry(.42, .5, 9.4, 12), M.duct);
+    duct.position.set(-W / 2 + 1.3, top + 4.7, -D / 2 + 1.1);
     duct.castShadow = true;
     g.add(duct);
-    g.add(box(1.2, .12, 1.2, M.bridge, -W / 2 + 1.3, top + 6.9, -D / 2 + 1.1));
+    g.add(box(1.2, .12, 1.2, M.bridge, -W / 2 + 1.3, top + 9.5, -D / 2 + 1.1));
 
-    /* 水塔（右侧后方，四腿落地） */
+    /* 水塔（右侧后方）：圆柱水箱 + 整体基座（不再用四根细腿） */
+    g.add(box(1.7, 3.9, 1.7, M.bridge, W / 2 + 1.7, top + 1.95, -D / 2 + .9));
     const tank = new THREE.Mesh(new THREE.CylinderGeometry(.95, .95, 1.6, 12), M.galv);
-    tank.position.set(W / 2 + 1.7, top + 5.4, -D / 2 + .9);
+    tank.position.set(W / 2 + 1.7, top + 5.55, -D / 2 + .9);
     tank.castShadow = true;
     g.add(tank);
-    [[-.6, -.6], [.6, -.6], [-.6, .6], [.6, .6]].forEach(function (l) {
-      g.add(box(.11, 4.6, .11, M.galv, W / 2 + 1.7 + l[0], top + 2.3, -D / 2 + .9 + l[1]));
-    });
 
     /* 大门雨棚 + 装卸平台 + 台阶（贴图上卷帘门在正面底部中间） */
     const canopy = box(4.8, .12, 1.5, M.bridge, 0, 2.6, D / 2 + .75);
@@ -729,7 +741,7 @@ window.GaoteScene3D = (function () {
     g.add(box(1.7, .36, .05, M.plate, W / 2 - 1.5, top + H * .45, D / 2 + .07));
 
     /* 办公附房（左侧小楼）：平屋顶 + 屋顶机组 + 墙上电缆进线箱 */
-    const off = new THREE.Mesh(new THREE.BoxGeometry(OFF_W, OFF_H, OFF_D), [wall, wall, M.cabTop, wall, wall, wall]);
+    const off = new THREE.Mesh(new THREE.BoxGeometry(OFF_W, OFF_H, OFF_D), [M.bridge, M.bridge, M.cabTop, M.bridge, M.bridge, M.bridge]);
     off.position.set(OFF_X, OFF_H / 2 + top, OFF_Z);
     off.castShadow = off.receiveShadow = true;
     g.add(off);
@@ -752,7 +764,7 @@ window.GaoteScene3D = (function () {
     el.className = 'tag3d tag3d-gt';
     wrap.appendChild(el);
     const o = new THREE.CSS2DObject(wrap);
-    o.position.set(0, top + H + RH + 1.5, 0);
+    o.position.set(0, top + H + 1.6, 0);
     g.add(o);
     facLabelEl = el;
 
@@ -1087,6 +1099,12 @@ window.GaoteScene3D = (function () {
 
     /* 厂房负荷：放电时电从 PCS 送进厂房（光点流动），待机/充电时进线不流动 */
     facOn = flow.dir > 0;
+    /* 厂房窗户：用电（受电）时发光，亮度随功率；夜里更明显，白天主题下也有暖光 */
+    if (facWinMat) {
+      const mag = Math.abs(pNum);
+      facWinMat.emissiveIntensity = facOn ? Math.min(1.1, .35 + mag / 160) : 0;
+      facWinMat.emissive.setHex(facOn ? 0xffcf8a : 0x000000);
+    }
     if (facLabelEl) {
       facLabelEl.innerHTML = '<b>厂房（工厂用电）</b><i>'
         + (facOn ? ('受电 ' + f(emuP, 1, ' kW')) : '待机') + '</i>';
