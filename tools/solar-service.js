@@ -246,6 +246,42 @@ async function getHistory(psId, start, end, intervalMin) {
   return out.sort(function (a, b) { return a.t - b.t; });
 }
 
+/* ---------------- 天气（Open-Meteo：免费、无需 key，含实测辐照度） ---------------- */
+const WMO = {
+  0: '晴', 1: '晴间多云', 2: '多云', 3: '阴',
+  45: '雾', 48: '雾凇',
+  51: '毛毛雨', 53: '小雨', 55: '中雨', 56: '冻雨', 57: '冻雨',
+  61: '小雨', 63: '中雨', 65: '大雨', 66: '冻雨', 67: '冻雨',
+  71: '小雪', 73: '中雪', 75: '大雪', 77: '霰',
+  80: '阵雨', 81: '阵雨', 82: '强阵雨', 85: '阵雪', 86: '阵雪',
+  95: '雷阵雨', 96: '雷阵雨伴冰雹', 99: '雷阵雨伴冰雹'
+};
+let wx = { at: 0, data: null };
+
+async function getWeather(lat, lon) {
+  if (wx.data && Date.now() - wx.at < 10 * 60 * 1000) return wx.data;
+  const u = 'https://api.open-meteo.com/v1/forecast?latitude=' + lat + '&longitude=' + lon +
+    '&current=temperature_2m,apparent_temperature,relative_humidity_2m,precipitation,weather_code,' +
+    'cloud_cover,wind_speed_10m,wind_direction_10m,is_day,shortwave_radiation' +
+    '&daily=sunrise,sunset,uv_index_max&timezone=Asia%2FShanghai&forecast_days=1';
+  const r = await fetch(u, { cache: 'no-store' });
+  const j = await r.json();
+  const c = j.current || {}, d = j.daily || {};
+  const data = {
+    time: c.time, is_day: c.is_day,
+    temp: c.temperature_2m, feels: c.apparent_temperature, humidity: c.relative_humidity_2m,
+    wind: c.wind_speed_10m, wind_dir: c.wind_direction_10m,
+    cloud: c.cloud_cover, precip: c.precipitation, radiation: c.shortwave_radiation,
+    code: c.weather_code, text: WMO[c.weather_code] || ('天气码 ' + c.weather_code),
+    sunrise: String((d.sunrise || [])[0] || '').slice(11, 16),
+    sunset: String((d.sunset || [])[0] || '').slice(11, 16),
+    uv: (d.uv_index_max || [])[0],
+    updated_at: new Date().toISOString()
+  };
+  wx = { at: Date.now(), data: data };
+  return data;
+}
+
 /* 一次完整拉取：电站实时 + 设备 + 当日历史增量，全部落盘 */
 async function poll() {
   state.polls++;
@@ -280,6 +316,7 @@ async function poll() {
         name: detail.ps_name,
         capacity: detail.install_power ? detail.install_power / 1000 : (detail.ps_capacity || detail.capacity),
         location: detail.ps_location, type: detail.ps_type_name,
+        lat: detail.latitude, lon: detail.longitude,
         online: detail.online_status, alarms: detail.alarm_count, faults: detail.fault_count,
         install_date: detail.install_date
       } : null,
@@ -444,6 +481,17 @@ const server = http.createServer(async function (req, res) {
         return o;
       });
       return json({ ok: true, range: range, from: Math.floor(from / 1000), to: Math.floor(to / 1000), points: pts });
+    }
+    if (u.pathname === '/solar/weather') {
+      /* 电站经纬度来自阳光云的电站详情（洙边镇兜底），天气 10 分钟缓存 */
+      const pl = (state.summary && state.summary.plant) || {};
+      const lat = pl.lat || 35.08333, lon = pl.lon || 118.86010;
+      try {
+        const w = await getWeather(lat, lon);
+        return json({ ok: true, data: w, lat: lat, lon: lon });
+      } catch (e) {
+        return json({ ok: false, data: null, last_error: '天气获取失败：' + e.message });
+      }
     }
     if (u.pathname === '/solar/poll') { await poll(); return json({ ok: !state.lastError, last_error: state.lastError }); }
 
