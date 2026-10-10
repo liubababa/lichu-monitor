@@ -435,6 +435,14 @@ window.SolarUI = (function () {
     });
     const bs = byId('slBtnReset');
     if (bs) bs.addEventListener('click', function () { if (window.SolarScene) SolarScene.resetView(); });
+    /* 右栏滑出/收起时重算图表尺寸（否则宽度变了没重画，会和下面的板块叠在一起） */
+    const right = byId('slRight');
+    if (right) {
+      right.addEventListener('mouseenter', function () {
+        setTimeout(function () { if (chart) chart.resize(); }, 320);
+      });
+      right.addEventListener('transitionend', function () { if (chart) chart.resize(); });
+    }
     /* 主题切换时重画坐标轴颜色 */
     new MutationObserver(function () { setTimeout(function () { applyTheme(); if (chart) chart.resize(); }, 60); })
       .observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });

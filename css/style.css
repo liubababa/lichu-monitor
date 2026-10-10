@@ -1318,7 +1318,13 @@ html[data-theme="day"] .gs-warn{color:#8a5b00}
 #slRight .side-inner{
   position:absolute;left:26px;top:0;bottom:0;width:var(--panel-w);
   padding:10px;display:flex;flex-direction:column;gap:12px;min-height:0;overflow-y:auto;overflow-x:hidden}
-#slPanel .chart{height:190px;min-height:190px}
+/* 右栏：各板块按内容排布，趋势块不许抢空间；图表固定高度，滑出时不撑破 */
+#slPanel .panel.grow{flex:none}
+#slPanel .chart{height:180px;min-height:180px;max-height:180px}
+/* 窄栏里标题行放不下就换行：数值摘要与切换按钮各占一行，不挤压标题 */
+#slPanel .panel-title{flex-wrap:wrap;row-gap:3px;letter-spacing:1px}
+#slPanel .panel-title em{order:9;flex:1 1 100%;letter-spacing:0}
+#slPanel .sl-ranges{margin-left:auto;order:5}
 #slDataView,#slDevView{flex:1;min-width:0;display:flex;flex-direction:column}
 #slDataBody,#slDevBody{display:flex;flex-direction:column;gap:12px}
 #slDataBody .kpi-grid{grid-template-columns:repeat(6,minmax(0,1fr))}
