@@ -638,16 +638,24 @@ window.GaoteScene3D = (function () {
     const top = .24;                                                                        // 基座顶面
 
     g.add(box(W + .7, top, D + .7, M.dark, 0, top / 2, 0));                                  // 基座
-    /* 两层厂房：橙色主体 + 炭黑收边（参考图"橙色 + 黑色"现代工业配色），
-       窗户为几何玻璃（能跟着"用电"发光），立面用贴墙浅肋做竖向分格 */
-    const wallMat = regMat(std(0x8f4a12, { roughness: .62, metalness: .25 }),
-      { color: 0x8f4a12 }, { color: 0xc96f22 });
+    /* 两层厂房（参考图"橙色 + 黑色"工业风）：
+       上层主体浅灰白 + 下层橙色基座段 + 炭黑收边/窗框，立面用贴墙浅肋做竖向分格 */
+    const wallMat = regMat(std(0xb9c0c1, { roughness: .68, metalness: .18 }),
+      { color: 0x5c6a6c }, { color: 0xc8cccc });                                             // 主体：浅灰白
+    const baseMat = regMat(std(0x8f4a12, { roughness: .62, metalness: .25 }),
+      { color: 0x8f4a12 }, { color: 0xc96f22 });                                             // 下层：橙
     const trimMat = regMat(std(0x14171a, { roughness: .55, metalness: .35 }),
-      { color: 0x14171a }, { color: 0x1d2124 });
+      { color: 0x14171a }, { color: 0x1d2124 });                                             // 收边：炭黑
     const hall = new THREE.Mesh(new THREE.BoxGeometry(W, H, D), [wallMat, wallMat, trimMat, wallMat, wallMat, wallMat]);
     hall.position.set(0, H / 2 + top, 0);
     hall.castShadow = hall.receiveShadow = true;
     g.add(hall);
+    /* 下层橙色段（一层高度 ≈ H/2） */
+    const baseH = H / 2 - .08;
+    const base = new THREE.Mesh(new THREE.BoxGeometry(W + .12, baseH, D + .12), baseMat);
+    base.position.set(0, top + baseH / 2, 0);
+    base.castShadow = base.receiveShadow = true;
+    g.add(base);
     /* 竖向浅肋：贴着墙面做分格（不是外挂的立杆） */
     for (let k = -4; k <= 4; k++) {
       const px = k * (W / 9.2);
@@ -700,14 +708,12 @@ window.GaoteScene3D = (function () {
       }
     }
     [-1, 1].forEach(function (sz) {
-      const z = sz * (D / 2 + .06);
-      windowRow(0, top + 1.75, z, true, 6, 1.42);                                            // 一层
-      windowRow(0, top + 4.65, z, true, 6, 1.42);                                            // 二层
+      windowRow(0, top + 1.75, sz * (D / 2 + .20), true, 6, 1.42);                           // 一层（橙色段，窗面外凸一点）
+      windowRow(0, top + 4.65, sz * (D / 2 + .06), true, 6, 1.42);                           // 二层
     });
     [-1, 1].forEach(function (sx) {
-      const x = sx * (W / 2 + .06);
-      windowRow(x, top + 1.75, 0, false, 3, 1.7);
-      windowRow(x, top + 4.65, 0, false, 3, 1.7);
+      windowRow(sx * (W / 2 + .20), top + 1.75, 0, false, 3, 1.7);
+      windowRow(sx * (W / 2 + .06), top + 4.65, 0, false, 3, 1.7);
     });
 
     /* 排风筒（后侧穿出平屋顶） */
