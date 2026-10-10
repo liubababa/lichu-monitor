@@ -202,6 +202,7 @@
     try { if (window.MqttUI) MqttUI.init(); } catch (e) { console.error(e); }
     try { if (window.OverviewUI) OverviewUI.init(); } catch (e) { console.error(e); }
     try { if (window.PortalUI) PortalUI.init(); } catch (e) { console.error(e); }
+    try { if (window.SolarUI) SolarUI.init(); } catch (e) { console.error(e); }
     DataService.start(onData);
   }
 
