@@ -638,29 +638,41 @@ window.GaoteScene3D = (function () {
     const top = .24;                                                                        // 基座顶面
 
     g.add(box(W + .7, top, D + .7, M.dark, 0, top / 2, 0));                                  // 基座
-    /* 两层厂房：光板墙 + 几何窗户（窗户能跟着"用电"发光，所以不再用带窗贴图） */
-    const hall = new THREE.Mesh(new THREE.BoxGeometry(W, H, D), [M.bridge, M.bridge, M.cabTop, M.bridge, M.bridge, M.bridge]);
+    /* 两层厂房：橙色主体 + 炭黑收边（参考图"橙色 + 黑色"现代工业配色），
+       窗户为几何玻璃（能跟着"用电"发光），立面用贴墙浅肋做竖向分格 */
+    const wallMat = regMat(std(0x8f4a12, { roughness: .62, metalness: .25 }),
+      { color: 0x8f4a12 }, { color: 0xc96f22 });
+    const trimMat = regMat(std(0x14171a, { roughness: .55, metalness: .35 }),
+      { color: 0x14171a }, { color: 0x1d2124 });
+    const hall = new THREE.Mesh(new THREE.BoxGeometry(W, H, D), [wallMat, wallMat, trimMat, wallMat, wallMat, wallMat]);
     hall.position.set(0, H / 2 + top, 0);
     hall.castShadow = hall.receiveShadow = true;
     g.add(hall);
+    /* 竖向浅肋：贴着墙面做分格（不是外挂的立杆） */
+    for (let k = -4; k <= 4; k++) {
+      const px = k * (W / 9.2);
+      [-1, 1].forEach(function (sz) {
+        g.add(box(.14, H - .5, .06, trimMat, px, top + H / 2, sz * (D / 2 + .035)));
+      });
+    }
 
     /* 楼层线（两层之间一道横向腰线） */
     const floorY = top + H / 2;
     [-1, 1].forEach(function (sz) {
-      g.add(box(W + .22, .16, .18, M.bridge, 0, floorY, sz * (D / 2 + .04)));
+      g.add(box(W + .22, .16, .18, trimMat, 0, floorY, sz * (D / 2 + .04)));
     });
     [-1, 1].forEach(function (sx) {
-      g.add(box(.18, .16, D + .22, M.bridge, sx * (W / 2 + .04), floorY, 0));
+      g.add(box(.18, .16, D + .22, trimMat, sx * (W / 2 + .04), floorY, 0));
     });
 
-    /* 平屋顶：屋面板 + 女儿墙 + 屋顶机组（替换原来的双坡屋顶与山墙） */
+    /* 平屋顶：炭黑屋面板 + 女儿墙 + 屋顶机组（替换原来的双坡屋顶与山墙） */
     const parH = .55;
-    g.add(box(W + .5, .18, D + .5, M.cabTop, 0, top + H + .09, 0));                            // 屋面板
+    g.add(box(W + .5, .18, D + .5, trimMat, 0, top + H + .09, 0));                             // 屋面板
     [-1, 1].forEach(function (sz) {
-      g.add(box(W + .6, parH, .26, M.bridge, 0, top + H + .18 + parH / 2, sz * (D / 2 + .05)));
+      g.add(box(W + .6, parH, .26, trimMat, 0, top + H + .18 + parH / 2, sz * (D / 2 + .05)));
     });
     [-1, 1].forEach(function (sx) {
-      g.add(box(.26, parH, D + .6, M.bridge, sx * (W / 2 + .05), top + H + .18 + parH / 2, 0));
+      g.add(box(.26, parH, D + .6, trimMat, sx * (W / 2 + .05), top + H + .18 + parH / 2, 0));
     });
     [[-2.6, -1.5], [1.8, 1.4]].forEach(function (p) {
       g.add(box(1.7, .62, 1.25, M.roofUnit, p[0], top + H + .55, p[1]));
@@ -674,7 +686,7 @@ window.GaoteScene3D = (function () {
     }), { color: 0x16242c, emissive: new THREE.Color(0x000000), emissiveIntensity: 0 },
       { color: 0x2b3d45, emissive: new THREE.Color(0xffcf8a), emissiveIntensity: .25 });
     facWinMat = winMat;
-    const frame = M.plate;
+    const frame = trimMat;
     function windowRow(cx, cy, cz, alongX, n, span) {
       for (let i = 0; i < n; i++) {
         const off = (i - (n - 1) / 2) * span;
