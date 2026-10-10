@@ -6,7 +6,7 @@
 <title>力储未来能源综合管理系统</title>
 <link rel="icon" type="image/png" sizes="64x64" href="libs/logo-64.png?v=20260923a"/>
 <link rel="apple-touch-icon" href="libs/logo-180.png?v=20260923a"/>
-<link rel="stylesheet" href="css/style.css?v=20261010c"/>
+<link rel="stylesheet" href="css/style.css?v=20261010d"/>
 <script>
 /* 加载期错误收集（便于排查依赖/脚本问题） */
 window.__loadErrs = [];
@@ -76,6 +76,21 @@ window.addEventListener('error', function (e) {
       <button class="tab" data-tab="health">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="8" width="17" height="9" rx="1.5"/><path d="M22 11v3M6 11.5v2M9.5 11.5v2M13 11.5v2"/></svg>
         <span>电芯健康</span><i>▾</i>
+      </button>
+    </nav>
+
+    <nav class="tb-tabs" id="solarTabs" style="display:none">
+      <button class="tab active" data-stab="monitor">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 17l6-5 4 3 8-7"/><path d="M3 21h18"/></svg>
+        <span>三维监控</span><i>▾</i>
+      </button>
+      <button class="tab" data-stab="data">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19V5M4 19h16"/><path d="M8 16V9M12 16v-4M16 16v-7"/></svg>
+        <span>数据总览</span><i>▾</i>
+      </button>
+      <button class="tab" data-stab="devices">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="7" height="16"/><rect x="13" y="9" width="7" height="11"/><path d="M7 8h1M7 12h1M7 16h1M16 13h1M16 16h1"/></svg>
+        <span>设备与天气</span><i>▾</i>
       </button>
     </nav>
 
@@ -286,58 +301,69 @@ window.addEventListener('error', function (e) {
 
 <!-- ===== 洙边卫生院站（分布式光伏 · 阳光电源 iSolarCloud） ===== -->
 <section id="solarView" class="hidden">
-  <div class="ov-bar">
-    <div class="tv-title">洙边卫生院站 <em>· 分布式光伏 · 阳光电源 iSolarCloud</em></div>
-    <div class="ov-bar-r">
-      <span class="ov-src" id="slSrc">正在读取…</span>
-      <button class="mq-btn" id="slRefresh">刷新</button>
-      <button class="mq-btn" id="slBack">返回目录</button>
+  <!-- 三维监控：全屏场景 + 右侧滑出信息栏 -->
+  <section id="slLeft">
+    <div id="solar3d"></div>
+    <div class="scene-head">
+      <div class="sh-left">
+        <div class="scene-title"><i></i><span>洙边卫生院站 · 光伏运行监测图</span></div>
+        <div class="station-chip">电站名称：<b id="slStation">--</b></div>
+      </div>
+      <div class="sh-right">
+        <button class="ghost-btn" id="slBtnLabels" title="显示 / 隐藏设备浮标">标签</button>
+        <button class="ghost-btn" id="slBtnRotate" title="自动旋转开 / 关">旋转</button>
+        <button class="ghost-btn" id="slBtnReset" title="重置视角">重置视角</button>
+      </div>
     </div>
-  </div>
-  <div class="ov-body sl-body">
-    <div class="sl-kpis" id="slKpis"></div>
-    <div class="sl-main">
-      <div class="sl-left">
-        <div class="cc-card sl-scene-card">
-          <div class="cc-title">三维监控 <em id="slSceneMeta">--</em>
-            <span class="sl-ranges" id="slSceneBtns">
-              <button data-scene="3d" class="on">3D</button>
-              <button data-scene="off">关闭</button>
-            </span>
-          </div>
-          <div class="sl-scene" id="solar3d"></div>
-          <div class="sl-scene-tip">左键拖拽旋转 · 滚轮缩放 · 画面随真实天气与发电功率变化</div>
-        </div>
-        <div class="cc-card sl-trend">
-          <div class="cc-title">发电趋势
-            <em id="slTrendMeta">--</em>
-            <span class="sl-ranges" id="slRanges">
-              <button data-range="today" class="on">今日</button>
-              <button data-range="yesterday">昨日</button>
-              <button data-range="days3">近三日</button>
-            </span>
-          </div>
-          <div class="cc-chart" id="slTrendChart"></div>
-        </div>
+    <div id="slAlarmBar" class="alarm ok"><span class="dot"></span><span id="slAlarmText">天气读取中…</span></div>
+    <div class="scene-tip">左键拖拽旋转 · 滚轮缩放 · 画面随真实天气与发电功率变化</div>
+  </section>
+
+  <aside id="slRight">
+    <div class="side-handle"><span>◀ 数据面板</span></div>
+    <div class="side-inner" id="slPanel"></div>
+  </aside>
+
+  <!-- 数据总览（整页） -->
+  <section id="slDataView" class="hidden"><div class="ov-body sl-body" id="slDataBody"></div></section>
+  <!-- 设备与天气（整页） -->
+  <section id="slDevView" class="hidden"><div class="ov-body sl-body" id="slDevBody"></div></section>
+
+  <!-- 数据卡片：在三个标签之间移动挂载（同一套 DOM，只渲染一次） -->
+  <div class="hidden" id="slBlocks">
+    <div class="panel" id="slKpisBlock">
+      <div class="panel-title"><span>实时概览</span><em id="slSrc">--</em></div>
+      <div class="kpi-grid" id="slKpis"></div>
+    </div>
+    <div class="panel grow" id="slTrendBlock">
+      <div class="panel-title"><span>发电趋势</span><em id="slTrendMeta">--</em>
+        <span class="sl-ranges" id="slRanges">
+          <button data-range="today" class="on">今日</button>
+          <button data-range="yesterday">昨日</button>
+          <button data-range="days3">近三日</button>
+        </span>
       </div>
-      <div class="sl-side">
-        <div class="cc-card">
-          <div class="cc-title">设备 <em id="slDevMeta">--</em></div>
-          <div class="sl-devs" id="slDevs"></div>
-        </div>
-        <div class="cc-card">
-          <div class="cc-title">天气 <em id="slWxMeta">--</em></div>
-          <div class="sl-wx" id="slWx"></div>
-        </div>
-        <div class="cc-card">
-          <div class="cc-title">减排贡献 <em>累计</em></div>
-          <div class="sl-green" id="slGreen"></div>
-        </div>
-        <div class="cc-card">
-          <div class="cc-title">电站信息</div>
-          <div class="sl-info" id="slInfo"></div>
-        </div>
-      </div>
+      <div class="chart" id="slTrendChart"></div>
+    </div>
+    <div class="panel" id="slWxBlock">
+      <div class="panel-title"><span>天气</span><em id="slWxMeta">--</em></div>
+      <div class="sl-wx" id="slWx"></div>
+    </div>
+    <div class="panel" id="slDevBlock">
+      <div class="panel-title"><span>设备</span><em id="slDevMeta">--</em></div>
+      <div class="sl-devs" id="slDevs"></div>
+    </div>
+    <div class="panel" id="slBattBlock">
+      <div class="panel-title"><span>储能</span><em>待接入</em></div>
+      <div class="sl-empty" id="slBatt">电池数据尚未接入。接入后这里显示 SOC、充放电功率与健康度，三维场景中会同步出现电池柜与充放电电流。</div>
+    </div>
+    <div class="panel" id="slGreenBlock">
+      <div class="panel-title"><span>减排贡献</span><em>累计</em></div>
+      <div class="sl-green" id="slGreen"></div>
+    </div>
+    <div class="panel" id="slInfoBlock">
+      <div class="panel-title"><span>电站信息</span></div>
+      <div class="sl-info" id="slInfo"></div>
     </div>
   </div>
 </section>
@@ -405,10 +431,10 @@ window.addEventListener('error', function (e) {
 <script src="js/overview.js?v=20260919b"></script>
 <script src="js/mqtt-ui.js?v=20261006a"></script>
 <script src="js/portal.js?v=20261010a"></script>
-<script src="js/solar.js?v=20261010i"></script>
-<script src="js/solar-scene3d.js?v=20261010b"></script>
+<script src="js/solar.js?v=20261010j"></script>
+<script src="js/solar-scene3d.js?v=20261010c"></script>
 <script src="js/scene3d.js?v=20261009a"></script>
 <script src="js/charts.js?v=20261009a"></script>
-<script src="js/main.js?v=20261009a"></script>
+<script src="js/main.js?v=20261010a"></script>
 </body>
 </html>
