@@ -215,6 +215,7 @@ window.PortalUI = (function () {
   function openPortal() {
     const p = byId('portal');
     if (!p) return;
+    if (window.SolarUI) SolarUI.hide();          /* 光伏站视图收起，别和目录叠在一起 */
     p.classList.remove('hidden');
     renderPortal();
   }

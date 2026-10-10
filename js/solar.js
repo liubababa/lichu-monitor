@@ -104,11 +104,16 @@ window.SolarUI = (function () {
     const v = byId('solarView');
     if (v) v.classList.add('hidden');
     document.body.classList.remove('solar-mode');
+    /* 恢复储能站主体视图：进光伏站时被 open() 隐藏了，不恢复的话莒南的三维会"消失" */
+    const m = byId('main');
+    if (m) m.classList.remove('hidden');
     const st = byId('solarTabs'), mt = byId('mainTabs');
     if (st) st.style.display = 'none';
     if (mt) mt.style.display = '';
     if (window.SolarScene) SolarScene.setActive(false);
     if (timer) { clearInterval(timer); timer = null; }
+    /* 储能三维在隐藏期间尺寸变为 0，重新显示后让它按新尺寸重排 */
+    setTimeout(function () { try { window.dispatchEvent(new Event('resize')); } catch (_) {} }, 60);
   }
 
   /* ---------------- 数据 ---------------- */
