@@ -406,7 +406,10 @@ function readTrend(fromMs, toMs) {
 const server = http.createServer(async function (req, res) {
   const u = new URL(req.url, 'http://localhost');
   res.setHeader('access-control-allow-origin', '*');
+  res.setHeader('access-control-allow-methods', 'GET,POST,OPTIONS');
+  res.setHeader('access-control-allow-headers', '*');
   res.setHeader('cache-control', 'no-store');
+  if (req.method === 'OPTIONS') { res.writeHead(204); return res.end(); }   /* 跨域调试的预检 */
 
   const json = function (obj, code) {
     res.writeHead(code || 200, { 'content-type': 'application/json; charset=utf-8' });

@@ -23,7 +23,10 @@ const UP = arg('up', 'https://mqtt.ykdesign.top').replace(/\/+$/, '');
 
 const server = http.createServer(async function (req, res) {
   res.setHeader('access-control-allow-origin', '*');
+  res.setHeader('access-control-allow-methods', 'GET,POST,OPTIONS');
+  res.setHeader('access-control-allow-headers', '*');
   res.setHeader('cache-control', 'no-store');
+  if (req.method === 'OPTIONS') { res.writeHead(204); return res.end(); }   /* 跨端口调试的预检 */
   if (!/^\/solar\//.test(req.url)) {
     res.writeHead(404, { 'content-type': 'application/json; charset=utf-8' });
     return res.end(JSON.stringify({ ok: false, error: '只转发 /solar/*' }));
