@@ -266,7 +266,12 @@ async function poll() {
       getRealtime(psId)
     ]);
     const now = new Date();
-    const from = new Date(now.getTime() - 1000 * 60 * 60 * 6);          // 取近 6 小时（5 分钟粒度）
+    /* 历史窗口：服务首次拉取时回补当天 00:00 起的整条曲线（分段请求，最多 8 段），
+       之后每 5 分钟只补最近 6 小时，省接口配额 */
+    const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0);
+    const from = state.polls <= 1
+      ? dayStart
+      : new Date(now.getTime() - 1000 * 60 * 60 * 6);
     const hist = await getHistory(psId, from, now, 5).catch(function () { return []; });
 
     const rec = {
@@ -423,7 +428,21 @@ const server = http.createServer(async function (req, res) {
       let from = today, to = now;
       if (range === 'yesterday') { from = today - 86400000; to = today - 1; }
       else if (range === 'days3') { from = today - 2 * 86400000; }
-      const pts = readTrend(from, to);
+      /* 统一单位：功率 kW、发电量 kWh（历史接口给 W / Wh，快照已是 kW / kWh） */
+      const pts = readTrend(from, to).map(function (p) {
+        const o = { t: p.t };
+        const pk = (p.power_kw !== undefined) ? Number(p.power_kw)
+          : (p.power !== undefined ? Number(p.power) / 1000 : undefined);
+        if (pk !== undefined && isFinite(pk)) o.power_kw = pk;
+        const dy = (p.daily_yield_kwh !== undefined) ? Number(p.daily_yield_kwh)
+          : (p.daily_yield !== undefined ? Number(p.daily_yield) / 1000 : undefined);
+        if (dy !== undefined && isFinite(dy)) o.daily_yield_kwh = dy;
+        const ty = (p.total_yield_kwh !== undefined) ? Number(p.total_yield_kwh)
+          : (p.total_yield !== undefined ? Number(p.total_yield) / 1000 : undefined);
+        if (ty !== undefined && isFinite(ty)) o.total_yield_kwh = ty;
+        if (p.power_fraction !== undefined) o.power_fraction = Number(p.power_fraction);
+        return o;
+      });
       return json({ ok: true, range: range, from: Math.floor(from / 1000), to: Math.floor(to / 1000), points: pts });
     }
     if (u.pathname === '/solar/poll') { await poll(); return json({ ok: !state.lastError, last_error: state.lastError }); }
