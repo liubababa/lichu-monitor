@@ -303,10 +303,12 @@ window.SolarScene = (function () {
   }
 
   /* ---------------- 主题（页面白天/夜晚） ---------------- */
+  /* 光伏场景恒用"白天"材质与光照：监控画面要看得清；
+     页面主题只微调天空色温，真实昼夜只决定太阳出现与否 */
   function applyTheme() {
     theme = document.documentElement.getAttribute('data-theme') === 'day' ? 'day' : 'night';
     mats.forEach(function (r) {
-      const v = r[theme] || {};
+      const v = r.day || {};
       if (v.color !== undefined && r.m.color) r.m.color.setHex(v.color);
       if (v.map !== undefined) r.m.map = v.map;
       if (v.emissiveIntensity !== undefined) r.m.emissiveIntensity = v.emissiveIntensity;
@@ -321,28 +323,28 @@ window.SolarScene = (function () {
     const T = THREE_();
     const cloud = Math.max(0, Math.min(100, Number(cur.cloud) || 0));
     const rad = Math.max(0, Number(cur.radiation) || 0);
-    const day = !!cur.isDay;
+    const day = !!cur.isDay;                      /* 真实昼夜：只决定太阳在不在 */
     const dayTheme = theme === 'day';
 
-    const sky = dayTheme
-      ? (day ? 0x9fc7e8 : 0x1a2733)
-      : (day ? 0x123048 : 0x04090c);
+    /* 恒为白天观感（夜里也亮着，看得清设备）；云量与辐照只做明暗微调 */
+    const sky = dayTheme ? 0x8fc3e8 : 0x6f9cc4;
     const bg = new T.Color(sky);
-    const dim = 1 - cloud / 100 * .55;
+    const dim = 1 - cloud / 100 * .35;
     scene.background = bg;
     scene.fog.color = bg;
-    scene.fog.near = dayTheme ? 90 : 60;
-    scene.fog.far = dayTheme ? 260 : 200;
+    scene.fog.near = 110;
+    scene.fog.far = 320;
 
-    const sunI = day ? (0.35 + (rad > 0 ? Math.min(1, rad / 900) : .35)) * dim * (dayTheme ? 1.15 : .9) : .05;
+    const sunI = (0.95 + (rad > 0 ? Math.min(1, rad / 900) * .45 : .12)) * dim;
     sunLight.intensity = sunI;
-    hemi.intensity = (day ? .75 : .22) * (dayTheme ? 1.1 : 1) * dim;
+    hemi.intensity = .95 * dim;
+    /* 白天出太阳；夜里不出（但场景依然亮） */
     sun.visible = day;
-    moon.visible = !day;
+    moon.visible = false;
     const cf = cloud / 100;
     cloudGroup.children.forEach(function (cg) {
       cg.visible = cf > .08;
-      cg.children.forEach(function (s) { s.material.opacity = (0.35 + cf * 0.6) * (dayTheme ? 1 : .5); });
+      cg.children.forEach(function (s) { s.material.opacity = 0.35 + cf * 0.6; });
     });
     precipGroup.visible = Number(cur.precip) > 0;
     precipGroup.children.forEach(function (p) { p.material.opacity = cf > .5 ? .6 : .45; });
