@@ -35,8 +35,8 @@ window.GaoteScene3D = (function () {
   const THEMES = {
     night: {
       bg: 0x04090c, fog: 0x04090c, fogNear: 34, fogFar: 95,
-      gridBg: '#04090c', gridLine: 'rgba(46,230,200,.14)',
-      ground: 0xffffff, platform: 0x0b1a1e,
+      /* 场地是水泥地：夜里深灰；台面比地坪略亮一点，看得出是个浇好的台 */
+      ground: 0xffffff, platform: 0x454d52,
       hemiSky: 0xbfe9ff, hemiGround: 0x0a1a1e, hemiInt: 1.05,
       sunColor: 0xffffff, sunInt: .85, fillColor: 0x2ee6c8, fillInt: .35, bloom: .62, bloomTh: .82,
       /* 状态色：充电(蓝) / 放电(青) / 待机(灰) */
@@ -47,10 +47,8 @@ window.GaoteScene3D = (function () {
     },
     day: {
       bg: 0xcfe4f0, fog: 0xe9f1f4, fogNear: 58, fogFar: 165,
-      /* 阳光下的水泥地：暖灰而不是冷灰蓝，网格线深一点才看得见 */
-      gridBg: '#e4e6e2', gridLine: 'rgba(102,116,112,.42)', patches: true,
-      ground: 0xffffff, platform: 0xd2d6d0,
-      /* 光照总量压在 1.0 附近：再高浅色地面就过曝成纯白，网格和阴影全丢。
+      ground: 0xffffff, platform: 0xc7cbc3,
+      /* 光照总量压在 1.0 附近：再高浅色水泥地就过曝成纯白，阴影全丢。
          环境光给足（阴面才不会发黑成剪影），直射光适度 */
       hemiSky: 0xdfefff, hemiGround: 0xb9bdb6, hemiInt: .6,
       sunColor: 0xfff0da, sunInt: .55, fillColor: 0xbfe6ff, fillInt: .15, bloom: .1, bloomTh: .97,
@@ -102,7 +100,7 @@ window.GaoteScene3D = (function () {
   const stackCables = [];   // { flow } 每柜到 PCS 的电缆
 
   /* 厂房（工厂用电负荷）：放电时电送进厂房，进线光点流动 */
-  let facGroup = null, facLabelEl = null, facOn = false, facWinMat = null, facSpillMat = null, facWinBase = .45;
+  let facGroup = null, facLabelEl = null, facOn = false, facWinMat = null, facSpillMat = null, facFaceMat = null, facWinBase = .8;
 
   /* ---------------- 基础工具 ---------------- */
   function std(c, o) { return new THREE.MeshStandardMaterial(Object.assign({ color: c, roughness: .6, metalness: .35 }, o || {})); }
@@ -124,27 +122,26 @@ window.GaoteScene3D = (function () {
     return new THREE.CanvasTexture(c);
   }
 
-  /* 地坪网格：底色 / 网格线颜色随主题（白天为浅色水泥地，夜晚为深色发光网格）。
-     线画粗一点 + 各向异性过滤：地坪铺得很大，细线在远处会被 mipmap 抹掉 */
-  function gridTexture(t) {
-    const p = THEMES[t || theme] || THEMES.night;
+  /* 水泥地坪：场地直接铺成水泥地（原来那版是发光网格，用户要求别用网格）
+     夜里深灰、白天浅灰，都带斑驳，避免一大片死平；贴图放大 512 画、各向异性过滤，
+     地坪铺得很大，远处也不会糊成一片 */
+  function concreteTexture() {
+    const day = theme === 'day';
+    const base = day ? '#b9bdb4' : '#3b4247';
+    const spots = day
+      ? ['rgba(255,255,255,.10)', 'rgba(120,126,120,.10)', 'rgba(160,166,158,.10)', 'rgba(90,96,92,.06)']
+      : ['rgba(255,255,255,.045)', 'rgba(0,0,0,.16)', 'rgba(86,96,102,.10)', 'rgba(18,24,28,.18)'];
     const tx = tex(function (g, w, h) {
-      g.fillStyle = p.gridBg; g.fillRect(0, 0, w, h);
-      g.strokeStyle = p.gridLine; g.lineWidth = 3;
-      for (let i = 0; i <= 8; i++) {
-        const q = i * w / 8;
-        g.beginPath(); g.moveTo(q, 0); g.lineTo(q, h); g.stroke();
-        g.beginPath(); g.moveTo(0, q); g.lineTo(w, q); g.stroke();
+      g.fillStyle = base; g.fillRect(0, 0, w, h);
+      for (let i = 0; i < 190; i++) {
+        g.fillStyle = spots[i % 4];
+        g.beginPath();
+        g.ellipse(Math.random() * w, Math.random() * h, 6 + Math.random() * 30, 4 + Math.random() * 18, Math.random() * 3, 0, 6.3);
+        g.fill();
       }
-      /* 白天：水泥地加些深浅斑驳 + 轮迹，避免一大片死平 */
-      if (p.patches) {
-        for (let i = 0; i < 26; i++) {
-          const x = Math.random() * w, y = Math.random() * h, r = 18 + Math.random() * 70;
-          const rg = g.createRadialGradient(x, y, 0, x, y, r);
-          rg.addColorStop(0, 'rgba(118,124,118,.055)');
-          rg.addColorStop(1, 'rgba(118,124,118,0)');
-          g.fillStyle = rg; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill();
-        }
+      for (let i = 0; i < 900; i++) {
+        g.fillStyle = Math.random() > .5 ? 'rgba(255,255,255,.05)' : 'rgba(0,0,0,.07)';
+        g.fillRect(Math.random() * w, Math.random() * h, 1.7, 1.7);
       }
     }, 512, 512);
     tx.wrapS = tx.wrapT = THREE.RepeatWrapping;
@@ -678,17 +675,18 @@ window.GaoteScene3D = (function () {
     /* 玻璃发光贴图：上亮下暗，像屋里顶灯照下来 —— 亮灯时是"透着光"而不是一块死亮的板 */
     const winGlowTex = tex(function (gc, w, h) {
       const grd = gc.createLinearGradient(0, 0, 0, h);
-      grd.addColorStop(0, 'rgba(255,255,255,.95)');
-      grd.addColorStop(.45, 'rgba(255,255,255,.55)');
-      grd.addColorStop(1, 'rgba(255,255,255,.10)');
+      grd.addColorStop(0, 'rgba(255,255,255,.98)');
+      grd.addColorStop(.45, 'rgba(255,255,255,.62)');
+      grd.addColorStop(1, 'rgba(255,255,255,.20)');
       gc.fillStyle = grd; gc.fillRect(0, 0, w, h);
     }, 16, 64);
-    /* 窗户：大面玻璃 + 细竖挺；用电时玻璃透光，待机时是暗色玻璃 */
+    /* 窗户：大面玻璃 + 细竖挺。厂房里是白色灯管 ——
+       夜里近白（带一点场景青色），白天用纯白（原来白天的暖黄显土） */
     const winMat = regMat(new THREE.MeshStandardMaterial({
       color: 0x1b2b33, roughness: .18, metalness: .35,
-      emissive: new THREE.Color(0x2ee6c8), emissiveIntensity: .45, emissiveMap: winGlowTex
-    }), { color: 0x16242c, emissive: new THREE.Color(0x2ee6c8), emissiveIntensity: .45 },
-      { color: 0x2b3d45, emissive: new THREE.Color(0xe8b000), emissiveIntensity: .45 });
+      emissive: new THREE.Color(0xeaf6f4), emissiveIntensity: .8, emissiveMap: winGlowTex
+    }), { color: 0x16242c, emissive: new THREE.Color(0xeaf6f4), emissiveIntensity: .8 },
+      { color: 0x2b3d45, emissive: new THREE.Color(0xffffff), emissiveIntensity: .55 });
     facWinMat = winMat;
     /* 横向深色窗带：整栋只在上面一层做一条带，带内嵌 4 扇大窗（越简洁越显好） */
     const bandMat = bandMat0;
@@ -719,6 +717,19 @@ window.GaoteScene3D = (function () {
       winBand(W / 2 + .03, cy, 0, false, D - .3, 2, 2.0);                                      // 右侧每排 2 扇
       winBand(-(W / 2 + .03), cy, (lzStart + lzEnd) / 2, false, lzEnd - lzStart, 2, 1.6);       // 左侧让开附房
     });
+    /* 窗带在正面墙上的柔光：光晕开在墙面上（不是只亮窗框里那几个方块），
+       整片光居中、和窗带一起呼吸 */
+    const faceGlowTex = tex(function (gc, w, h) {
+      const grd = gc.createRadialGradient(w / 2, h / 2, 4, w / 2, h / 2, w * .5);
+      grd.addColorStop(0, 'rgba(255,255,255,.6)');
+      grd.addColorStop(.5, 'rgba(255,255,255,.2)');
+      grd.addColorStop(1, 'rgba(255,255,255,0)');
+      gc.fillStyle = grd; gc.fillRect(0, 0, w, h);
+    }, 128, 64);
+    facFaceMat = new THREE.MeshBasicMaterial({ map: faceGlowTex, transparent: true, opacity: .2, blending: THREE.AdditiveBlending, depthWrite: false });
+    const faceGlow = new THREE.Mesh(new THREE.PlaneGeometry(W - .2, bandH * 2.6), facFaceMat);
+    faceGlow.position.set(0, top + 4.65, D / 2 + .06);
+    g.add(faceGlow);
     /* 屋顶不做光伏：莒南这个厂房屋顶是干净的平顶（真实站点没有光伏） */
 
     /* 参考图里屋顶是干净的平顶（无设备），也不设外挂水塔/排风筒 */
@@ -812,9 +823,9 @@ window.GaoteScene3D = (function () {
 
     /* 地坪：铺得比场地大得多（远处交给雾效淡出），旋转 / 压低视角时看不到地边，也看不到"台下" */
     groundMat = new THREE.MeshStandardMaterial({
-      map: gridTexture(), roughness: .95, metalness: .05, transparent: true, opacity: .96
+      map: concreteTexture(), roughness: .96, metalness: .02
     });
-    groundMat.map.repeat.set(10, 10);
+    groundMat.map.repeat.set(9, 9);
     const ground = new THREE.Mesh(new THREE.PlaneGeometry(320, 320), groundMat);
     ground.rotation.x = -Math.PI / 2;
     ground.receiveShadow = true;
@@ -1129,13 +1140,13 @@ window.GaoteScene3D = (function () {
 
     /* 厂房负荷：放电时电从 PCS 送进厂房（光点流动），待机/充电时进线不流动 */
     facOn = flow.dir > 0;
-    /* 厂房窗户长亮（呼吸灯的基准亮度在这里算，亮暗起伏在 loop 里做）：
-       平时就是透光的（颜色跟场景主色走），工厂受电（放电供电）时再亮一档 */
+    /* 厂房灯（呼吸灯的基准亮度在这里算，亮暗起伏在 loop 里做）：
+       白色灯管长亮，工厂受电（放电供电）时再亮一档；白天用纯白、夜里近白 */
     if (facWinMat) {
       const mag = Math.abs(pNum);
-      const pm = THEMES[theme] || THEMES.night;
-      facWinMat.emissive.setHex(pm.flowDis);
-      facWinBase = Math.min(.9, (facOn ? .58 : .45) + mag / 520);
+      const day = theme === 'day';
+      facWinMat.emissive.setHex(day ? 0xffffff : 0xeaf6f4);
+      facWinBase = Math.min(day ? .82 : .98, (facOn ? (day ? .74 : .95) : (day ? .6 : .82)) + mag / 420);
     }
     if (facLabelEl) {
       facLabelEl.innerHTML = '<b>厂房（工厂用电）</b><i>'
@@ -1190,11 +1201,13 @@ window.GaoteScene3D = (function () {
     if (rot.auto && controls) controls.autoRotate && (controls.autoRotateSpeed = rot.speed * 6);
     if (controls) controls.update();
     stepFlow(dt);
-    /* 厂房玻璃/门灯的呼吸：缓慢起伏（约 3 秒一个循环），亮度高一点但不刺眼 */
+    /* 厂房灯（玻璃 / 门里的光 / 墙面柔光 / 地面光晕）一起呼吸：
+       慢一点（约 4.6 秒一轮）、幅度小一点，才显得高级 */
     if (facWinMat) {
-      const breath = .84 + .16 * Math.sin(t / 1000 * 2.1);
+      const breath = .86 + .14 * Math.sin(t / 1000 * 1.35);
       facWinMat.emissiveIntensity = facWinBase * breath;
-      if (facSpillMat) facSpillMat.opacity = .30 * breath;
+      if (facSpillMat) facSpillMat.opacity = .34 * breath;
+      if (facFaceMat) facFaceMat.opacity = .24 * breath;
     }
     if (composer) composer.render(); else renderer.render(scene, camera);
     labelRenderer.render(scene, camera);
@@ -1209,8 +1222,8 @@ window.GaoteScene3D = (function () {
     if (scene.fog) { scene.fog.color.setHex(p.fog); scene.fog.near = p.fogNear; scene.fog.far = p.fogFar; }
     if (groundMat) {
       const old = groundMat.map;
-      const map = gridTexture();
-      map.repeat.set(10, 10);
+      const map = concreteTexture();
+      map.repeat.set(9, 9);
       groundMat.map = map;
       groundMat.color.setHex(p.ground);
       groundMat.needsUpdate = true;
@@ -1248,15 +1261,22 @@ window.GaoteScene3D = (function () {
       scene.background = new THREE.Color(p.bg);
     }
 
-    /* 设备材质：浅色柜体 / 深色柜体两套配置，一次切完 */
+    /* 设备材质：浅色柜体 / 深色柜体两套配置，一次切完。
+       自发光允许写数字或 THREE.Color —— 只当数字处理会把 Color 对象算成黑 */
     themeMats.forEach(function (e) {
       const cfg = e[theme] || e.night;
       if (cfg.color !== undefined) e.mat.color.setHex(cfg.color);
       if (cfg.map) e.mat.map = cfg.map;
-      if (cfg.emissive !== undefined) e.mat.emissive.setHex(cfg.emissive);
+      if (cfg.emissive !== undefined && e.mat.emissive) {
+        if (typeof cfg.emissive === 'number') e.mat.emissive.setHex(cfg.emissive);
+        else e.mat.emissive.copy(cfg.emissive);
+      }
       if (cfg.emissiveIntensity !== undefined) e.mat.emissiveIntensity = cfg.emissiveIntensity;
       e.mat.needsUpdate = true;
     });
+    /* 厂房灯的呼吸基准跟着主题：白天用纯白、亮度略低（白底上不刺眼） */
+    facWinBase = theme === 'day' ? .6 : .82;
+    if (facWinMat) facWinMat.emissiveIntensity = facWinBase;
   }
 
   function init(el) {
