@@ -122,7 +122,7 @@ window.GaoteScene3D = (function () {
   const stackCables = [];   // { flow } 每柜到 PCS 的电缆
 
   /* 厂房（工厂用电负荷）：放电时电送进厂房，进线光点流动 */
-  let facGroup = null, facLabelEl = null, facOn = false, facWinMat = null, facSpillMat = null, facFaceMat = null, facWinBase = .8;
+  let facLabelEl = null, facOn = false, facWinMat = null, facSpillMat = null, facFaceMat = null, facWinBase = .8;
 
   /* ---------------- 基础工具 ---------------- */
   function std(c, o) { return new THREE.MeshStandardMaterial(Object.assign({ color: c, roughness: .6, metalness: .35 }, o || {})); }
@@ -831,11 +831,11 @@ window.GaoteScene3D = (function () {
     o.position.set(0, top + H + 1.6, 0);
     g.add(o);
     facLabelEl = el;
+    labelPairs.push({ obj: o, el: el });       /* 厂房标签也要跟着相机距离缩放 */
 
     g.position.set(fx, 0, fz);
     g.userData.key = 'factory';          // 点厂房可展开明细卡
     root.add(g);
-    facGroup = g;
     groups.factory = g;
     addCard('factory', new THREE.Vector3(0, top + H * .6, D / 2 + 1.6));
   }

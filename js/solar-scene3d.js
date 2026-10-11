@@ -266,7 +266,6 @@ window.SolarScene = (function () {
   function rowPlaneY(zl) { return roofY + ROW_Y - Math.tan(TILT) * zl; }
   const RAIL_Z = .40;                            /* 导轨在排内的前后位置 */
   const RAIL_DROP = .0525;                       /* 导轨中心比组件面低多少（导轨顶面贴组件底面） */
-  const LEG_DROP = RAIL_DROP + .03;              /* 竖撑顶面贴导轨底面 */
 
   function skyTexture(p) {
     return tex(function (g, w, h) {
