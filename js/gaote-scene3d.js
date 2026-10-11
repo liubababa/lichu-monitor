@@ -81,6 +81,28 @@ window.GaoteScene3D = (function () {
     return mesh;
   }
 
+  /* 浮标按相机距离缩放：HTML 浮标是固定像素大小，拉远后模型缩成一点、浮标还是原尺寸，
+     就会糊成一片。这里按"默认机位距离 = 100%"给每个浮标算缩放，并让远处略微淡出 */
+  const labelPairs = [];             // { obj, el, k }
+  const LBL_REF = 26;                // 默认机位附近：浮标 100%
+  let _lblV = null;
+  function scaleLabels() {
+    if (!labelPairs.length || !camera) return;
+    if (!_lblV) _lblV = new THREE.Vector3();
+    for (let i = 0; i < labelPairs.length; i++) {
+      const it = labelPairs[i];
+      it.obj.getWorldPosition(_lblV);
+      const d = camera.position.distanceTo(_lblV);
+      let k = LBL_REF / Math.max(1, d);
+      k = Math.min(1.15, Math.max(0.45, k));
+      if (Math.abs((it.k || 0) - k) < 0.01) continue;      /* 变化太小就不写样式，免得每帧折腾 DOM */
+      it.k = k;
+      it.el.style.setProperty('--lbl-scale', k.toFixed(3));
+      /* 拉得越远越淡：0.45 时降到 0.35，远景不至于是"一片标签" */
+      it.el.style.opacity = (0.35 + 0.65 * Math.min(1, (k - 0.45) / 0.55)).toFixed(2);
+    }
+  }
+
   /* 能量流：每条电缆一根发光管，电流光纹沿线滚动，方向/速度各自按数据 */
   const flows = [];
   const conductorMats = [];                // 铁塔导线材质（颜色随主题）
@@ -254,6 +276,7 @@ window.GaoteScene3D = (function () {
     o.position.copy(pos);
     (groups[key] || scene).add(o);
     labelEls[key] = el;
+    labelPairs.push({ obj: o, el: el });       /* 供按距离缩放用 */
   }
   function addCard(key, pos) {
     const wrap = document.createElement('div');
@@ -1201,6 +1224,7 @@ window.GaoteScene3D = (function () {
     if (rot.auto && controls) controls.autoRotate && (controls.autoRotateSpeed = rot.speed * 6);
     if (controls) controls.update();
     stepFlow(dt);
+    scaleLabels();                       /* 浮标跟着相机距离缩放 */
     /* 厂房灯（玻璃 / 门里的光 / 墙面柔光 / 地面光晕）一起呼吸：
        慢一点（约 4.6 秒一轮）、幅度小一点，才显得高级 */
     if (facWinMat) {

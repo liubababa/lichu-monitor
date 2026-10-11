@@ -29,6 +29,7 @@ window.SolarScene = (function () {
   let raf = null, W = 0, H = 0;
   const flows = [];                 // 电流光纹：{ map, tubeMat, kind, on, speed }
   const labelObjs = [];             // 浮标对象（点开明细卡时统一藏起来）
+  const labelPairs = [];            // { obj, el } 供按相机距离缩放浮标
   const cards = {};                 // 设备明细卡：key -> .card3d 元素
   let activeCard = null;
   const clock = { last: 0 };
@@ -99,6 +100,7 @@ window.SolarScene = (function () {
     o.position.set(x, y, z);
     root.add(o);
     labelObjs.push(o);
+    labelPairs.push({ obj: o, el: el });       /* 供按距离缩放用 */
     return el;
   }
   /* 设备明细卡（沿用高特/莒南场景的 .card3d 版式）：点设备弹出，内容取实时值 */
@@ -813,6 +815,27 @@ window.SolarScene = (function () {
     });
   }
 
+  /* 浮标按相机距离缩放：HTML 浮标固定像素大小，拉远后模型缩成一点、浮标还是原尺寸，
+     就会糊成一片。按"默认机位距离 = 100%"算缩放，远处再略微淡出 */
+  const LBL_REF = 48;                // 默认机位附近：浮标 100%
+  let _lblV = null;
+  function scaleLabels() {
+    if (!labelPairs.length || !camera) return;
+    if (!_lblV) _lblV = new THREE.Vector3();
+    for (let i = 0; i < labelPairs.length; i++) {
+      const it = labelPairs[i];
+      it.obj.getWorldPosition(_lblV);
+      const d = camera.position.distanceTo(_lblV);
+      let k = LBL_REF / Math.max(1, d);
+      k = Math.min(1.15, Math.max(0.45, k));
+      if (Math.abs((it.k || 0) - k) < 0.01) continue;      /* 变化太小就不写样式，免得每帧折腾 DOM */
+      it.k = k;
+      it.el.style.setProperty('--lbl-scale', k.toFixed(3));
+      /* 拉得越远越淡：0.45 时降到 0.35，远景不至于是"一片标签" */
+      it.el.style.opacity = (0.35 + 0.65 * Math.min(1, (k - 0.45) / 0.55)).toFixed(2);
+    }
+  }
+
   /* 电流光纹沿电缆滚动（速度随发电功率，无输出时静止变暗） */
   function stepFlow(dt) {
     if (!flows.length || !dt) return;
@@ -842,6 +865,7 @@ window.SolarScene = (function () {
       });
     }
     stepFlow(dt);
+    scaleLabels();                       /* 浮标跟着相机距离缩放 */
     if (controls) controls.update();
     if (composer) composer.render(); else renderer.render(scene, camera);
     if (labelR) labelR.render(scene, camera);
