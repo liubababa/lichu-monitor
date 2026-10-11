@@ -95,7 +95,7 @@ window.GaoteScene3D = (function () {
   /* 厂房（含办公附房）位置与尺寸：按参考效果图 —— 三层、平顶、每排约 10 扇窗 */
   const FAC_X = 13.6, FAC_Z = .8, FAC_W = 13.0, FAC_H = 9.3, FAC_D = 8.0, FAC_RH = 1.7;
   /* 办公附房（厂房的左侧小楼）：正面墙上挂电缆进线箱 */
-  const OFF_X = -(FAC_W / 2 + 1.0), OFF_Z = FAC_D / 2 - 1.4, OFF_W = 3.2, OFF_H = 3.2, OFF_D = 2.6;
+  const OFF_X = -(FAC_W / 2 + 1.0), OFF_Z = FAC_D / 2 - 1.5, OFF_W = 3.2, OFF_H = 3.0, OFF_D = 2.6;
   /* 铁塔位置 */
   const TWR_X = -13.2, TWR_Z = -2.8;
   let stackN = 2;   // 默认按本站实际（2 堆）；连上后按上报的簇数自动排布
@@ -636,6 +636,9 @@ window.GaoteScene3D = (function () {
     const W = FAC_W, H = FAC_H, D = FAC_D;
     const M = texCache.mats;
     const top = .24;                                                                        // 基座顶面
+    /* 办公附房贴在厂房左侧（-x）这一段 z 区间上：腰线、窗带都要让开这里，
+       否则窗带与窗户会穿进附房、腰线会和附房屋顶板糊成"屋檐重叠" */
+    const annZ0 = OFF_Z - OFF_D / 2, lzEnd = annZ0 - .06;
 
     g.add(box(W + .7, top, D + .7, M.dark, 0, top / 2, 0));                                  // 基座
     /* 两层厂房（参考图：现代工业风 —— 白色主墙 + 灰色分段 + 竖向长条窗 + 平顶，
@@ -659,9 +662,9 @@ window.GaoteScene3D = (function () {
       [-1, 1].forEach(function (sz) {
         g.add(box(W + .22, .16, .18, trimMat, 0, fy, sz * (D / 2 + .04)));
       });
-      [-1, 1].forEach(function (sx) {
-        g.add(box(.18, .16, D + .22, trimMat, sx * (W / 2 + .04), fy, 0));
-      });
+      g.add(box(.18, .16, D + .22, trimMat, W / 2 + .04, fy, 0));                              // 右侧整条
+      const lz0 = -(D / 2) - .11;
+      g.add(box(.18, .16, lzEnd - lz0, trimMat, -(W / 2 + .04), fy, (lz0 + lzEnd) / 2));       // 左侧只到附房边
     });
 
     /* 平屋顶：炭黑屋面板 + 女儿墙 + 屋顶机组（替换原来的双坡屋顶与山墙） */
@@ -677,15 +680,15 @@ window.GaoteScene3D = (function () {
     /* 窗户：竖向长条窗，正/背面每层 6 扇、侧面每层 3 扇；用电时玻璃发光 */
     const winMat = regMat(new THREE.MeshStandardMaterial({
       color: 0x1b2b33, roughness: .18, metalness: .35,
-      emissive: new THREE.Color(0x000000), emissiveIntensity: 0
-    }), { color: 0x16242c, emissive: new THREE.Color(0x000000), emissiveIntensity: 0 },
-      { color: 0x2b3d45, emissive: new THREE.Color(0xffcf8a), emissiveIntensity: .25 });
+      emissive: new THREE.Color(0x1f3d45), emissiveIntensity: .3
+    }), { color: 0x16242c, emissive: new THREE.Color(0x1f3d45), emissiveIntensity: .3 },
+      { color: 0x2b3d45, emissive: new THREE.Color(0x40585e), emissiveIntensity: .2 });
     facWinMat = winMat;
     /* 横向深色窗带（参考图核心特征）：每层一条深色带，带内嵌竖向长窗 + 竖挺分格。
        保持低多边形与纯色材质，和场景其它设备一个风格 */
     const bandMat = bandMat0;
     const bandH = 2.15, bandD = .22;
-    const lvY = [top + 1.78, top + 4.72, top + 7.66];                                        // 三层（参考图：3 排窗）
+    const lvY = [top + 4.72, top + 7.66];                                                    // 一层不设窗（只留大门），窗带只做二、三层
     function winBand(cx, cy, cz, alongX, len, n) {
       if (alongX) g.add(box(len, bandH, bandD, bandMat, cx, cy, cz));
       else g.add(box(bandD, bandH, len, bandMat, cx, cy, cz));
@@ -705,8 +708,11 @@ window.GaoteScene3D = (function () {
     [-1, 1].forEach(function (sz) {
       lvY.forEach(function (cy) { winBand(0, cy, sz * (D / 2 + .03), true, W - .3, 10); });    // 正面/背面每排 10 扇
     });
-    [-1, 1].forEach(function (sx) {
-      lvY.forEach(function (cy) { winBand(sx * (W / 2 + .03), cy, 0, false, D - .3, 5); });    // 侧面每排 5 扇
+    /* 左侧被办公附房占住一段：窗带只画附房前面那一截，不让窗带和窗穿进附房里 */
+    const lzStart = -(D / 2) + .15;
+    lvY.forEach(function (cy) {
+      winBand(W / 2 + .03, cy, 0, false, D - .3, 5);                                           // 右侧每排 5 扇
+      winBand(-(W / 2 + .03), cy, (lzStart + lzEnd) / 2, false, lzEnd - lzStart, 3);           // 左侧让开附房
     });
     /* 屋顶太阳能板（参考图 _2_ 的屋顶特征；也贴合我们储能场景的主题） */
     const pvMat = regMat(std(0x1b3a5c, { roughness: .3, metalness: .5 }),
@@ -752,7 +758,9 @@ window.GaoteScene3D = (function () {
     g.add(box(3.7, .64, .06, M.plate, 0, top + H * .8, D / 2 + .07));
     g.add(box(1.7, .36, .05, M.plate, W / 2 - 1.5, top + H * .45, D / 2 + .07));
 
-    /* 办公附房（左侧小楼）：平屋顶 + 屋顶机组 + 墙上电缆进线箱 */
+    /* 办公附房（左侧小楼）：平屋顶 + 屋顶机组 + 墙上电缆进线箱。
+       附房比厂房基座探出去一截，单独给它一条基座，否则底下悬空 */
+    g.add(box(OFF_W - .73, top, OFF_D + .5, M.dark, OFF_X - .615, top / 2, OFF_Z));
     const off = new THREE.Mesh(new THREE.BoxGeometry(OFF_W, OFF_H, OFF_D), [M.bridge, M.bridge, M.cabTop, M.bridge, M.bridge, M.bridge]);
     off.position.set(OFF_X, OFF_H / 2 + top, OFF_Z);
     off.castShadow = off.receiveShadow = true;
@@ -1111,11 +1119,18 @@ window.GaoteScene3D = (function () {
 
     /* 厂房负荷：放电时电从 PCS 送进厂房（光点流动），待机/充电时进线不流动 */
     facOn = flow.dir > 0;
-    /* 厂房窗户：用电（受电）时发光，亮度随功率；夜里更明显，白天主题下也有暖光 */
+    /* 厂房窗户：受电时玻璃透出微微的光，颜色跟场景主色走（不刺眼）；
+       待机时是暗色调玻璃而不是死黑，整面墙不至于太沉闷 */
     if (facWinMat) {
       const mag = Math.abs(pNum);
-      facWinMat.emissiveIntensity = facOn ? Math.min(1.1, .35 + mag / 160) : 0;
-      facWinMat.emissive.setHex(facOn ? 0xffcf8a : 0x000000);
+      const pm = THEMES[theme] || THEMES.night;
+      if (facOn) {
+        facWinMat.emissive.setHex(pm.flowDis);
+        facWinMat.emissiveIntensity = Math.min(.55, .26 + mag / 520);
+      } else {
+        facWinMat.emissive.setHex(theme === 'day' ? 0x40585e : 0x1f3d45);
+        facWinMat.emissiveIntensity = theme === 'day' ? .2 : .3;
+      }
     }
     if (facLabelEl) {
       facLabelEl.innerHTML = '<b>厂房（工厂用电）</b><i>'

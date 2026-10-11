@@ -282,7 +282,7 @@ window.SolarUI = (function () {
     }
     if (!window.SolarScene || !sceneOn) return;
     const pKw = sum ? (num(sum.power) || 0) / 1000 : 0;
-    SolarScene.setPower(pKw, sum ? num(sum.capacity) : null);
+    SolarScene.setPower(pKw, sum ? num(sum.capacity) : null, sum ? kwh(sum.daily_yield) : null);
     if (wx) SolarScene.setWeather(wx);
   }
 
