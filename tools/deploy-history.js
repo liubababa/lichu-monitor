@@ -29,7 +29,6 @@ const DIR = '/opt/lichu-history';
 const DATA_DIR = '/var/lib/lichu-history';
 const PORT = 8095;
 const MQTT_USER = 'lichu_hist';
-const MQTT_PASS = '***REMOVED***';
 const NGINX_SITE = '/etc/nginx/sites-available/mqtt.ykdesign.top';
 const DOMAIN = 'mqtt.ykdesign.top';
 

@@ -93,7 +93,7 @@ window.GaoteScene3D = (function () {
   /* 汇流/PCS 柜位置（放在并网铁塔下面，与储能柜排成横向一列）与半宽 */
   const PCS_X = -8.6, PCS_Z = 3.0, PCS_HW = 2.3;
   /* 厂房（含办公附房）位置与尺寸：按参考效果图 —— 三层、平顶、每排约 10 扇窗 */
-  const FAC_X = 13.6, FAC_Z = .8, FAC_W = 13.0, FAC_H = 9.3, FAC_D = 8.0, FAC_RH = 1.7;
+  const FAC_X = 16.8, FAC_Z = .8, FAC_W = 13.0, FAC_H = 9.3, FAC_D = 8.0, FAC_RH = 1.7;
   /* 办公附房（厂房的左侧小楼）：正面墙上挂电缆进线箱 */
   const OFF_X = -(FAC_W / 2 + 1.0), OFF_Z = FAC_D / 2 - 1.5, OFF_W = 3.2, OFF_H = 3.0, OFF_D = 2.6;
   /* 铁塔位置 */
@@ -753,23 +753,6 @@ window.GaoteScene3D = (function () {
       g.add(elbow);
     });
 
-    /* 厂牌：挂在正门上方的铭牌。
-       原来那块青色发光条贴在三层窗带上，会被窗框切成三四段，看着像几个亮着的窗户 */
-    const signTex = tex(function (gc, w, h) {
-      gc.fillStyle = '#12242a'; gc.fillRect(0, 0, w, h);
-      gc.strokeStyle = 'rgba(46,230,200,.55)'; gc.lineWidth = 3;
-      gc.strokeRect(5, 5, w - 10, h - 10);
-      gc.fillStyle = '#dff7f1';
-      gc.font = 'bold 60px "Microsoft YaHei", sans-serif';
-      gc.textAlign = 'center'; gc.textBaseline = 'middle';
-      gc.fillText('厂房', w / 2, h / 2 + 3);
-    }, 256, 64);
-    const signMat = regMat(new THREE.MeshStandardMaterial({ map: signTex, roughness: .5, metalness: .2 }),
-      { color: 0x3a4a50 }, { color: 0xffffff });
-    const sign = box(3.0, .75, .08, signMat, doorX, top + 3.15, D / 2 + .04);
-    sign.castShadow = true;
-    g.add(sign);
-
     /* 办公附房（左侧小楼）：平屋顶 + 屋顶机组 + 墙上电缆进线箱。
        附房比厂房基座探出去一截，单独给它一条基座，否则底下悬空 */
     g.add(box(OFF_W - .73, top, OFF_D + .5, M.dark, OFF_X - .615, top / 2, OFF_Z));
@@ -824,7 +807,7 @@ window.GaoteScene3D = (function () {
     root.add(ground);
     /* 场地（混凝土平台）：要盖住储能柜、汇流柜、杆塔与厂房（含右侧水塔），别让模型跑到台面外 */
     platformMat = std(0x0b1a1e, { roughness: .9 });
-    root.add(box(46, .18, 22, platformMat, 1.6, .09, 1.0));  // 台面（顶面 0.18，设备坐在上面）
+    root.add(box(48.4, .18, 22, platformMat, 2.8, .09, 1.0));  // 台面（顶面 0.18，设备坐在上面）；厂房右移后台面跟着往右接出去
 
     /* 电缆沟盖板：储能柜前 → 汇流柜 → 厂房，放电/充电两组电缆都在沟里走，地面干净 */
     const gutterMat = regMat(std(0x1a2a2f, { roughness: .85 }), { color: 0x1a2a2f }, { color: 0xb4bcbd });
