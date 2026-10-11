@@ -139,28 +139,29 @@ window.SolarScene = (function () {
   }
 
   /* ---------------- 贴图 ---------------- */
-  /* 组件面板：深蓝电池片 + 细栅线 + 银色铝边框 + 斜向天空反光 */
+  /* 组件面板：近黑的深蓝电池片 + 细栅线 + 银色铝边框 + 很淡的斜向反光
+     （板子要黑/深蓝才像真组件，太亮太蓝反而假） */
   function panelTexture() {
     return tex(function (g, w, h) {
-      g.fillStyle = '#0a2140'; g.fillRect(0, 0, w, h);
+      g.fillStyle = '#07182c'; g.fillRect(0, 0, w, h);
       const bx = 8, by = 8, bw = w - 16, bh = h - 16;
       const cw = bw / 10, ch = bh / 6;
       for (let r = 0; r < 6; r++) {
         for (let c = 0; c < 10; c++) {
           const x = bx + c * cw, y = by + r * ch;
-          g.fillStyle = (r + c) % 2 ? '#0e2f57' : '#10365e';
+          g.fillStyle = (r + c) % 2 ? '#0a2240' : '#0c2947';
           g.fillRect(x + 1.2, y + 1.2, cw - 2.4, ch - 2.4);
-          g.strokeStyle = 'rgba(150,200,255,.16)';
+          g.strokeStyle = 'rgba(170,205,235,.20)';
           g.lineWidth = .8;
           g.beginPath(); g.moveTo(x + cw / 3, y + 2); g.lineTo(x + cw / 3, y + ch - 2); g.stroke();
           g.beginPath(); g.moveTo(x + cw * 2 / 3, y + 2); g.lineTo(x + cw * 2 / 3, y + ch - 2); g.stroke();
         }
       }
       const lg = g.createLinearGradient(0, 0, w, h);
-      lg.addColorStop(0, 'rgba(190,225,255,.20)');
-      lg.addColorStop(.42, 'rgba(190,225,255,.05)');
+      lg.addColorStop(0, 'rgba(190,225,255,.10)');
+      lg.addColorStop(.42, 'rgba(190,225,255,.03)');
       lg.addColorStop(.58, 'rgba(255,255,255,0)');
-      lg.addColorStop(1, 'rgba(255,255,255,.06)');
+      lg.addColorStop(1, 'rgba(255,255,255,.03)');
       g.fillStyle = lg; g.fillRect(0, 0, w, h);
       g.strokeStyle = '#c3ced4'; g.lineWidth = 9;
       g.strokeRect(4.5, 4.5, w - 9, h - 9);
@@ -547,12 +548,14 @@ window.SolarScene = (function () {
     /* 场地 / 建筑 / 组件 / 设备 */
     buildSite();
     buildBuilding();
+    /* 玻璃板面：压掉天空反射（原来 envMapIntensity .9 + 高金属度，整片阵列被反光提亮成浅蓝），
+       现在近黑深蓝，只有发电时才透出一点深蓝 */
     const glassMat = new T.MeshStandardMaterial({
-      map: panelTexture(), roughness: .16, metalness: .55,
-      emissive: new T.Color(0x0a2b4a), emissiveIntensity: .22, envMapIntensity: .9
+      map: panelTexture(), roughness: .3, metalness: .45,
+      emissive: new T.Color(0x061528), emissiveIntensity: .14, envMapIntensity: .35
     });
     panelMats.push(glassMat);
-    const edgeMat = new T.MeshStandardMaterial({ color: 0xa9b6ba, roughness: .42, metalness: .68, envMapIntensity: .6 });
+    const edgeMat = new T.MeshStandardMaterial({ color: 0x8e9ba1, roughness: .45, metalness: .65, envMapIntensity: .45 });
     buildArray(glassMat, edgeMat);
     buildEquipment();
 
@@ -750,9 +753,10 @@ window.SolarScene = (function () {
     const on = ratio > .005;
     const p = FLOWC[theme] || FLOWC.night;
     const day = theme === 'day';
+    /* 发电时只透一点深蓝（不再是整片发亮的蓝板），待机时基本是黑的 */
     panelMats.forEach(function (m) {
-      m.emissiveIntensity = (day ? .06 : .22) + ratio * (day ? .5 : .8);
-      m.emissive.setHex(on ? (day ? 0x1c5f96 : 0x0f4f7a) : 0x0a2b4a);
+      m.emissiveIntensity = (day ? .04 : .14) + ratio * (day ? .22 : .34);
+      m.emissive.setHex(on ? (day ? 0x14507f : 0x0b3c60) : 0x061528);
     });
     flows.forEach(function (fl) {
       fl.on = on;
