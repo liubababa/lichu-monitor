@@ -70,6 +70,10 @@ window.ScreenSaver = (function () {
 
   function init() {
     build();
+    /* 手动测试按钮：顶栏「屏保」按钮（立即进入，不用等 30 分钟） */
+    document.querySelectorAll('[data-screensaver]').forEach(function (b) {
+      b.addEventListener('click', function () { show(); });
+    });
     ['mousemove', 'mousedown', 'wheel', 'keydown', 'touchstart', 'pointerdown'].forEach(function (ev) {
       window.addEventListener(ev, onActivity, { passive: true });
     });

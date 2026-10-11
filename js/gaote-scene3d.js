@@ -686,9 +686,9 @@ window.GaoteScene3D = (function () {
     /* 窗户：大面玻璃 + 细竖挺；用电时玻璃透光，待机时是暗色玻璃 */
     const winMat = regMat(new THREE.MeshStandardMaterial({
       color: 0x1b2b33, roughness: .18, metalness: .35,
-      emissive: new THREE.Color(0x1f3d45), emissiveIntensity: .3, emissiveMap: winGlowTex
-    }), { color: 0x16242c, emissive: new THREE.Color(0x1f3d45), emissiveIntensity: .3 },
-      { color: 0x2b3d45, emissive: new THREE.Color(0x40585e), emissiveIntensity: .2 });
+      emissive: new THREE.Color(0x2ee6c8), emissiveIntensity: .26, emissiveMap: winGlowTex
+    }), { color: 0x16242c, emissive: new THREE.Color(0x2ee6c8), emissiveIntensity: .26 },
+      { color: 0x2b3d45, emissive: new THREE.Color(0xe8b000), emissiveIntensity: .26 });
     facWinMat = winMat;
     /* 横向深色窗带：整栋只在上面一层做一条带，带内嵌 4 扇大窗（越简洁越显好） */
     const bandMat = bandMat0;
@@ -719,16 +719,7 @@ window.GaoteScene3D = (function () {
       winBand(W / 2 + .03, cy, 0, false, D - .3, 2, 2.0);                                      // 右侧每排 2 扇
       winBand(-(W / 2 + .03), cy, (lzStart + lzEnd) / 2, false, lzEnd - lzStart, 2, 1.6);       // 左侧让开附房
     });
-    /* 屋顶太阳能板（参考图 _2_ 的屋顶特征；也贴合我们储能场景的主题） */
-    const pvMat = regMat(std(0x1b3a5c, { roughness: .3, metalness: .5 }),
-      { color: 0x14293f }, { color: 0x24507a });
-    for (let r = 0; r < 2; r++) {
-      for (let c2 = 0; c2 < 5; c2++) {
-        const pv = box(2.1, .1, 2.6, pvMat, -4.4 + c2 * 2.4, top + H + .64, -1.6 + r * 3.4);
-        pv.rotation.x = -.22;
-        g.add(pv);
-      }
-    }
+    /* 屋顶不做光伏：莒南这个厂房屋顶是干净的平顶（真实站点没有光伏） */
 
     /* 参考图里屋顶是干净的平顶（无设备），也不设外挂水塔/排风筒 */
 
@@ -1120,18 +1111,13 @@ window.GaoteScene3D = (function () {
 
     /* 厂房负荷：放电时电从 PCS 送进厂房（光点流动），待机/充电时进线不流动 */
     facOn = flow.dir > 0;
-    /* 厂房窗户：受电时玻璃透出微微的光，颜色跟场景主色走（不刺眼）；
-       待机时是暗色调玻璃而不是死黑，整面墙不至于太沉闷 */
+    /* 厂房窗户长亮：平时就是透光的（颜色跟场景主色走），
+       工厂受电（放电供电）时再亮一档，亮度随功率 */
     if (facWinMat) {
       const mag = Math.abs(pNum);
       const pm = THEMES[theme] || THEMES.night;
-      if (facOn) {
-        facWinMat.emissive.setHex(pm.flowDis);
-        facWinMat.emissiveIntensity = Math.min(.55, .26 + mag / 520);
-      } else {
-        facWinMat.emissive.setHex(theme === 'day' ? 0x40585e : 0x1f3d45);
-        facWinMat.emissiveIntensity = theme === 'day' ? .2 : .3;
-      }
+      facWinMat.emissive.setHex(pm.flowDis);
+      facWinMat.emissiveIntensity = Math.min(.6, (facOn ? .34 : .26) + mag / 700);
     }
     if (facLabelEl) {
       facLabelEl.innerHTML = '<b>厂房（工厂用电）</b><i>'
