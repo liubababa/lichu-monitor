@@ -32,20 +32,20 @@ button{font-family:inherit;cursor:pointer;background:none;border:none;color:inhe
 @keyframes spin{to{transform:rotate(360deg)}}
 
 /* ---------- 屏保（30 分钟无操作出现）
-   版式照品牌封面：左上角 logo + 品牌，中间大标题 + 英文副标题，时间日期改小放标题下 ---------- */
+   版式照品牌封面：左上角 logo + 「力储未来」，中间大标题 + 英文副标题 + 公司全称 ---------- */
 #screenSaver{position:fixed;inset:0;background:#04090c;z-index:900;animation:ss-in .8s ease}
 #screenSaver.hidden{display:none}
-#screenSaver .ss-brand{position:absolute;top:42px;left:50px;display:flex;align-items:center;gap:15px}
-#screenSaver .ss-brand img{height:52px;width:auto;filter:brightness(1.18) saturate(1.05)}
-#screenSaver .ss-brand b{display:block;font-size:24px;font-weight:normal;letter-spacing:6px;color:#eafaf6}
-#screenSaver .ss-brand span{display:block;margin-top:6px;font-size:12px;letter-spacing:1.5px;color:var(--dim)}
+/* 尺寸用 vw + clamp：小屏到 65 寸 4K 电视都能自动放大，不用改代码 */
+#screenSaver .ss-brand{position:absolute;top:clamp(34px,3.6vw,104px);left:clamp(40px,4.2vw,132px);display:flex;align-items:center;gap:clamp(14px,1.5vw,34px)}
+#screenSaver .ss-brand img{height:clamp(54px,6vw,150px);width:auto;filter:brightness(1.18) saturate(1.05)}
+#screenSaver .ss-brand b{display:block;font-size:clamp(28px,3.1vw,82px);font-weight:normal;letter-spacing:.22em;color:#eafaf6}
 #screenSaver .ss-center{position:absolute;left:0;right:0;top:46%;transform:translateY(-50%);text-align:center}
-#screenSaver .ss-title{margin:0;font-size:44px;font-weight:normal;letter-spacing:14px;color:#eafaf6;
-  text-shadow:0 0 30px rgba(46,230,200,.22)}
-#screenSaver .ss-sub{margin:16px 0 0;font-size:12px;letter-spacing:5px;color:rgba(46,230,200,.72)}
-#screenSaver .ss-when{margin:32px 0 0;font-size:12.5px;letter-spacing:2px;color:var(--dim)}
-#screenSaver .ss-when i{font-style:normal;font-family:var(--num);font-size:21px;letter-spacing:3px;color:#9beadb;margin-right:14px}
-#screenSaver .ss-hint{position:absolute;right:50px;bottom:36px;font-size:12px;letter-spacing:2px;color:var(--dim);opacity:.7}
+#screenSaver .ss-title{margin:0;font-size:clamp(46px,5.2vw,140px);font-weight:normal;letter-spacing:.2em;color:#eafaf6;
+  text-shadow:0 0 40px rgba(46,230,200,.22)}
+#screenSaver .ss-sub{margin:clamp(14px,1.5vw,42px) 0 0;font-size:clamp(13px,1.25vw,34px);letter-spacing:.34em;color:rgba(46,230,200,.72)}
+#screenSaver .ss-company{margin:clamp(22px,2.3vw,64px) 0 0;font-size:clamp(18px,2vw,54px);letter-spacing:.16em;color:#9beadb}
+#screenSaver .ss-hint{position:absolute;right:clamp(40px,4.2vw,132px);bottom:clamp(30px,3.2vw,88px);
+  font-size:clamp(13px,1.15vw,30px);letter-spacing:.12em;color:var(--dim);opacity:.7}
 @keyframes ss-in{from{opacity:0}to{opacity:1}}
 /* 屏保固定深底青色，不跟白天主题走 */
 
@@ -139,27 +139,38 @@ button{font-family:inherit;cursor:pointer;background:none;border:none;color:inhe
 @keyframes breath{0%,100%{opacity:.4}50%{opacity:1}}
 .scene-tip{position:absolute;bottom:10px;left:16px;z-index:5;font-size:11px;color:rgba(111,154,148,.75);letter-spacing:1px}
 
-/* ---------- 右侧面板：默认收成最右边一条竖边，鼠标移上去滑出 ---------- */
+/* 触摸屏：三维画布上的手势交给控制器（旋转 / 双指缩放），不要让浏览器当成翻页 */
+#scene3d,#solar3d,#scene3d canvas,#solar3d canvas{touch-action:none}
+
+/* ---------- 右侧面板：默认收成最右边一条竖边；点一下展开（触摸屏），鼠标也可悬停滑出 ---------- */
 #right{
   --panel-w:clamp(360px,26vw,500px);
+  --strip:26px;                 /* 收起时露出的竖边宽度（触摸屏会加宽，方便手指点） */
   position:absolute;top:12px;right:0;bottom:12px;z-index:20;
-  width:26px;overflow:hidden;transition:width .26s ease;
+  width:var(--strip);overflow:hidden;transition:width .26s ease;
   border:1px solid rgba(46,230,200,.18);border-radius:2px;
   background:linear-gradient(165deg,rgba(10,26,30,.92),rgba(5,13,16,.94));
   box-shadow:-6px 0 18px rgba(0,0,0,.35);
 }
-#right:hover,#right.pinned{width:calc(var(--panel-w) + 26px)}
+#right:hover,#right.pinned{width:calc(var(--panel-w) + var(--strip))}
 .side-handle{
-  position:absolute;left:0;top:0;bottom:0;width:24px;display:flex;align-items:center;justify-content:center;
+  position:absolute;left:0;top:0;bottom:0;width:calc(var(--strip,26px) - 2px);display:flex;align-items:center;justify-content:center;
   writing-mode:vertical-rl;font-size:11px;letter-spacing:3px;color:var(--teal);cursor:pointer;
   background:linear-gradient(180deg,rgba(46,230,200,.14),rgba(46,230,200,.03));
   transition:opacity .2s;
 }
-#right:hover .side-handle,#right.pinned .side-handle{opacity:0}
+/* 鼠标悬停时才把把手让开；收起/展开（pinned）都保持可见 —— 触摸屏要靠它来开关 */
+#right:hover:not(.pinned) .side-handle{opacity:0}
+#right.pinned .side-handle{opacity:.8}
 .side-inner{
-  position:absolute;left:26px;top:0;bottom:0;width:var(--panel-w);
+  position:absolute;left:var(--strip,26px);top:0;bottom:0;width:var(--panel-w);
   padding:10px;display:flex;flex-direction:column;gap:12px;min-height:0;
   overflow-y:auto;overflow-x:hidden;
+}
+/* 触摸屏 / 触控板：竖边加宽成好点的目标 */
+@media (pointer:coarse){
+  #right,#slRight{--strip:46px}
+  .side-handle{font-size:12px;letter-spacing:4px}
 }
 .panel{
   position:relative;padding:12px 14px 14px;
@@ -1327,14 +1338,16 @@ html[data-theme="day"] .gs-warn{color:#8a5b00}
 #solar3d canvas{display:block}
 #slRight{
   --panel-w:clamp(340px,24vw,460px);
-  position:absolute;top:12px;right:0;bottom:12px;z-index:20;width:26px;overflow:hidden;
+  --strip:26px;
+  position:absolute;top:12px;right:0;bottom:12px;z-index:20;width:var(--strip);overflow:hidden;
   transition:width .26s ease;border:1px solid rgba(46,230,200,.18);border-radius:2px;
   background:linear-gradient(165deg,rgba(10,26,30,.92),rgba(5,13,16,.94));
   box-shadow:-6px 0 18px rgba(0,0,0,.35)}
-#slRight:hover,#slRight.pinned{width:calc(var(--panel-w) + 26px)}
-#slRight:hover .side-handle,#slRight.pinned .side-handle{opacity:0}
+#slRight:hover,#slRight.pinned{width:calc(var(--panel-w) + var(--strip))}
+#slRight:hover:not(.pinned) .side-handle{opacity:0}
+#slRight.pinned .side-handle{opacity:.8}
 #slRight .side-inner{
-  position:absolute;left:26px;top:0;bottom:0;width:var(--panel-w);
+  position:absolute;left:var(--strip,26px);top:0;bottom:0;width:var(--panel-w);
   padding:10px;display:flex;flex-direction:column;gap:12px;min-height:0;overflow-y:auto;overflow-x:hidden}
 /* 右栏：各板块按内容排布，趋势块不许抢空间；图表固定高度，滑出时不撑破 */
 #slPanel .panel.grow{flex:none}

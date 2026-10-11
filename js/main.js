@@ -179,6 +179,33 @@
     });
     // 窗口尺寸
     window.addEventListener('resize', () => { Charts.resize(); S3D().resize(); });
+    initSidePanels();
+  }
+
+  /* ---------- 右侧数据面板：点一下展开 / 收起 ----------
+     触摸屏没有鼠标悬停，原来只靠 CSS 的 :hover 滑出，触摸屏上点不开 */
+  function initSidePanels() {
+    ['right', 'slRight'].forEach(function (id) {
+      const panel = byId(id);
+      if (!panel) return;
+      const handle = panel.querySelector('.side-handle');
+      const label = handle ? handle.querySelector('span') : null;
+      function setOpen(on) {
+        panel.classList.toggle('pinned', on);
+        if (label) label.textContent = on ? '▶ 收起' : '◀ 数据面板';
+      }
+      panel.addEventListener('click', function (e) {
+        /* 收起时整条竖边随点随开；展开后点左侧把手收起（灰色把手一直看得见） */
+        if (!panel.classList.contains('pinned')) { setOpen(true); return; }
+        if (handle && handle.contains(e.target)) setOpen(false);
+      });
+      /* 点面板以外的地方（三维场景）自动收起，随时能回到画面 */
+      document.addEventListener('pointerdown', function (e) {
+        if (!panel.classList.contains('pinned')) return;
+        if (panel.contains(e.target)) return;
+        setOpen(false);
+      }, true);
+    });
   }
 
   /* ---------- 启动 ---------- */
