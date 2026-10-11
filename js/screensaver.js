@@ -17,13 +17,17 @@ window.ScreenSaver = (function () {
     el.id = 'screenSaver';
     el.className = 'hidden';
     el.innerHTML =
-      '<div class="bl-box">'
-      + '<img class="bl-logo" src="libs/logo.png" alt="力储未来"/>'
-      + '<b class="bl-name">力储未来能源综合管理系统</b>'
-      + '<div class="ss-clock" id="ssClock">--:--</div>'
-      + '<div class="ss-date" id="ssDate"></div>'
-      + '<p class="ss-hint">系统待机中 · 点击或按任意键唤醒</p>'
-      + '</div>';
+      '<div class="ss-brand">'
+      + '<img src="libs/logo.png" alt="力储未来"/>'
+      + '<div class="ss-brand-txt"><b>力储未来</b>'
+      + '<span>力储未来（临沂）能源科技有限责任公司</span></div>'
+      + '</div>'
+      + '<div class="ss-center">'
+      + '<h2 class="ss-title">能源综合管理系统</h2>'
+      + '<p class="ss-sub">LICHU FUTURE INTEGRATED ENERGY MANAGEMENT SYSTEM</p>'
+      + '<p class="ss-when"><i id="ssClock">--:--</i><span id="ssDate">--</span></p>'
+      + '</div>'
+      + '<div class="ss-hint">点击或按任意键唤醒</div>';
     document.body.appendChild(el);
     return el;
   }

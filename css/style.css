@@ -31,16 +31,21 @@ button{font-family:inherit;cursor:pointer;background:none;border:none;color:inhe
 .bl-box p.err{color:#ff7a5c;padding:0 30px;line-height:1.9}
 @keyframes spin{to{transform:rotate(360deg)}}
 
-/* ---------- 屏保（30 分钟无操作出现，沿用启动加载页的版式） ---------- */
-#screenSaver{position:fixed;inset:0;background:#04090c;z-index:900;
-  display:flex;align-items:center;justify-content:center;animation:ss-in .8s ease}
+/* ---------- 屏保（30 分钟无操作出现）
+   版式照品牌封面：左上角 logo + 品牌，中间大标题 + 英文副标题，时间日期改小放标题下 ---------- */
+#screenSaver{position:fixed;inset:0;background:#04090c;z-index:900;animation:ss-in .8s ease}
 #screenSaver.hidden{display:none}
-#screenSaver .bl-logo{height:64px;margin-bottom:12px}
-#screenSaver .bl-name{margin-bottom:30px}
-#screenSaver .ss-clock{font-family:var(--num);font-size:76px;line-height:1.05;letter-spacing:6px;color:#eafaf6;
-  text-shadow:0 0 26px rgba(46,230,200,.28)}
-#screenSaver .ss-date{margin-top:8px;font-size:13px;letter-spacing:3px;color:var(--dim)}
-#screenSaver .ss-hint{margin-top:34px;font-size:12px;letter-spacing:2px;color:var(--dim);opacity:.75}
+#screenSaver .ss-brand{position:absolute;top:42px;left:50px;display:flex;align-items:center;gap:15px}
+#screenSaver .ss-brand img{height:52px;width:auto;filter:brightness(1.18) saturate(1.05)}
+#screenSaver .ss-brand b{display:block;font-size:24px;font-weight:normal;letter-spacing:6px;color:#eafaf6}
+#screenSaver .ss-brand span{display:block;margin-top:6px;font-size:12px;letter-spacing:1.5px;color:var(--dim)}
+#screenSaver .ss-center{position:absolute;left:0;right:0;top:46%;transform:translateY(-50%);text-align:center}
+#screenSaver .ss-title{margin:0;font-size:44px;font-weight:normal;letter-spacing:14px;color:#eafaf6;
+  text-shadow:0 0 30px rgba(46,230,200,.22)}
+#screenSaver .ss-sub{margin:16px 0 0;font-size:12px;letter-spacing:5px;color:rgba(46,230,200,.72)}
+#screenSaver .ss-when{margin:32px 0 0;font-size:12.5px;letter-spacing:2px;color:var(--dim)}
+#screenSaver .ss-when i{font-style:normal;font-family:var(--num);font-size:21px;letter-spacing:3px;color:#9beadb;margin-right:14px}
+#screenSaver .ss-hint{position:absolute;right:50px;bottom:36px;font-size:12px;letter-spacing:2px;color:var(--dim);opacity:.7}
 @keyframes ss-in{from{opacity:0}to{opacity:1}}
 /* 屏保固定深底青色，不跟白天主题走 */
 
