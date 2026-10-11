@@ -31,6 +31,20 @@ button{font-family:inherit;cursor:pointer;background:none;border:none;color:inhe
 .bl-box p.err{color:#ff7a5c;padding:0 30px;line-height:1.9}
 @keyframes spin{to{transform:rotate(360deg)}}
 
+/* ---------- 屏保（30 分钟无操作出现，沿用启动加载页的版式） ---------- */
+#screenSaver{position:fixed;inset:0;background:#04090c;z-index:900;
+  display:flex;align-items:center;justify-content:center;animation:ss-in .8s ease}
+#screenSaver.hidden{display:none}
+#screenSaver .bl-logo{height:64px;margin-bottom:12px}
+#screenSaver .bl-name{margin-bottom:30px}
+#screenSaver .ss-clock{font-family:var(--num);font-size:76px;line-height:1.05;letter-spacing:6px;color:#eafaf6;
+  text-shadow:0 0 26px rgba(46,230,200,.28)}
+#screenSaver .ss-date{margin-top:8px;font-size:13px;letter-spacing:3px;color:var(--dim)}
+#screenSaver .ss-hint{margin-top:34px;font-size:12px;letter-spacing:2px;color:var(--dim);opacity:.75}
+@keyframes ss-in{from{opacity:0}to{opacity:1}}
+html[data-theme="day"] #screenSaver{background:#eef4f6}
+html[data-theme="day"] #screenSaver .ss-clock{color:#123c40;text-shadow:0 0 22px rgba(15,150,130,.18)}
+
 /* ---------- 顶栏 ---------- */
 #topbar{
   height:62px;flex:none;display:flex;align-items:center;padding:0 18px;position:relative;

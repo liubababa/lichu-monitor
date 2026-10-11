@@ -92,8 +92,8 @@ window.GaoteScene3D = (function () {
   const MAXN = 8, GAP = 5.2, STACK_W = 2.5, STACK_H = 2.8, STACK_D = 1.5;
   /* 汇流/PCS 柜位置（放在并网铁塔下面，与储能柜排成横向一列）与半宽 */
   const PCS_X = -8.6, PCS_Z = 3.0, PCS_HW = 2.3;
-  /* 厂房（含办公附房）位置与尺寸：按参考效果图 —— 三层、平顶、每排约 10 扇窗 */
-  const FAC_X = 16.8, FAC_Z = .8, FAC_W = 13.0, FAC_H = 9.3, FAC_D = 8.0, FAC_RH = 1.7;
+  /* 厂房（含办公附房）位置与尺寸：两层、平顶、正/背面每排 4 扇大窗 */
+  const FAC_X = 16.8, FAC_Z = .8, FAC_W = 13.0, FAC_H = 6.2, FAC_D = 8.0, FAC_RH = 1.7;
   /* 办公附房（厂房的左侧小楼）：正面墙上挂电缆进线箱 */
   const OFF_X = -(FAC_W / 2 + 1.0), OFF_Z = FAC_D / 2 - 1.5, OFF_W = 3.2, OFF_H = 3.0, OFF_D = 2.6;
   /* 铁塔位置 */
@@ -656,16 +656,14 @@ window.GaoteScene3D = (function () {
     /* 深色基座（参考图底部那道深色） */
     g.add(box(W + .18, .45, D + .18, bandMat0, 0, top + .225, 0));
 
-    /* 楼层线（三层之间两道横向腰线，浅灰带 —— 对应参考图"浅灰/白/浅灰"的分段） */
-    [1, 2].forEach(function (k) {
-      const fy = top + (H / 3) * k;
-      [-1, 1].forEach(function (sz) {
-        g.add(box(W + .22, .16, .18, trimMat, 0, fy, sz * (D / 2 + .04)));
-      });
-      g.add(box(.18, .16, D + .22, trimMat, W / 2 + .04, fy, 0));                              // 右侧整条
-      const lz0 = -(D / 2) - .11;
-      g.add(box(.18, .16, lzEnd - lz0, trimMat, -(W / 2 + .04), fy, (lz0 + lzEnd) / 2));       // 左侧只到附房边
+    /* 楼层线：两层建筑只在中间留一道腰线（浅灰带），上边一层窗带 */
+    const fy = top + H / 2;
+    [-1, 1].forEach(function (sz) {
+      g.add(box(W + .22, .16, .18, trimMat, 0, fy, sz * (D / 2 + .04)));
     });
+    g.add(box(.18, .16, D + .22, trimMat, W / 2 + .04, fy, 0));                                // 右侧整条
+    const lz0 = -(D / 2) - .11;
+    g.add(box(.18, .16, lzEnd - lz0, trimMat, -(W / 2 + .04), fy, (lz0 + lzEnd) / 2));         // 左侧只到附房边
 
     /* 平屋顶：炭黑屋面板 + 女儿墙 + 屋顶机组（替换原来的双坡屋顶与山墙） */
     const parH = .55;
@@ -677,42 +675,49 @@ window.GaoteScene3D = (function () {
       g.add(box(.26, parH, D + .6, trimMat, sx * (W / 2 + .05), top + H + .18 + parH / 2, 0));
     });
 
-    /* 窗户：竖向长条窗，正/背面每层 6 扇、侧面每层 3 扇；用电时玻璃发光 */
+    /* 玻璃发光贴图：上亮下暗，像屋里顶灯照下来 —— 亮灯时是"透着光"而不是一块死亮的板 */
+    const winGlowTex = tex(function (gc, w, h) {
+      const grd = gc.createLinearGradient(0, 0, 0, h);
+      grd.addColorStop(0, 'rgba(255,255,255,.95)');
+      grd.addColorStop(.45, 'rgba(255,255,255,.55)');
+      grd.addColorStop(1, 'rgba(255,255,255,.10)');
+      gc.fillStyle = grd; gc.fillRect(0, 0, w, h);
+    }, 16, 64);
+    /* 窗户：大面玻璃 + 细竖挺；用电时玻璃透光，待机时是暗色玻璃 */
     const winMat = regMat(new THREE.MeshStandardMaterial({
       color: 0x1b2b33, roughness: .18, metalness: .35,
-      emissive: new THREE.Color(0x1f3d45), emissiveIntensity: .3
+      emissive: new THREE.Color(0x1f3d45), emissiveIntensity: .3, emissiveMap: winGlowTex
     }), { color: 0x16242c, emissive: new THREE.Color(0x1f3d45), emissiveIntensity: .3 },
       { color: 0x2b3d45, emissive: new THREE.Color(0x40585e), emissiveIntensity: .2 });
     facWinMat = winMat;
-    /* 横向深色窗带（参考图核心特征）：每层一条深色带，带内嵌竖向长窗 + 竖挺分格。
-       保持低多边形与纯色材质，和场景其它设备一个风格 */
+    /* 横向深色窗带：整栋只在上面一层做一条带，带内嵌 4 扇大窗（越简洁越显好） */
     const bandMat = bandMat0;
     const bandH = 2.15, bandD = .22;
-    const lvY = [top + 4.72, top + 7.66];                                                    // 一层不设窗（只留大门），窗带只做二、三层
-    function winBand(cx, cy, cz, alongX, len, n) {
+    const lvY = [top + 4.65];                                                                // 一层不设窗（只留大门）
+    function winBand(cx, cy, cz, alongX, len, n, wWin) {
       if (alongX) g.add(box(len, bandH, bandD, bandMat, cx, cy, cz));
       else g.add(box(bandD, bandH, len, bandMat, cx, cy, cz));
-      const inner = len - .5;
+      const inner = len - .5, wwv = wWin || .5;
       for (let i = 0; i < n; i++) {
         const off = -inner / 2 + (i + .5) * (inner / n);
         const px = alongX ? cx + off : cx;
         const pz = alongX ? cz : cz + off;
-        const ww = alongX ? .5 : bandD + .06;
-        const dd = alongX ? bandD + .06 : .5;
+        const ww = alongX ? wwv : bandD + .06;
+        const dd = alongX ? bandD + .06 : wwv;
         g.add(box(ww, bandH - .5, dd, winMat, px, cy, pz));                    // 玻璃（用电发光）
         const mw = alongX ? .08 : bandD + .1;
         const md = alongX ? bandD + .1 : .08;
-        g.add(box(mw, bandH, md, trimMat, alongX ? px + .3 : px, cy, alongX ? pz : pz + .3));  // 竖挺
+        g.add(box(mw, bandH, md, trimMat, alongX ? px + wwv / 2 : px, cy, alongX ? pz : pz + wwv / 2));  // 竖挺
       }
     }
     [-1, 1].forEach(function (sz) {
-      lvY.forEach(function (cy) { winBand(0, cy, sz * (D / 2 + .03), true, W - .3, 10); });    // 正面/背面每排 10 扇
+      lvY.forEach(function (cy) { winBand(0, cy, sz * (D / 2 + .03), true, W - .3, 4, 2.0); });    // 正面/背面每排 4 扇大窗
     });
     /* 左侧被办公附房占住一段：窗带只画附房前面那一截，不让窗带和窗穿进附房里 */
     const lzStart = -(D / 2) + .15;
     lvY.forEach(function (cy) {
-      winBand(W / 2 + .03, cy, 0, false, D - .3, 5);                                           // 右侧每排 5 扇
-      winBand(-(W / 2 + .03), cy, (lzStart + lzEnd) / 2, false, lzEnd - lzStart, 3);           // 左侧让开附房
+      winBand(W / 2 + .03, cy, 0, false, D - .3, 2, 2.0);                                      // 右侧每排 2 扇
+      winBand(-(W / 2 + .03), cy, (lzStart + lzEnd) / 2, false, lzEnd - lzStart, 2, 1.6);       // 左侧让开附房
     });
     /* 屋顶太阳能板（参考图 _2_ 的屋顶特征；也贴合我们储能场景的主题） */
     const pvMat = regMat(std(0x1b3a5c, { roughness: .3, metalness: .5 }),
