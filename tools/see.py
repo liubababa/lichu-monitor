@@ -70,7 +70,7 @@ def main():
         return
     path = sys.argv[1]
     question = sys.argv[2] if len(sys.argv) > 2 else DEFAULT_Q
-    model = sys.argv[3] if len(sys.argv) > 3 else os.environ.get('SEE_MODEL', 'qwen2.5vl:3b')
+    model = sys.argv[3] if len(sys.argv) > 3 else os.environ.get('SEE_MODEL', 'qwen2.5vl:7b')
     if not os.path.exists(path):
         print('找不到图片：' + path)
         return
