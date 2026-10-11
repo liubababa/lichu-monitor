@@ -753,10 +753,22 @@ window.GaoteScene3D = (function () {
       g.add(elbow);
     });
 
-    /* 厂牌 + 铭牌 */
-    g.add(box(3.4, .5, .08, new THREE.MeshBasicMaterial({ color: 0x14e0c0 }), 0, top + H * .8, D / 2 + .12));
-    g.add(box(3.7, .64, .06, M.plate, 0, top + H * .8, D / 2 + .07));
-    g.add(box(1.7, .36, .05, M.plate, W / 2 - 1.5, top + H * .45, D / 2 + .07));
+    /* 厂牌：挂在正门上方的铭牌。
+       原来那块青色发光条贴在三层窗带上，会被窗框切成三四段，看着像几个亮着的窗户 */
+    const signTex = tex(function (gc, w, h) {
+      gc.fillStyle = '#12242a'; gc.fillRect(0, 0, w, h);
+      gc.strokeStyle = 'rgba(46,230,200,.55)'; gc.lineWidth = 3;
+      gc.strokeRect(5, 5, w - 10, h - 10);
+      gc.fillStyle = '#dff7f1';
+      gc.font = 'bold 60px "Microsoft YaHei", sans-serif';
+      gc.textAlign = 'center'; gc.textBaseline = 'middle';
+      gc.fillText('厂房', w / 2, h / 2 + 3);
+    }, 256, 64);
+    const signMat = regMat(new THREE.MeshStandardMaterial({ map: signTex, roughness: .5, metalness: .2 }),
+      { color: 0x3a4a50 }, { color: 0xffffff });
+    const sign = box(3.0, .75, .08, signMat, doorX, top + 3.15, D / 2 + .04);
+    sign.castShadow = true;
+    g.add(sign);
 
     /* 办公附房（左侧小楼）：平屋顶 + 屋顶机组 + 墙上电缆进线箱。
        附房比厂房基座探出去一截，单独给它一条基座，否则底下悬空 */
@@ -774,8 +786,9 @@ window.GaoteScene3D = (function () {
 
     const jbMat = std(0x4a5a5c, { roughness: .55, metalness: .45 });
     const jbInner = std(0x27312f, { roughness: .7, metalness: .3 });
-    g.add(box(2.8, .82, .2, jbMat, OFF_X + .2, 1.3, OFF_Z + OFF_D / 2 + .1));                 // 电缆进线箱
-    g.add(box(2.6, .66, .06, jbInner, OFF_X + .2, 1.3, OFF_Z + OFF_D / 2 + .22));
+    /* 电缆进线箱：收窄并居中在附房正面，原来 2.8 宽会顶到厂房墙上 */
+    g.add(box(2.3, .82, .2, jbMat, OFF_X - .25, 1.3, OFF_Z + OFF_D / 2 + .1));
+    g.add(box(2.1, .66, .06, jbInner, OFF_X - .25, 1.3, OFF_Z + OFF_D / 2 + .22));
 
     /* 厂房进线不单独画了：两堆电池的电缆各自从柜前走电缆沟到附房进线箱（见 layoutStacks） */
 
@@ -923,7 +936,7 @@ window.GaoteScene3D = (function () {
          西边的柜子先贴着汇流柜前面往东走（不穿汇流柜），到它东侧再转南进电缆沟，
          沿沟向东后接进厂房左侧的办公附房（墙上带进线箱） */
       const gz = 4.2 + i * .3;                         // 电缆沟里一列列排开（间距也放大）
-      const annexX = FAC_X + OFF_X + .2 + (i % 2 ? .7 : -.7);   // 附房进线箱上的左/右接入点
+      const annexX = FAC_X + OFF_X - .25 + (i % 2 ? .6 : -.6);  // 附房进线箱上的左/右接入点
       const wallZ = FAC_Z + OFF_Z + OFF_D / 2;         // 附房正面墙
       const turnX = Math.max(x + .45, PCS_X + PCS_HW + .6);
       rebuild(sc.flow, [new THREE.Vector3(.45, .24, .9), new THREE.Vector3(.45, .78, 2.2),

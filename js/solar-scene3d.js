@@ -48,8 +48,16 @@ window.SolarScene = (function () {
     night: { dc: 0x2ee6c8, ac: 0xffb020, idle: 0x24444a },
     day: { dc: 0x0f9e86, ac: 0xd97700, idle: 0x6f8a86 }
   };
+  /* 场地配色：夜里是深色网格地台（跟莒南/高特场景一个观感），白天换浅色 */
+  const SITE = {
+    night: { groundBg: '#04090c', gridLine: 'rgba(46,230,200,.16)', platform: 0x0b1a1e },
+    day: { groundBg: '#d8dcd7', gridLine: 'rgba(102,116,112,.35)', platform: 0xd6dad5 }
+  };
 
   /* ---------------- 基础工具 ---------------- */
+  let groundMat = null, platformMat = null;
+  const themeMats = [];             // 跟主题换色/换贴图的材质
+  function regThemeMat(mat, night, day) { themeMats.push({ mat: mat, night: night || {}, day: day || {} }); return mat; }
   function std(color, o) {
     const p = Object.assign({ roughness: .7, metalness: .2 }, o || {});
     return new THREE.MeshStandardMaterial({
@@ -202,38 +210,16 @@ window.SolarScene = (function () {
     }, 1024, 256, front ? 2 : 1);
   }
 
-  /* 草地：深浅斑驳 + 细点 */
-  function grassTexture() {
+  /* 网格地坪：科技感地台（夜里深底 + 青线，白天浅底 + 灰线） */
+  function gridTexture() {
+    const p = SITE[theme] || SITE.night;
     return tex(function (g, w, h) {
-      g.fillStyle = '#7e9264'; g.fillRect(0, 0, w, h);
-      for (let i = 0; i < 220; i++) {
-        g.fillStyle = ['#75885c', '#85996b', '#6f8354', '#8a9e72'][i % 4];
-        g.globalAlpha = .5;
-        g.beginPath();
-        g.ellipse(Math.random() * w, Math.random() * h, 4 + Math.random() * 16, 3 + Math.random() * 10, Math.random() * 3.2, 0, 6.3);
-        g.fill();
-      }
-      g.globalAlpha = 1;
-      for (let i = 0; i < 900; i++) {
-        g.fillStyle = Math.random() > .5 ? 'rgba(255,255,255,.05)' : 'rgba(0,0,0,.05)';
-        g.fillRect(Math.random() * w, Math.random() * h, 1.4, 1.4);
-      }
-    }, 256, 256);
-  }
-  /* 场坪混凝土：分格缝 + 淡污渍 */
-  function concreteTexture() {
-    return tex(function (g, w, h) {
-      g.fillStyle = '#b6bab0'; g.fillRect(0, 0, w, h);
-      for (let i = 0; i < 90; i++) {
-        g.fillStyle = ['rgba(255,255,255,.10)', 'rgba(90,100,95,.07)', 'rgba(120,128,120,.08)'][i % 3];
-        g.beginPath();
-        g.ellipse(Math.random() * w, Math.random() * h, 6 + Math.random() * 22, 4 + Math.random() * 14, Math.random() * 3, 0, 6.3);
-        g.fill();
-      }
-      g.strokeStyle = 'rgba(88,96,92,.5)'; g.lineWidth = 2;
-      for (let i = 0; i <= 4; i++) {
-        g.beginPath(); g.moveTo(i * w / 4, 0); g.lineTo(i * w / 4, h); g.stroke();
-        g.beginPath(); g.moveTo(0, i * h / 4); g.lineTo(w, i * h / 4); g.stroke();
+      g.fillStyle = p.groundBg; g.fillRect(0, 0, w, h);
+      g.strokeStyle = p.gridLine; g.lineWidth = 3;
+      for (let i = 0; i <= 8; i++) {
+        const q = i * w / 8;
+        g.beginPath(); g.moveTo(q, 0); g.lineTo(q, h); g.stroke();
+        g.beginPath(); g.moveTo(0, q); g.lineTo(w, q); g.stroke();
       }
     }, 256, 256);
   }
@@ -291,106 +277,24 @@ window.SolarScene = (function () {
   /* ---------------- 场地 ---------------- */
   function buildSite() {
     const T = THREE_();
-    /* 草地 */
-    const gt = grassTexture();
-    gt.wrapS = gt.wrapT = T.RepeatWrapping;
-    gt.repeat.set(10, 10);
-    const ground = new T.Mesh(new T.PlaneGeometry(400, 400),
-      new T.MeshStandardMaterial({ map: gt, roughness: .98, metalness: 0, envMapIntensity: .1 }));
+    /* 网格地坪：科技感地台（铺得很大，远处交给雾淡出） */
+    groundMat = regThemeMat(new T.MeshStandardMaterial({ map: gridTexture(), roughness: .95, metalness: .05, envMapIntensity: .18 }));
+    groundMat.map.wrapS = groundMat.map.wrapT = T.RepeatWrapping;
+    groundMat.map.repeat.set(10, 10);
+    const ground = new T.Mesh(new T.PlaneGeometry(400, 400), groundMat);
     ground.rotation.x = -Math.PI / 2;
     ground.receiveShadow = true;
     root.add(ground);
-    /* 场坪（建筑周边混凝土） */
-    const ct = concreteTexture();
-    ct.wrapS = ct.wrapT = T.RepeatWrapping;
-    ct.repeat.set(6, 4);
-    root.add(box(46, .16, 28, new T.MeshStandardMaterial({ map: ct, roughness: .95, metalness: 0, envMapIntensity: .1 }), 0, .08, 0));
-    /* 道路 + 车道线 */
-    const roadMat = std(0x6e7378, { roughness: .95, metalness: 0, envMapIntensity: .08 });
-    root.add(box(170, .1, 6.4, roadMat, 0, .05, 21));
-    const lineMat = std(0xe6e9e4, { roughness: .8 });
-    for (let i = -7; i <= 7; i++) root.add(box(2.6, .02, .16, lineMat, i * 5.6, .11, 21));
-    root.add(box(170, .02, .12, lineMat, 0, .11, 18.1));
-    root.add(box(170, .02, .12, lineMat, 0, .11, 23.9));
-    /* 进院道路 */
-    root.add(box(4.6, .12, 8.4, roadMat, 0, .06, 16.6));
-    /* 围墙 + 大门 */
-    const wallMat = std(0xcbcfc7, { roughness: .85, envMapIntensity: .14 });
-    const capMat = std(0x8f988f, { roughness: .8 });
-    function wallSeg(w, d, x, z) {
-      root.add(box(w, 1.15, d, wallMat, x, .575, z));
-      root.add(box(w + .06, .09, d + .06, capMat, x, 1.19, z));
-    }
-    wallSeg(19.8, .24, -13.1, 13.6); wallSeg(19.8, .24, 13.1, 13.6);
-    [23, -23].forEach(function (x) { wallSeg(.24, 27.2, x, 0); });
-    wallSeg(46, .24, 0, -13.6);
-    [-3.2, 3.2].forEach(function (x) {
-      root.add(box(.56, 1.75, .56, std(0xc9cdc6, { roughness: .8 }), x, .875, 13.6));
-      root.add(box(.68, .12, .68, capMat, x, 1.8, 13.6));
+    /* 场坪：建筑与设备坐落的台面 */
+    platformMat = regThemeMat(std(SITE.night.platform, { roughness: .9 }),
+      { color: SITE.night.platform }, { color: SITE.day.platform });
+    root.add(box(46, .16, 28, platformMat, 0, .08, 0));
+    /* 台面四边的发光包边（科技感光带；夜里青色、白天暖色） */
+    const edgeMat = regThemeMat(new T.MeshBasicMaterial({ color: 0x2ee6c8, transparent: true, opacity: .8 }),
+      { color: 0x2ee6c8 }, { color: 0xd7a400 });
+    [[46, .16, 0, 14], [46, .16, 0, -14], [.16, 28, 23, 0], [.16, 28, -23, 0]].forEach(function (e) {
+      root.add(box(e[0], .05, e[1], edgeMat, e[2], .175, e[3]));
     });
-    /* 绿篱 / 行道树 / 路灯 */
-    const hedgeMat = std(0x4f6b3f, { roughness: .95, envMapIntensity: .12 });
-    [[-13.2, 12.9], [13.2, 12.9]].forEach(function (p) { root.add(box(19, .55, .6, hedgeMat, p[0], .28, p[1])); });
-    const trunkMat = std(0x6b5744, { roughness: .9 });
-    const leafMats = [std(0x5f8148, { roughness: .95, envMapIntensity: .12 }), std(0x6d9052, { roughness: .95, envMapIntensity: .12 }), std(0x557540, { roughness: .95, envMapIntensity: .12 })];
-    function tree(x, z, s) {
-      const g = new T.Group();
-      g.position.set(x, 0, z);
-      g.scale.setScalar(s || 1);
-      g.add(cyl(.13, .2, 1.5, trunkMat, 0, .75, 0, 8));
-      for (let i = 0; i < 4; i++) {
-        const s2 = new T.Mesh(new T.SphereGeometry(.95 + Math.random() * .5, 10, 8), leafMats[i % 3]);
-        s2.position.set((Math.random() - .5) * 1.1, 1.75 + Math.random() * .9, (Math.random() - .5) * 1.1);
-        s2.castShadow = true;
-        g.add(s2);
-      }
-      root.add(g);
-    }
-    [[-19.5, 11.4], [19.5, 11.4], [-20.5, -11.2], [20.5, -11.2], [-9.5, -15.6], [9.5, -15.6], [-27, 17.2], [27, 17.2], [-38, -6], [38, -8]]
-      .forEach(function (p, i) { tree(p[0], p[1], .85 + (i % 3) * .16); });
-    const lampMat = std(0x9aa5a6, { roughness: .5, metalness: .5 });
-    [[-15.5, 12.4], [15.5, 12.4]].forEach(function (p) {
-      const s = p[0] > 0 ? -1 : 1;
-      root.add(cyl(.06, .09, 3.6, lampMat, p[0], 1.8, p[1], 8));
-      root.add(box(.7, .08, .1, lampMat, p[0] + s * .3, 3.62, p[1]));
-      root.add(box(.34, .12, .22, std(0xdfe6e2, { roughness: .4, emissive: 0x222018, emissiveIntensity: .3 }), p[0] + s * .6, 3.55, p[1]));
-    });
-    /* 邻舍：白墙灰瓦的小院房子 */
-    const houseWall = std(0xcfcfc6, { roughness: .88, envMapIntensity: .14 });
-    const houseRoof = std(0x6f6a63, { roughness: .85 });
-    function house(x, z, w, d, h, rot) {
-      const g = new T.Group();
-      g.position.set(x, 0, z);
-      g.rotation.y = rot || 0;
-      g.add(box(w, h, d, houseWall, 0, h / 2, 0));
-      const rise = h * .42, run = w / 2 + .35;
-      const slopeLen = Math.hypot(run, rise) + .1;
-      const ang = Math.atan2(rise, run);
-      [-1, 1].forEach(function (s) {
-        const r = box(slopeLen, .14, d + .6, houseRoof, s * run / 2, h + .07 + rise / 2, 0);
-        r.rotation.z = -s * ang;
-        g.add(r);
-      });
-      const wm = std(0x35525e, { roughness: .35, metalness: .3 });
-      g.add(box(Math.min(1.4, w * .18), 1.0, .06, wm, -w * .22, h * .58, d / 2 + .03));
-      g.add(box(Math.min(1.4, w * .18), 1.0, .06, wm, w * .22, h * .58, d / 2 + .03));
-      root.add(g);
-    }
-    house(-36, -2, 9, 6.4, 3.4, .1);
-    house(-40, 14, 8, 6, 3.2, -.06);
-    house(36, -6, 9.4, 6.6, 3.5, -.12);
-    house(40, 12, 8.4, 6.2, 3.2, .08);
-    house(-20, 33, 9, 6.4, 3.4, 0);
-    house(22, 34, 8.6, 6.2, 3.2, .05);
-    /* 远山 */
-    const hillMat = std(0x8ba394, { roughness: 1, metalness: 0, envMapIntensity: .08 });
-    [[150, -60, 46], [185, 40, 60], [140, 120, 40], [-160, 70, 52], [-175, -40, 44], [-120, -150, 38], [60, -190, 56], [170, 150, 42]]
-      .forEach(function (p) {
-        const h = new T.Mesh(new T.SphereGeometry(p[2], 14, 8), hillMat);
-        h.position.set(p[0], -p[2] * .22, p[1]);
-        h.scale.y = .55;
-        root.add(h);
-      });
   }
 
   /* ---------------- 卫生院建筑 ---------------- */
@@ -775,6 +679,24 @@ window.SolarScene = (function () {
       if (old) old.dispose();
       refreshEnv();
     }
+    /* 地坪网格跟着主题换色（夜里深底青线 / 白天浅底灰线） */
+    const T = THREE_();
+    if (groundMat) {
+      const old = groundMat.map;
+      const map = gridTexture();
+      map.wrapS = map.wrapT = T.RepeatWrapping;
+      map.repeat.set(10, 10);
+      groundMat.map = map;
+      groundMat.needsUpdate = true;
+      if (old) old.dispose();
+    }
+    themeMats.forEach(function (r) {
+      const v = r[theme] || {};
+      if (v.color !== undefined && r.mat.color) r.mat.color.setHex(v.color);
+      if (v.emissive !== undefined && r.mat.emissive) r.mat.emissive.setHex(v.emissive);
+      if (v.emissiveIntensity !== undefined) r.mat.emissiveIntensity = v.emissiveIntensity;
+      r.mat.needsUpdate = true;
+    });
     if (scene && scene.fog) scene.fog.color.setHex(p.fog);
     refreshSkyLight();
   }
