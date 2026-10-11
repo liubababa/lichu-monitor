@@ -644,10 +644,14 @@ window.GaoteScene3D = (function () {
       { color: 0x9aa3a5 }, { color: 0xe8ecee });                                              // 主墙：白
     const trimMat = regMat(std(0x6b7476, { roughness: .6, metalness: .3 }),
       { color: 0x4a5457 }, { color: 0x8d9598 });                                              // 灰带 / 窗框
+    const bandMat0 = regMat(std(0x232a2d, { roughness: .5, metalness: .35 }),
+      { color: 0x1b2225 }, { color: 0x2c3438 });                                              // 深色：基座与窗带
     const hall = new THREE.Mesh(new THREE.BoxGeometry(W, H, D), [wallMat, wallMat, trimMat, wallMat, wallMat, wallMat]);
     hall.position.set(0, H / 2 + top, 0);
     hall.castShadow = hall.receiveShadow = true;
     g.add(hall);
+    /* 深色基座（参考图底部那道深色） */
+    g.add(box(W + .18, .45, D + .18, bandMat0, 0, top + .225, 0));
 
     /* 楼层线（两层之间一道横向腰线） */
     const floorY = top + H / 2;
@@ -675,32 +679,38 @@ window.GaoteScene3D = (function () {
     }), { color: 0x16242c, emissive: new THREE.Color(0x000000), emissiveIntensity: 0 },
       { color: 0x2b3d45, emissive: new THREE.Color(0xffcf8a), emissiveIntensity: .25 });
     facWinMat = winMat;
-    /* 竖向长条窗（参考图特征）…… */
-    function vWindow(cx, cy, cz, alongX, wdt, hgt) {
-      const ww = alongX ? wdt : .16;
-      const dd = alongX ? .16 : wdt;
-      g.add(box(ww + .12, hgt + .12, dd + .12, trimMat, cx, cy, cz));       // 窗框
-      g.add(box(ww, hgt, dd + .02, winMat, cx, cy, cz));                    // 玻璃
-    }
-    const winW = .78, winH = 1.92;
+    /* 横向深色窗带（参考图核心特征）：每层一条深色带，带内嵌竖向长窗 + 竖挺分格。
+       保持低多边形与纯色材质，和场景其它设备一个风格 */
+    const bandMat = bandMat0;
+    const bandH = 2.15, bandD = .22;
     const lvY = [top + 1.78, top + 4.72];
+    function winBand(cx, cy, cz, alongX, len, n) {
+      if (alongX) g.add(box(len, bandH, bandD, bandMat, cx, cy, cz));
+      else g.add(box(bandD, bandH, len, bandMat, cx, cy, cz));
+      const inner = len - .5;
+      for (let i = 0; i < n; i++) {
+        const off = -inner / 2 + (i + .5) * (inner / n);
+        const px = alongX ? cx + off : cx;
+        const pz = alongX ? cz : cz + off;
+        const ww = alongX ? .62 : bandD + .06;
+        const dd = alongX ? bandD + .06 : .62;
+        g.add(box(ww, bandH - .5, dd, winMat, px, cy, pz));                    // 玻璃（用电发光）
+        const mw = alongX ? .09 : bandD + .1;
+        const md = alongX ? bandD + .1 : .09;
+        g.add(box(mw, bandH, md, trimMat, alongX ? px + .36 : px, cy, alongX ? pz : pz + .36));  // 竖挺
+      }
+    }
     [-1, 1].forEach(function (sz) {
-      const z = sz * (D / 2 + .07);
-      lvY.forEach(function (cy) {
-        for (let i = 0; i < 6; i++) vWindow(-3.75 + i * 1.5, cy, z, true, winW, winH);
-      });
+      lvY.forEach(function (cy) { winBand(0, cy, sz * (D / 2 + .03), true, W - .3, 6); });
     });
     [-1, 1].forEach(function (sx) {
-      const x = sx * (W / 2 + .07);
-      lvY.forEach(function (cy) {
-        for (let i = 0; i < 3; i++) vWindow(x, cy, -1.9 + i * 1.9, false, winW, winH);
-      });
+      lvY.forEach(function (cy) { winBand(sx * (W / 2 + .03), cy, 0, false, D - .3, 3); });
     });
 
     /* 参考图里屋顶是干净的平顶（无设备），也不设外挂水塔/排风筒 */
 
-    /* 大门/卷帘门 + 雨棚 + 装卸平台：按参考图放在正面偏右一侧 */
-    const doorX = 3.0;
+    /* 大门/卷帘门 + 雨棚 + 装卸平台：按参考图放在正面偏左一侧（附房旁边） */
+    const doorX = -2.4;
     const canopy = box(4.4, .12, 1.5, trimMat, doorX, 2.7, D / 2 + .75);
     canopy.rotation.x = -.12;
     canopy.castShadow = true;
