@@ -102,7 +102,7 @@ window.GaoteScene3D = (function () {
   const stackCables = [];   // { flow } 每柜到 PCS 的电缆
 
   /* 厂房（工厂用电负荷）：放电时电送进厂房，进线光点流动 */
-  let facGroup = null, facLabelEl = null, facOn = false, facWinMat = null;
+  let facGroup = null, facLabelEl = null, facOn = false, facWinMat = null, facSpillMat = null, facWinBase = .45;
 
   /* ---------------- 基础工具 ---------------- */
   function std(c, o) { return new THREE.MeshStandardMaterial(Object.assign({ color: c, roughness: .6, metalness: .35 }, o || {})); }
@@ -686,9 +686,9 @@ window.GaoteScene3D = (function () {
     /* 窗户：大面玻璃 + 细竖挺；用电时玻璃透光，待机时是暗色玻璃 */
     const winMat = regMat(new THREE.MeshStandardMaterial({
       color: 0x1b2b33, roughness: .18, metalness: .35,
-      emissive: new THREE.Color(0x2ee6c8), emissiveIntensity: .26, emissiveMap: winGlowTex
-    }), { color: 0x16242c, emissive: new THREE.Color(0x2ee6c8), emissiveIntensity: .26 },
-      { color: 0x2b3d45, emissive: new THREE.Color(0xe8b000), emissiveIntensity: .26 });
+      emissive: new THREE.Color(0x2ee6c8), emissiveIntensity: .45, emissiveMap: winGlowTex
+    }), { color: 0x16242c, emissive: new THREE.Color(0x2ee6c8), emissiveIntensity: .45 },
+      { color: 0x2b3d45, emissive: new THREE.Color(0xe8b000), emissiveIntensity: .45 });
     facWinMat = winMat;
     /* 横向深色窗带：整栋只在上面一层做一条带，带内嵌 4 扇大窗（越简洁越显好） */
     const bandMat = bandMat0;
@@ -734,8 +734,26 @@ window.GaoteScene3D = (function () {
     });
     g.add(box(4.6, .26, 1.2, M.dark, doorX, top + .13, D / 2 + .9));                          // 装卸平台
     g.add(box(1.8, .12, 1.1, M.galv, doorX + 3.0, top + .06, D / 2 + 1.85));                  // 台阶
-    /* 卷帘门门板（正面右侧，夜间有灯光时更明显） */
-    g.add(box(3.6, 2.2, .08, trimMat, doorX, top + 1.35, D / 2 + .06));
+    /* 大门开着：门洞压暗 + 门帘卷到顶上 + 两侧导轨，门里透出光（跟窗户一起呼吸） */
+    const doorW = 3.6, doorH = 2.2, doorY = top + .25 + doorH / 2;
+    g.add(box(doorW, doorH, .06, M.dark, doorX, doorY, D / 2 + .03));                          // 门洞
+    g.add(box(doorW - .3, doorH - .3, .04, winMat, doorX, doorY - .06, D / 2 + .07));          // 门里的光
+    g.add(box(doorW + .15, .38, .26, trimMat, doorX, top + .25 + doorH + .19, D / 2 + .09));   // 卷到顶上的门帘
+    [doorX - doorW / 2 - .05, doorX + doorW / 2 + .05].forEach(function (sx) {
+      g.add(box(.1, doorH + .12, .12, trimMat, sx, doorY, D / 2 + .08));                        // 两侧导轨
+    });
+    /* 门口地面上的光晕（加色混合，跟窗户一起明暗） */
+    const spillTex = tex(function (gc, w, h) {
+      const grd = gc.createRadialGradient(w / 2, 0, 3, w / 2, 0, h);
+      grd.addColorStop(0, 'rgba(255,255,255,.8)');
+      grd.addColorStop(1, 'rgba(255,255,255,0)');
+      gc.fillStyle = grd; gc.fillRect(0, 0, w, h);
+    }, 64, 64);
+    facSpillMat = new THREE.MeshBasicMaterial({ map: spillTex, transparent: true, opacity: .26, blending: THREE.AdditiveBlending, depthWrite: false });
+    const spill = new THREE.Mesh(new THREE.PlaneGeometry(4.4, 1.2), facSpillMat);
+    spill.rotation.x = -Math.PI / 2;
+    spill.position.set(doorX, top + .27, D / 2 + .9);
+    g.add(spill);
 
     /* 落水管（正面两根，从檐口顺墙到基座） */
     [-1, 1].forEach(function (sx) {
@@ -1111,13 +1129,13 @@ window.GaoteScene3D = (function () {
 
     /* 厂房负荷：放电时电从 PCS 送进厂房（光点流动），待机/充电时进线不流动 */
     facOn = flow.dir > 0;
-    /* 厂房窗户长亮：平时就是透光的（颜色跟场景主色走），
-       工厂受电（放电供电）时再亮一档，亮度随功率 */
+    /* 厂房窗户长亮（呼吸灯的基准亮度在这里算，亮暗起伏在 loop 里做）：
+       平时就是透光的（颜色跟场景主色走），工厂受电（放电供电）时再亮一档 */
     if (facWinMat) {
       const mag = Math.abs(pNum);
       const pm = THEMES[theme] || THEMES.night;
       facWinMat.emissive.setHex(pm.flowDis);
-      facWinMat.emissiveIntensity = Math.min(.6, (facOn ? .34 : .26) + mag / 700);
+      facWinBase = Math.min(.9, (facOn ? .58 : .45) + mag / 520);
     }
     if (facLabelEl) {
       facLabelEl.innerHTML = '<b>厂房（工厂用电）</b><i>'
@@ -1172,6 +1190,12 @@ window.GaoteScene3D = (function () {
     if (rot.auto && controls) controls.autoRotate && (controls.autoRotateSpeed = rot.speed * 6);
     if (controls) controls.update();
     stepFlow(dt);
+    /* 厂房玻璃/门灯的呼吸：缓慢起伏（约 3 秒一个循环），亮度高一点但不刺眼 */
+    if (facWinMat) {
+      const breath = .84 + .16 * Math.sin(t / 1000 * 2.1);
+      facWinMat.emissiveIntensity = facWinBase * breath;
+      if (facSpillMat) facSpillMat.opacity = .30 * breath;
+    }
     if (composer) composer.render(); else renderer.render(scene, camera);
     labelRenderer.render(scene, camera);
   }
