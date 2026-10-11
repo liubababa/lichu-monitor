@@ -736,11 +736,11 @@ window.GaoteScene3D = (function () {
     g.add(box(1.8, .12, 1.1, M.galv, doorX + 3.0, top + .06, D / 2 + 1.85));                  // 台阶
     /* 大门开着：门洞压暗 + 门帘卷到顶上 + 两侧导轨，门里透出光（跟窗户一起呼吸） */
     const doorW = 3.6, doorH = 2.2, doorY = top + .25 + doorH / 2;
-    g.add(box(doorW, doorH, .06, M.dark, doorX, doorY, D / 2 + .03));                          // 门洞
-    g.add(box(doorW - .3, doorH - .3, .04, winMat, doorX, doorY - .06, D / 2 + .07));          // 门里的光
-    g.add(box(doorW + .15, .38, .26, trimMat, doorX, top + .25 + doorH + .19, D / 2 + .09));   // 卷到顶上的门帘
+    g.add(box(doorW, doorH, .06, M.dark, doorX, doorY, D / 2 + .015));                         // 门洞
+    g.add(box(doorW - .3, doorH - .3, .04, winMat, doorX, doorY - .06, D / 2 + .045));         // 门里的光
+    g.add(box(doorW + .15, .38, .26, trimMat, doorX, top + .25 + doorH + .19, D / 2 + .06));   // 卷到顶上的门帘
     [doorX - doorW / 2 - .05, doorX + doorW / 2 + .05].forEach(function (sx) {
-      g.add(box(.1, doorH + .12, .12, trimMat, sx, doorY, D / 2 + .08));                        // 两侧导轨
+      g.add(box(.1, doorH + .12, .12, trimMat, sx, doorY, D / 2 + .05));                        // 两侧导轨
     });
     /* 门口地面上的光晕（加色混合，跟窗户一起明暗） */
     const spillTex = tex(function (gc, w, h) {
