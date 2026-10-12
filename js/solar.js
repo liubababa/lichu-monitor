@@ -48,7 +48,7 @@ window.SolarUI = (function () {
   }
   function tariff() {
     const v = Number(localStorage.getItem(LS_TARIFF));
-    return (isFinite(v) && v > 0) ? v : 1.0;      // 默认 1.0 元/度（与阳光云页面上的净收益口径一致）
+    return (isFinite(v) && v > 0) ? v : 0.40;     // 默认按余电上网电价估（山东燃煤基准约 0.39 元/度）
   }
   function isDay() { return document.documentElement.getAttribute('data-theme') === 'day'; }
 
@@ -195,7 +195,7 @@ window.SolarUI = (function () {
     box.innerHTML =
       card('实时功率', fmt(pKw, 2), 'kW', cap ? ('装机 ' + fmt(cap, 2) + ' kWp') : '', 'hi')
       + card('当日发电', fmt(dKwh, 1), '度', hours !== null ? ('等效 ' + fmt(hours, 2) + ' 小时') : '')
-      + card('当日收益（估算）', fmt(income, 2), '元', '电价 <i id="slPrice" title="点击修改电价">' + fmt(price, 2) + '</i> 元/度')
+      + card('当日收益（估算）', fmt(income, 2), '元', '上网电价 <i id="slPrice" title="点击修改电价">' + fmt(price, 2) + '</i> 元/度')
       + card('累计发电', fmt(tKwh, 0), '度', sum.plant && sum.plant.install_date ? ('并网 ' + String(sum.plant.install_date).slice(0, 10)) : '')
       + card('装机容量', fmt(cap, 2), 'kWp', sum.plant ? (sum.plant.type || '分布式光伏') : '')
       + card('CO₂减排', fmt(co2, 2), '吨', trees !== null ? ('等效植树 ' + trees + ' 棵') : '');
@@ -205,7 +205,7 @@ window.SolarUI = (function () {
 
   function editTariff() {
     const cur = String(tariff());
-    const v = prompt('每度电收益（元/度）：\n用于「当日收益」估算，与阳光云页面上的净收益口径一致。', cur);
+    const v = prompt('上网电价（元/度）：\n用于「当日收益（估算）」——按当日发电量折算，仅作参考；\n实际结算以日升云的收益口径为准。', cur);
     if (v === null) return;
     const n = Number(v);
     if (!isFinite(n) || n <= 0) { alert('请输入大于 0 的数字'); return; }
@@ -490,24 +490,26 @@ window.SolarUI = (function () {
       + gvTile('储能累计收益', fmt(rev.storage, 2), '元', '累计放电 ' + fmt(tt.discharge_kwh, 0) + ' 度')
       + gvTile('光伏累计收益', fmt(rev.solar, 2), '元', '日升云')
       + gvTile('储能度电收益', fmt(rev.per_kwh, 2), '元/度', '日升云')
-      + gvTile('今日储能充 / 放', fmt(td.charge_kwh, 1) + ' / ' + fmt(td.discharge_kwh, 1), '度', '日升云')
       + '</div>';
 
-    /* 阳光云：只报发电量，钱单独算、单独标 */
-    const pvRow = (k, v) => '<div class="gv3-kvrow"><span>' + k + '</span><b>' + v + '</b></div>';
+    /* 上网与购电：本站储能会往电网卖电，这几格才是"卖电"的账 */
+    const g = (stor && stor.grid) || {};
+    const gridTiles = '<div class="gv3-flow">'
+      + gvTile('今日馈电（卖电）', fmt(g.feed_today_kwh, 1), '度', '关口表 · 送出')
+      + gvTile('累计馈电（卖电）', fmt(g.feed_total_kwh, 0), '度', '关口表')
+      + gvTile('今日取电（买电）', fmt(g.draw_today_kwh, 1), '度', '关口表 · 受入')
+      + gvTile('累计取电（买电）', fmt(g.draw_total_kwh, 0), '度', '关口表')
+      + gvTile('今日储能充 / 放', fmt(td.charge_kwh, 1) + ' / ' + fmt(td.discharge_kwh, 1), '度', '日升云')
+      + gvTile('今日光伏发电', fmt(pvToday, 1), '度', '阳光云')
+      + '</div>';
+
+    /* 阳光云：只报发电量（钱由日升云结算，这里不再自己折算） */
     const pvTiles = '<div class="gv3-flow">'
       + gvTile('实时功率', fmt(pvPower, 2), 'kW', '阳光云')
       + gvTile('今日发电', fmt(pvToday, 1), '度', '阳光云')
       + gvTile('累计发电', fmt(pvTotal, 0), '度', '阳光云')
       + gvTile('今日等效小时', fmt(hours, 2), 'h', '阳光云')
-      + '</div>'
-      + '<div class="gv3-skv">'
-      + pvRow('按电价估算 · 今日', fmt(pvToday === null ? null : pvToday * price, 2) + ' 元')
-      + pvRow('按电价估算 · 累计', fmt(pvTotal === null ? null : pvTotal * price, 2) + ' 元')
-      + pvRow('电价', '<i id="slRevPrice" title="点击修改">' + fmt(price, 2) + ' 元/度</i>')
-      + '</div>'
-      + '<div class="dt-note">发电量取自阳光云；上面两行是按电价折算的参考值，'
-      + '和日升云的结算口径（收益率、是否只算上网电量）不一定一致。</div>';
+      + '</div>';
 
     const green = kvGrid([
       ['CO₂ 减排', fmt(rev.reduce_carbon_t, 2) + ' 吨'],
@@ -521,7 +523,8 @@ window.SolarUI = (function () {
     const xLabel = dt => (dt === todayStr ? '今天' : String(dt || '').slice(5));
 
     box.innerHTML = '<div class="dt-body">'
-      + sec('sp12', '收益总览', '日升云结算口径', risenTiles)
+      + sec('sp12', '结算收益', '日升云结算口径', risenTiles)
+      + sec('sp12', '上网与购电', '日升云关口表口径', gridTiles)
       + '<div class="ov-grid">'
       + sec('sp8', '近 7 日收益（储能 / 光伏 / 合计）',
         (revTrend && revTrend.length ? revTrend.length + ' 天 + 今天 · 日升云' : '--'), '<div class="dt-chart" id="slRevChart"></div>')
@@ -530,9 +533,6 @@ window.SolarUI = (function () {
       + sec('sp6', '近 7 日充放电量与效率',
         (powTrend && powTrend.length ? powTrend.length + ' 天 + 今天 · 日升云' : '--'), '<div class="dt-chart" id="slPowChart"></div>')
       + '</div></div>';
-
-    const priceEl = byId('slRevPrice');
-    if (priceEl) priceEl.addEventListener('click', function () { editTariff(); renderRevenuePage(); });
 
     revChart = ensureChart(revChart, 'slRevChart');
     if (revChart) {

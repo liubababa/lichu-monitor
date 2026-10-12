@@ -514,7 +514,129 @@ window.SolarScene = (function () {
     addCard('storage', CAB_X, CAB_H + 1.2, CAB_Z);
   }
 
-  /* ---------------- 设备：逆变器 / 通信模块 / 并网点 ---------------- */
+  /* ---------------- 并网铁塔（国网风格格构塔：收腰塔身 + 三层横担 + 绝缘子串 + 架空线）
+     本站储能要往电网卖电，线路上立一座塔比排几根电杆更像回事。塔身沿 y 轴，
+     横担沿 z，导线沿 x（西向出线），整塔绕 y 转 90° 让导线与本场景的东西向一致。 ---------------- */
+  const TWR_X = -31, TWR_Z = 7.0, TWR_H = 10.4;
+  let twrLabelEl = null, twrArms = [];
+  function buildTower() {
+    const T = THREE_();
+    const g = new T.Group();
+    g.position.set(TWR_X, 0, TWR_Z);
+    g.rotation.y = Math.PI / 2;                    /* 导线走向 → 沿 x */
+    const hgt = TWR_H;
+    const legMat = regThemeMat(std(0x6d8b93, { roughness: .55, metalness: .6 }), { color: 0x6d8b93 }, { color: 0x93a3a8 });
+    const braceMat = regThemeMat(std(0x54737b, { roughness: .62, metalness: .55 }), { color: 0x54737b }, { color: 0x7d8f94 });
+    const armMat = regThemeMat(std(0x2ee6c8, { emissive: 0x0a5a4a, emissiveIntensity: .35, roughness: .5, metalness: .3 }),
+      { color: 0x2ee6c8, emissive: 0x0a5a4a, emissiveIntensity: .35 },
+      { color: 0x18b39a, emissive: 0x000000, emissiveIntensity: 0 });
+    const insMat = std(0xd8e6e4, { roughness: .35, metalness: .1 });
+    const condMat = regThemeMat(new T.LineBasicMaterial({ color: 0x2ee6c8, transparent: true, opacity: .32 }),
+      { color: 0x2ee6c8 }, { color: 0x0d8f7a });
+    /* 塔身半宽：底部宽 → 腰部收窄 → 上部略开 */
+    const halfAt = function (y) {
+      const t = Math.max(0, Math.min(1, y / hgt));
+      const base = 1.5, waist = .62, top = .84;
+      return t < .6 ? base + (waist - base) * (t / .6) : waist + (top - waist) * ((t - .6) / .4);
+    };
+    const P = function (x, y, z) { return new T.Vector3(x * halfAt(y), y, z * halfAt(y)); };
+    const member = function (a, b, mat, r) {
+      const len = a.distanceTo(b);
+      if (len < .03) return;
+      const m = new T.Mesh(new T.CylinderGeometry(r || .04, r || .04, len, 5), mat || legMat);
+      m.position.copy(a).lerp(b, .5);
+      m.quaternion.setFromUnitVectors(new T.Vector3(0, 1, 0), b.clone().sub(a).normalize());
+      m.castShadow = true;
+      g.add(m);
+    };
+    const lv = 11;
+    [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(function (c) {                        /* 四条主腿 + 基础 */
+      for (let i = 0; i < lv; i++) {
+        member(P(c[0], hgt * i / lv, c[1]), P(c[0], hgt * (i + 1) / lv, c[1]), legMat, .045);
+      }
+      const bx = c[0] * halfAt(0), bz = c[1] * halfAt(0);
+      g.add(box(.66, .4, .66, std(0x2a3a3d, { roughness: .95, metalness: .05 }), bx, .2, bz));
+      g.add(box(.36, .28, .36, std(0x3a4c50, { roughness: .9 }), bx, .54, bz));
+    });
+    for (let i = 0; i < 19; i++) {                                                     /* 爬梯 */
+      const y = .75 + i * .5, w = halfAt(y);
+      g.add(box(.26, .03, .03, braceMat, -w + .12, y, -w - .07));
+    }
+    for (let i = 1; i <= lv; i++) {                                                    /* 横撑 + 交叉斜撑 */
+      const y = hgt * i / lv, w = halfAt(y);
+      g.add(box(w * 2, .04, .04, braceMat, 0, y, -w));
+      g.add(box(w * 2, .04, .04, braceMat, 0, y, w));
+      g.add(box(.04, .04, w * 2, braceMat, -w, y, 0));
+      g.add(box(.04, .04, w * 2, braceMat, w, y, 0));
+      if (i < lv) {
+        const yn = hgt * (i + 1) / lv, wn = halfAt(yn);
+        [[-1, 0], [1, 0], [0, -1], [0, 1]].forEach(function (f) {
+          const ax = f[0] * w, az = f[1] * w, bx2 = f[0] * wn, bz2 = f[1] * wn;
+          member(new T.Vector3(ax, y, az), new T.Vector3(bx2, yn, bz2), braceMat, .02);
+          member(new T.Vector3(ax, y, az), new T.Vector3(f[0] ? ax : bx2, yn, f[1] ? az : bz2), braceMat, .02);
+        });
+      }
+    }
+    /* 三层横担（每层左右各一挑），端部下挂绝缘子串，导线沿线路方向（本塔即 x）穿越 */
+    const ARMS = [[6.6, 3.0], [7.8, 2.7], [9.0, 2.4]];
+    twrArms = [];
+    ARMS.forEach(function (a, ai) {
+      const y = a[0], len = a[1], w = halfAt(y);
+      [-1, 1].forEach(function (s) {
+        const inn = new T.Vector3(s * w, y, 0);
+        const tip = new T.Vector3(s * (w + len), y, 0);
+        member(inn, tip, armMat, .055);
+        member(inn.clone().setY(y - .22), tip.clone().setY(y - .3), braceMat, .022);
+        const ins = new T.Group();
+        ins.position.copy(tip);
+        for (let k = 0; k < 5; k++) {
+          const disc = new T.Mesh(new T.CylinderGeometry(.11, .11, .045, 8), insMat);
+          disc.position.y = -.12 - k * .08;
+          disc.castShadow = true;
+          ins.add(disc);
+        }
+        g.add(ins);
+        const wy = tip.y - .55, wx = tip.x;
+        const pts = [];
+        for (let k = 0; k <= 24; k++) {                                                /* 导线带垂弧，穿过塔位向西出线 */
+          const z = -20 + (k / 24) * 40;
+          const sag = Math.sin(Math.min(1, Math.abs(z) / 20) * Math.PI / 2) * .95;
+          pts.push(new T.Vector3(wx, wy - sag, z));
+        }
+        g.add(new T.Line(new T.BufferGeometry().setFromPoints(pts), condMat));
+        /* 记录挂点（世界坐标）：给"电杆 → 铁塔"那三跨导线用 */
+        g.updateMatrixWorld(true);
+        twrArms.push({ v: tip.clone().applyMatrix4(g.matrixWorld), s: s, ai: ai });
+      });
+    });
+    /* 塔顶地线支架 + 地线 */
+    const tw = halfAt(hgt);
+    member(new T.Vector3(-tw, hgt, 0), new T.Vector3(0, hgt + .9, 0), legMat, .04);
+    member(new T.Vector3(tw, hgt, 0), new T.Vector3(0, hgt + .9, 0), legMat, .04);
+    g.add(box(tw * 2.6, .06, .06, braceMat, 0, hgt + .55, 0));
+    const gpts = [];
+    for (let k = 0; k <= 24; k++) {
+      const z = -20 + (k / 24) * 40;
+      gpts.push(new T.Vector3(0, hgt + .9 - Math.sin(Math.min(1, Math.abs(z) / 20) * Math.PI / 2) * .6, z));
+    }
+    g.add(new T.Line(new T.BufferGeometry().setFromPoints(gpts), condMat));
+    /* 杆号牌 */
+    const tagTex = tex(function (gg, w2, h2) {
+      gg.fillStyle = '#1d2a2e'; gg.fillRect(0, 0, w2, h2);
+      gg.strokeStyle = 'rgba(232,255,250,.85)'; gg.lineWidth = 2; gg.strokeRect(3, 3, w2 - 6, h2 - 6);
+      gg.fillStyle = '#eafffa'; gg.font = 'bold 15px sans-serif';
+      gg.textAlign = 'center'; gg.textBaseline = 'middle';
+      gg.fillText('1#', w2 / 2, h2 / 2 + 1);
+    }, 32, 24);
+    const poleTag = new T.Mesh(new T.PlaneGeometry(.34, .26),
+      new T.MeshBasicMaterial({ map: tagTex, side: T.DoubleSide }));
+    poleTag.position.set(halfAt(2.6) + .16, 2.6, 0);
+    poleTag.rotation.y = Math.PI / 2;
+    g.add(poleTag);
+    root.add(g);
+    twrLabelEl = label('并网铁塔<i>10kV 上网线路</i><em>--</em>', 'tag3d-gt', TWR_X, TWR_H - .6, TWR_Z);
+    addCard('tower', TWR_X, TWR_H - 1.8, TWR_Z);
+  }
   function buildEquipment() {
     const T = THREE_();
     const steel = std(0xc6ccce, { roughness: .45, metalness: .55, envMapIntensity: .6 });
@@ -555,7 +677,8 @@ window.SolarScene = (function () {
     root.add(mg);
     const poleMat = std(0xb9c2c4, { roughness: .6, metalness: .3 });
     const px = mx - .6;
-    const poles = [[px, 4.25, mz, 4.5], [-34, 4.05, mz + 1.2, 4.4], [-52, 3.85, mz + 2.4, 4.2]];
+    /* 只留近处一根电杆做引下；远段线路改由并网铁塔承担（见 buildTower） */
+    const poles = [[px, 4.25, mz, 4.5]];
     poles.forEach(function (p) {
       root.add(cyl(.10, .13, p[3], poleMat, p[0], p[3] / 2, p[2], 10));
       root.add(box(.12, .1, 1.15, poleMat, p[0], p[1] - .12, p[2]));                    /* 横担 */
@@ -570,15 +693,17 @@ window.SolarScene = (function () {
       new T.Vector3(mx + .02, 1.5, mz + .02)
     ]);
     root.add(new T.Mesh(new T.TubeGeometry(drop, 12, .02, 5, false), std(0x2c3a40, { roughness: .7 })));
-    /* 架空线：两跨三线（带弧垂），末端落在远端电杆横担上 */
+    /* 三跨导线：近杆横担 → 并网铁塔的三层横担（带弧垂）—— 卖电就从这条线送出去 */
     const wireMat = std(0x2c3a40, { roughness: .7, metalness: .2 });
-    [[-.15, -.42], [-.15, 0], [-.15, .42]].forEach(function (o) {
-      for (let i = 0; i < poles.length - 1; i++) {
-        const a = new T.Vector3(poles[i][0], poles[i][1] + o[0], poles[i][2] + o[1]);
-        const b = new T.Vector3(poles[i + 1][0], poles[i + 1][1] + o[0], poles[i + 1][2] + o[1]);
-        const mid = new T.Vector3((a.x + b.x) / 2, (a.y + b.y) / 2 - .5, (a.z + b.z) / 2);
-        root.add(new T.Mesh(new T.TubeGeometry(new T.CatmullRomCurve3([a, mid, b]), 14, .022, 5, false), wireMat));
-      }
+    const towerSide = twrArms.filter(function (a) { return a.s === -1; })
+      .sort(function (a, b) { return a.ai - b.ai; });
+    [[-.42, 0], [0, 1], [.42, 2]].forEach(function (o) {
+      const tip = towerSide[o[1]];
+      if (!tip) return;
+      const a = new T.Vector3(px, 4.29, mz + o[0]);
+      const b = new T.Vector3(tip.v.x, tip.v.y - .55, tip.v.z);
+      const mid = new T.Vector3((a.x + b.x) / 2, Math.min(a.y, b.y) - .34, (a.z + b.z) / 2);
+      root.add(new T.Mesh(new T.TubeGeometry(new T.CatmullRomCurve3([a, mid, b]), 14, .022, 5, false), wireMat));
     });
     gridLabelEl = label('并网点<i>无输出</i><em>计量箱 · 关口表</em>', 'tag3d-gt', px - .2, 5.05, mz);
     addCard('grid', px - .2, 4.1, mz);
@@ -674,6 +799,7 @@ window.SolarScene = (function () {
     panelMats.push(glassMat);
     const edgeMat = new T.MeshStandardMaterial({ color: 0x8e9ba1, roughness: .45, metalness: .65, envMapIntensity: .45 });
     buildArray(glassMat, edgeMat);
+    buildTower();                 /* 铁塔要先建：设备段的三跨导线要取它的挂点 */
     buildEquipment();
     buildStorageCabinet();
 
@@ -706,11 +832,13 @@ window.SolarScene = (function () {
       new T.Vector3(-15.6, .85, 4.2),
       new T.Vector3(-16.7, .72, 2.0)
     ], 'stor', .05);
-    /* 交流支线：计量箱 → 电杆 → 架空线（往电网卖电 / 从电网取电） */
+    /* 交流支线：计量箱 → 电杆 → 沿三跨导线 → 并网铁塔（往电网卖电 / 从电网取电） */
     addFlow([
       new T.Vector3(-15.05, 1.35, 5.95),
       new T.Vector3(-15.2, 2.6, 5.95),
-      new T.Vector3(-15.2, 3.95, 6.0)
+      new T.Vector3(-15.4, 4.1, 6.0),
+      new T.Vector3(-22, 5.6, 7.6),
+      new T.Vector3(-30, 6.4, 7.0)
     ], 'grid', .045);
 
     /* ---------- 天气：太阳 / 月亮 / 云 / 降水 ---------- */
@@ -954,6 +1082,15 @@ window.SolarScene = (function () {
       ['采样时间', String(r.time || '--').slice(11, 19)]
     ], Math.abs(Number(cur.storPower) || 0) > .3
       ? (dis ? '放电中（往系统送电）' : '充电中（把电存起来）') : '待机');
+    /* 铁塔明细：本站卖电/买电都走这条线 */
+    const g = st.grid || {};
+    setCard('tower', '并网铁塔 · 10kV 上网线路', [
+      ['线路', '1# 杆塔 · 三跨导线'],
+      ['今日馈电（卖电）', f1(g.feed_today_kwh) + ' 度'],
+      ['累计馈电', f1(g.feed_total_kwh) + ' 度'],
+      ['今日取电（买电）', f1(g.draw_today_kwh) + ' 度'],
+      ['累计取电', f1(g.draw_total_kwh) + ' 度']
+    ], (Number(g.feed_today_kwh) || 0) > 0 ? '今天已往电网送电' : '暂无送出');
     updateEnergyFlows();
   }
 
@@ -1043,6 +1180,11 @@ window.SolarScene = (function () {
       gridLabelEl.innerHTML = '并网点<i>' + (Math.abs(surplus) > .3
         ? (surplus > 0 ? '馈电上网 ' + surplus.toFixed(1) + ' kW' : '从电网取 ' + Math.abs(surplus).toFixed(1) + ' kW')
         : '无交换') + '</i><em>计量箱 · 关口表</em>';
+    }
+    if (twrLabelEl) {
+      twrLabelEl.innerHTML = '并网铁塔<i>10kV 上网线路</i><em>' + (Math.abs(surplus) > .3
+        ? (surplus > 0 ? '送出 ' + surplus.toFixed(1) + ' kW' : '受电 ' + Math.abs(surplus).toFixed(1) + ' kW')
+        : '无交换') + '</em>';
     }
   }
 

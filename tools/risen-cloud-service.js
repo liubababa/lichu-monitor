@@ -541,6 +541,13 @@ function summary() {
       warning: s.warning || '',
       fault: s.fault || ''
     },
+    /* 关口表：馈电=往电网卖，取电=从电网买（日升云内部电表口径） */
+    grid: {
+      feed_today_kwh: num(s.dailyElectricityFeed),
+      draw_today_kwh: num(s.dailyElectricityWithdrawal),
+      feed_total_kwh: num(s.accruedElectricityFeed),
+      draw_total_kwh: num(s.accruedElectricityWithdrawal)
+    },
     /* PCS 实时（/station/pems/detail/storage/pcs） */
     pcs: state.pcs ? {
       time: state.pcs.recordTime,
