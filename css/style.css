@@ -514,6 +514,9 @@ button{font-family:inherit;cursor:pointer;background:none;border:none;color:inhe
 .ov-grid{display:grid;grid-template-columns:repeat(12,1fr);gap:12px}
 .sp12{grid-column:span 12}.sp5{grid-column:span 5}.sp4{grid-column:span 4}
 .sp3{grid-column:span 3}.sp6{grid-column:span 6}
+/* 补齐 1~12 的全套：少一个就会退化成 1 列（收益页 sp8 曾因此被压成 89px） */
+.sp1{grid-column:span 1}.sp2{grid-column:span 2}.sp7{grid-column:span 7}
+.sp8{grid-column:span 8}.sp9{grid-column:span 9}.sp10{grid-column:span 10}.sp11{grid-column:span 11}
 @media (max-width:1180px){#overviewView .ov-grid>*{grid-column:span 12!important}}
 
 /* ---- 板块通用 ---- */

@@ -285,22 +285,16 @@ window.SolarUI = (function () {
       + (pc ? row('PCS 频率 / 功率因数', fmt(pc.freq_hz, 2) + ' Hz　' + fmt(pc.power_factor, 2)) : '')
       + (bt ? row('总压 / 总流', fmt(bt.voltage_v, 1) + ' V　' + fmt(bt.current_a, 1) + ' A') : '')
       + (bt ? row('单体电压 高 / 低', fmt(bt.cell_volt_max_mv, 0) + ' / ' + fmt(bt.cell_volt_min_mv, 0) + ' mV') : '')
-      + (bt ? row('单体温度 高 / 低', fmt(bt.cell_temp_max, 0) + ' / ' + fmt(bt.cell_temp_min, 0) + ' ℃') : '')
-      + (bt && bt.cooler ? row('液冷进出水温', fmt(bt.cooler.inlet_water_c, 1) + ' / ' + fmt(bt.cooler.outlet_water_c, 1) + ' ℃') : '')
       + '<div class="sl-green">'
       + big('今日充电', fmt(td.charge_kwh, 1), '度')
       + big('今日放电', fmt(td.discharge_kwh, 1), '度')
       + big('累计放电', fmt(tt.discharge_kwh, 0), '度')
       + '</div>'
-      + (storDevs.length ? ('<div class="sl-devs">' + storDevs.map(function (d) {
-        const ok = d.status === 'HEALTHY';
-        const sub = (KIND[d.kind] || d.kind)
-          + (d.brand ? ' · ' + (BRAND[d.brand] || d.brand) : '')
-          + (d.version ? ' ' + String(d.version).slice(0, 12) : '');
-        return '<div class="sl-dev"><div class="sl-devmain"><b>' + (d.name || d.kind)
-          + '</b><span>' + sub + '</span></div>'
-          + '<i class="sl-badge' + (ok ? '' : ' warn') + '">' + (d.status_text || '--') + '</i></div>';
-      }).join('') + '</div>') : '');
+      /* 右栏只给概览：逐台设备状态在「储能」页有完整列表，这里一行汇总，
+         否则面板要 1000px 高、在 537px 的栏里得一直滚 */
+      + (storDevs.length
+        ? row('柜内设备', storDevs.filter(d => d.status === 'HEALTHY').length + ' / ' + storDevs.length + ' 台正常')
+        : '');
   }
 
   /* ================= 整页版式（储能 / 光伏 / 收益） =================
