@@ -62,3 +62,7 @@ tools/gateway.config.server.json
 # 阳光电源 iSolarCloud 接入凭据（AppKey / Secret）
 tools/solar.config.json
 tools/solar.config.server.json
+
+# 东方日升日升云接入凭据（accessToken / refreshToken）
+tools/risen.config.json
+tools/risen.config.server.json

@@ -1410,6 +1410,9 @@ html[data-theme="day"] .gs-warn{color:#8a5b00}
 .sl-green-row b{font-family:var(--num);font-size:19px;color:#3df0a0}
 .sl-green-row u{font-style:normal;text-decoration:none;font-size:10px;color:var(--dim);margin-left:3px}
 .sl-green-row span{display:block;font-size:10.5px;color:var(--dim);margin-top:3px}
+/* 储能板块里，三格数字与子设备列表跟在指标行后面，给点间距 */
+.sl-wx .sl-green{margin-top:8px}
+.sl-wx .sl-devs{margin-top:10px}
 .sl-info{display:flex;flex-direction:column}
 .sl-row{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;font-size:11.5px;padding:4px 0;border-bottom:1px dashed rgba(46,230,200,.1)}
 .sl-row:last-child{border-bottom:0}

@@ -1,14 +1,18 @@
 /* ============================================================
- * 洙边卫生院站（分布式光伏 · 阳光电源 iSolarCloud）
+ * 洙边卫生院站（分布式光伏 · 阳光电源 iSolarCloud ＋ 储能柜 · 东方日升日升云）
  *
- *   数据来自本站的阳光云接入服务（每 5 分钟拉一次）：
+ *   光伏数据来自本站的阳光云接入服务（每 5 分钟拉一次）：
  *     GET /solar/summary   电站汇总：功率 W、当日发电 Wh、累计发电 Wh、
  *                          装机容量 kWp、位置、告警数、更新时间
  *     GET /solar/devices   设备列表：SN / 名称 / 类型 / 状态 / 型号
  *     GET /solar/trend     发电曲线：range=today|yesterday|days3
  *                          点：{ t, power_kw, daily_yield_kwh, total_yield_kwh }
  *
- *   页面字段对齐阳光云（App / 网页）上的那一套；收益按电价估算，
+ *   储能数据来自日升云接入服务（现场那台柜子自己用 4G 上报到日升云）：
+ *     GET /risen/summary   SOC、状态、功率、今日/累计充放、温度、剩余电量、收益
+ *     GET /risen/devices   柜内子设备：BCU / PCS / 电表 / 空调 / 4G（含在线状态）
+ *
+ *   页面字段对齐两家云平台（App / 网页）上的那一套；收益按电价估算，
  *   电价存在浏览器本地，点「电价」即可改。
  * ============================================================ */
 window.SolarUI = (function () {
@@ -23,6 +27,7 @@ window.SolarUI = (function () {
 
   let chart = null, timer = null, range = 'today', busyUntil = 0, last = null;
   let sum = null, devices = [], trend = [], wx = null, sceneOn = true;
+  let stor = null, storDevs = [];
 
   /* ---------------- 小工具 ---------------- */
   const num = v => (v === null || v === undefined || v === '' || isNaN(Number(v))) ? null : Number(v);
@@ -44,19 +49,22 @@ window.SolarUI = (function () {
   }
   function isDay() { return document.documentElement.getAttribute('data-theme') === 'day'; }
 
-  /* 接口基址：正式域名下走同源 /solar/*（nginx 已代理到接入服务）；
-     本地起静态服务调试时连 tools/solar-dev-relay.js（把 /solar 转发到线上） */
+  /* 接口基址：正式域名下走同源 /solar/*、/risen/*（nginx 已分别代理到两个接入服务）；
+     本地起静态服务调试时，光伏连 tools/solar-dev-relay.js（8099），储能直连
+     本机跑的 tools/risen-cloud-service.js（8097） */
   const LOCAL = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
   const API = LOCAL ? 'http://127.0.0.1:8099' : '';
+  const API_STOR = LOCAL ? 'http://127.0.0.1:8097' : '';
 
   /* 取接口数据：带 12 秒超时 + 最多 3 次重试（现场网络经代理时偶发卡住） */
-  async function getJSON(path) {
+  async function getJSON(path, root) {
+    const url = (root === undefined ? API + '/solar/' : root) + path;
     let err = null;
     for (let i = 0; i < 3; i++) {
       const ctl = new AbortController();
       const to = setTimeout(function () { ctl.abort(); }, 12000);
       try {
-        const r = await fetch(API + '/solar/' + path, { cache: 'no-store', signal: ctl.signal });
+        const r = await fetch(url, { cache: 'no-store', signal: ctl.signal });
         clearTimeout(to);
         if (!r.ok) throw new Error('HTTP ' + r.status);
         return await r.json();
@@ -134,6 +142,12 @@ window.SolarUI = (function () {
       try {                                   /* 天气失败不影响其余数据 */
         const w = await getJSON('weather');
         if (w && w.data) wx = w.data;
+      } catch (_) {}
+      try {                                   /* 储能服务没起来时，光伏照常显示 */
+        const b = await getJSON('summary', API_STOR + '/risen/');
+        if (b && b.data) stor = b.data;
+        const bd = await getJSON('devices', API_STOR + '/risen/');
+        if (bd && bd.data) storDevs = bd.data;
       } catch (_) {}
       render();
       if (src) src.textContent = sum ? ('阳光云接入 · 更新 ' + fmtTime(sum.updated_at)) : '服务未就绪';
@@ -227,6 +241,44 @@ window.SolarUI = (function () {
     }).join('');
   }
 
+  /* 储能柜（东方日升「日升云」）：SOC / 状态 / 功率 / 充放电量 + 柜内子设备 */
+  const KIND = {
+    BCU: '电池簇', PCS: '储能变流器', EMS: '主控', HVAC: '空调',
+    IN_METER: '内电表', EX_METER: '防逆流电表', PV_METER: '光伏电表', SIGNAL: '4G 信号'
+  };
+  function renderStorage() {
+    const box = byId('slBatt'), meta = byId('slBattMeta');
+    if (!box) return;
+    if (!stor) {
+      if (meta) meta.textContent = '--';
+      box.innerHTML = '<div class="sl-empty">储能数据暂时读不到（日升云接入服务未启动，或凭据过期需重新登录）。</div>';
+      return;
+    }
+    const r = stor.realtime || {}, td = stor.today || {}, tt = stor.total || {}, dv = stor.device || {};
+    if (meta) meta.textContent = '日升云 · 更新 ' + String(r.time || '--').slice(11, 16);
+    const row = (k, v) => '<div class="sl-wx-row"><span>' + k + '</span><b>' + v + '</b></div>';
+    const big = (label, v, u) => '<div class="sl-green-row"><b>' + v + '</b><u>' + u + '</u><span>' + label + '</span></div>';
+    box.innerHTML =
+      '<div class="sl-wx-top"><b>储能柜 · ' + (r.status_text || '--') + '</b><span>' + fmt(r.soc, 0) + '<u>%</u></span></div>'
+      + row('实时功率', fmt(r.power_kw, 1) + ' kW')
+      + row('剩余电量', fmt(r.remaining_kwh, 1) + ' / ' + fmt(r.rated_kwh, 0) + ' 度')
+      + row('总压 / 总流', fmt(r.voltage_v, 1) + ' V　' + fmt(r.current_a, 1) + ' A')
+      + row('电芯温度', fmt(r.temp_avg, 1) + ' ℃（高 ' + fmt(r.temp_max, 0) + ' / 低 ' + fmt(r.temp_min, 0) + '）')
+      + row('电网 / 负载', fmt(r.grid_kw, 1) + ' / ' + fmt(r.load_kw, 1) + ' kW')
+      + row('额定功率 / 效率', fmt(dv.rated_power_kw, 0) + ' kW　' + fmt(tt.efficiency, 2) + ' %')
+      + '<div class="sl-green">'
+      + big('今日充电', fmt(td.charge_kwh, 1), '度')
+      + big('今日放电', fmt(td.discharge_kwh, 1), '度')
+      + big('累计放电', fmt(tt.discharge_kwh, 0), '度')
+      + '</div>'
+      + (storDevs.length ? ('<div class="sl-devs">' + storDevs.map(function (d) {
+        const ok = d.status === 'HEALTHY';
+        return '<div class="sl-dev"><div class="sl-devmain"><b>' + (d.name || d.kind)
+          + '</b><span>' + (KIND[d.kind] || d.kind) + (d.model ? '　' + d.model : '') + '　' + (d.sn || '') + '</span></div>'
+          + '<i class="sl-badge' + (ok ? '' : ' warn') + '">' + (d.status_text || '--') + '</i></div>';
+      }).join('') + '</div>') : '');
+  }
+
   function renderInfo() {
     const box = byId('slInfo');
     if (!box) return;
@@ -298,7 +350,7 @@ window.SolarUI = (function () {
     tab = which || tab;
     const conf = {
       monitor: ['slPanel', ['slKpisBlock', 'slTrendBlock', 'slWxBlock', 'slDevBlock', 'slBattBlock', 'slInfoBlock']],
-      data: ['slDataBody', ['slKpisBlock', 'slTrendBlock', 'slGreenBlock', 'slInfoBlock']],
+      data: ['slDataBody', ['slKpisBlock', 'slBattBlock', 'slTrendBlock', 'slGreenBlock', 'slInfoBlock']],
       devices: ['slDevBody', ['slDevBlock', 'slWxBlock', 'slGreenBlock', 'slInfoBlock']]
     }[tab] || null;
     if (!conf) return;
@@ -317,7 +369,8 @@ window.SolarUI = (function () {
   }
 
   function render() {
-    renderKpis(); renderTrend(); renderDevices(); renderInfo(); renderGreen(); renderWeather(); renderAlarm(); pushScene();
+    renderKpis(); renderTrend(); renderDevices(); renderInfo(); renderGreen();
+    renderWeather(); renderAlarm(); renderStorage(); pushScene();
   }
 
   function renderAlarm() {
