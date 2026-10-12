@@ -195,7 +195,7 @@ window.SolarUI = (function () {
     box.innerHTML =
       card('实时功率', fmt(pKw, 2), 'kW', cap ? ('装机 ' + fmt(cap, 2) + ' kWp') : '', 'hi')
       + card('当日发电', fmt(dKwh, 1), '度', hours !== null ? ('等效 ' + fmt(hours, 2) + ' 小时') : '')
-      + card('当日收益', fmt(income, 2), '元', '电价 <i id="slPrice" title="点击修改电价">' + fmt(price, 2) + '</i> 元/度')
+      + card('当日收益（估算）', fmt(income, 2), '元', '电价 <i id="slPrice" title="点击修改电价">' + fmt(price, 2) + '</i> 元/度')
       + card('累计发电', fmt(tKwh, 0), '度', sum.plant && sum.plant.install_date ? ('并网 ' + String(sum.plant.install_date).slice(0, 10)) : '')
       + card('装机容量', fmt(cap, 2), 'kWp', sum.plant ? (sum.plant.type || '分布式光伏') : '')
       + card('CO₂减排', fmt(co2, 2), '吨', trees !== null ? ('等效植树 ' + trees + ' 棵') : '');
@@ -466,43 +466,69 @@ window.SolarUI = (function () {
     }
   }
 
-  /* ---------------- 收益页 ---------------- */
+  /* ---------------- 收益页 ----------------
+     两家云平台的账不能混着算，这里分块、各自标注来源：
+       · 日升云：结算口径的收益（元）+ 减排（厂家自己的算法）
+       · 阳光云：光伏发电量（度）；收益只做"按电价估算"，单独一行标明是估算 */
   function renderRevenuePage() {
     const view = byId('slRevView'), box = byId('slRevBody');
     if (!view || !box || view.classList.contains('hidden')) return;
     const rev = (stor && stor.revenue) || {};
     const td = (stor && stor.today) || {};
+    const tt = (stor && stor.total) || {};
     const price = tariff();
-    const pvTodayKwh = sum ? kwh(sum.daily_yield) : null;
-    const pvTotalKwh = sum ? kwh(sum.total_yield) : null;
-    const pvTodayMoney = pvTodayKwh === null ? null : pvTodayKwh * price;
+    const pvToday = sum ? kwh(sum.daily_yield) : null;      /* 度 */
+    const pvTotal = sum ? kwh(sum.total_yield) : null;      /* 度 */
+    const cap = sum ? num(sum.capacity) : null;
+    const pvPower = sum ? (num(sum.power) === null ? null : num(sum.power) / 1000) : null;
+    const hours = (pvToday !== null && cap) ? pvToday / cap : (sum ? num(sum.daily_hours) : null);
 
-    const tiles = '<div class="gv3-flow">'
-      + gvTile('今日收益（日升云）', fmt(rev.day, 2), '元', '储能 + 光伏')
+    /* 日升云结算口径 */
+    const risenTiles = '<div class="gv3-flow">'
+      + gvTile('今日收益', fmt(rev.day, 2), '元', '储能 + 光伏')
       + gvTile('累计收益', fmt(rev.total, 2), '元', '日升云')
-      + gvTile('储能累计收益', fmt(rev.storage, 2), '元')
-      + gvTile('光伏累计收益', fmt(rev.solar, 2), '元')
+      + gvTile('储能累计收益', fmt(rev.storage, 2), '元', '累计放电 ' + fmt(tt.discharge_kwh, 0) + ' 度')
+      + gvTile('光伏累计收益', fmt(rev.solar, 2), '元', '日升云')
       + gvTile('储能度电收益', fmt(rev.per_kwh, 2), '元/度', '日升云')
-      + gvTile('今日光伏发电', fmt(pvTodayKwh, 1), '度', '阳光云 · 折合 ' + fmt(pvTodayMoney, 2) + ' 元')
-      + gvTile('今日储能充 / 放', fmt(td.charge_kwh, 1) + ' / ' + fmt(td.discharge_kwh, 1), '度')
-      + gvTile('累计光伏发电', fmt(pvTotalKwh, 0), '度', '阳光云')
+      + gvTile('今日储能充 / 放', fmt(td.charge_kwh, 1) + ' / ' + fmt(td.discharge_kwh, 1), '度', '日升云')
       + '</div>';
+
+    /* 阳光云：只报发电量，钱单独算、单独标 */
+    const pvRow = (k, v) => '<div class="gv3-kvrow"><span>' + k + '</span><b>' + v + '</b></div>';
+    const pvTiles = '<div class="gv3-flow">'
+      + gvTile('实时功率', fmt(pvPower, 2), 'kW', '阳光云')
+      + gvTile('今日发电', fmt(pvToday, 1), '度', '阳光云')
+      + gvTile('累计发电', fmt(pvTotal, 0), '度', '阳光云')
+      + gvTile('今日等效小时', fmt(hours, 2), 'h', '阳光云')
+      + '</div>'
+      + '<div class="gv3-skv">'
+      + pvRow('按电价估算 · 今日', fmt(pvToday === null ? null : pvToday * price, 2) + ' 元')
+      + pvRow('按电价估算 · 累计', fmt(pvTotal === null ? null : pvTotal * price, 2) + ' 元')
+      + pvRow('电价', '<i id="slRevPrice" title="点击修改">' + fmt(price, 2) + ' 元/度</i>')
+      + '</div>'
+      + '<div class="dt-note">发电量取自阳光云；上面两行是按电价折算的参考值，'
+      + '和日升云的结算口径（收益率、是否只算上网电量）不一定一致。</div>';
 
     const green = kvGrid([
       ['CO₂ 减排', fmt(rev.reduce_carbon_t, 2) + ' 吨'],
       ['节约标准煤', fmt(rev.coal_t, 2) + ' 吨'],
       ['等效植树', fmt(rev.trees, 0) + ' 棵'],
-      ['光伏累计（阳光云）', fmt(pvTotalKwh, 0) + ' 度'],
-      ['电价（估算用）', '<i id="slRevPrice" title="点击修改">' + fmt(price, 2) + ' 元/度</i>'],
-      ['数据来源', '日升云 / 阳光云']
+      ['口径', '日升云累计']
     ]);
 
+    const d0 = new Date(), p2 = n => String(n).padStart(2, '0');
+    const todayStr = d0.getFullYear() + '-' + p2(d0.getMonth() + 1) + '-' + p2(d0.getDate());
+    const xLabel = dt => (dt === todayStr ? '今天' : String(dt || '').slice(5));
+
     box.innerHTML = '<div class="dt-body">'
-      + sec('sp12', '收益总览', rev.day === null && rev.day === undefined ? '' : ('今日 ' + fmt(rev.day, 2) + ' 元'), tiles)
+      + sec('sp12', '收益总览', '日升云结算口径', risenTiles)
       + '<div class="ov-grid">'
-      + sec('sp8', '近 7 日收益（储能 / 光伏）', (revTrend && revTrend.length ? revTrend.length + ' 天' : '--'), '<div class="dt-chart" id="slRevChart"></div>')
-      + sec('sp4', '减排贡献', '累计', green)
-      + sec('sp12', '近 7 日充放电量与效率', (powTrend && powTrend.length ? powTrend.length + ' 天' : '--'), '<div class="dt-chart" id="slPowChart"></div>')
+      + sec('sp8', '近 7 日收益（储能 / 光伏 / 合计）',
+        (revTrend && revTrend.length ? revTrend.length + ' 天 + 今天 · 日升云' : '--'), '<div class="dt-chart" id="slRevChart"></div>')
+      + sec('sp4', '减排贡献', '日升云', green)
+      + sec('sp6', '光伏发电', '阳光云口径', pvTiles)
+      + sec('sp6', '近 7 日充放电量与效率',
+        (powTrend && powTrend.length ? powTrend.length + ' 天 + 今天 · 日升云' : '--'), '<div class="dt-chart" id="slPowChart"></div>')
       + '</div></div>';
 
     const priceEl = byId('slRevPrice');
@@ -510,12 +536,16 @@ window.SolarUI = (function () {
 
     revChart = ensureChart(revChart, 'slRevChart');
     if (revChart) {
-      const pts = revTrend || [];
+      const pts = (revTrend || []).slice();
+      /* 厂家的日曲线不含当天，这里把今天的合计补上（柱状拆分拿不到，只补折线点） */
+      if (num(rev.day) !== null && (!pts.length || pts[pts.length - 1].date !== todayStr)) {
+        pts.push({ date: todayStr, storage: null, solar: null, total: num(rev.day) });
+      }
       revChart.setOption({
         grid: { left: 56, right: 20, top: 30, bottom: 24 },
         legend: Object.assign({}, chartLegend, { data: ['储能收益', '光伏收益', '合计'] }),
         tooltip: chartTip,
-        xAxis: { type: 'category', data: pts.map(p => String(p.date || '').slice(5)), axisLabel: axisLabel, axisLine: { lineStyle: { color: 'rgba(46,230,200,.25)' } } },
+        xAxis: { type: 'category', data: pts.map(p => xLabel(p.date)), axisLabel: axisLabel, axisLine: { lineStyle: { color: 'rgba(46,230,200,.25)' } } },
         yAxis: { type: 'value', name: '元', nameTextStyle: { fontSize: 10 }, axisLabel: { fontSize: 10 }, splitLine: splitLine },
         series: [
           { name: '储能收益', type: 'bar', stack: 'r', barMaxWidth: 22, itemStyle: { color: 'rgba(46,230,200,.75)' }, data: pts.map(p => num(p.storage)) },
@@ -527,12 +557,17 @@ window.SolarUI = (function () {
 
     powChart = ensureChart(powChart, 'slPowChart');
     if (powChart) {
-      const pts = powTrend || [];
+      const pts = (powTrend || []).slice();
+      /* 同样补上今天（充放电量取实时口今日累计） */
+      if ((num(td.charge_kwh) !== null || num(td.discharge_kwh) !== null) &&
+        (!pts.length || pts[pts.length - 1].date !== todayStr)) {
+        pts.push({ date: todayStr, charge: num(td.charge_kwh), discharge: num(td.discharge_kwh), efficiency: null });
+      }
       powChart.setOption({
         grid: { left: 56, right: 48, top: 30, bottom: 24 },
         legend: Object.assign({}, chartLegend, { data: ['充电量', '放电量', '效率'] }),
         tooltip: chartTip,
-        xAxis: { type: 'category', data: pts.map(p => String(p.date || '').slice(5)), axisLabel: axisLabel, axisLine: { lineStyle: { color: 'rgba(46,230,200,.25)' } } },
+        xAxis: { type: 'category', data: pts.map(p => xLabel(p.date)), axisLabel: axisLabel, axisLine: { lineStyle: { color: 'rgba(46,230,200,.25)' } } },
         yAxis: [
           { type: 'value', name: '度', nameTextStyle: { fontSize: 10 }, axisLabel: { fontSize: 10 }, splitLine: splitLine },
           { type: 'value', name: '%', nameTextStyle: { fontSize: 10 }, axisLabel: { fontSize: 10 }, splitLine: { show: false } }
