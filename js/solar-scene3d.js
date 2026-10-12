@@ -1,23 +1,22 @@
 /* ============================================================
- * 洙边卫生院站 · 光伏三维场景
+ * 洙边卫生院站 · 光储一体三维场景
  *
- *   屋顶光伏阵列（8 排 × 10 块组件级建模：玻璃 / 铝边框 / 导轨 / 竖撑
- *   + 检修走道 + 屋面线槽）+ 逆变器 + 通信模块 + 并网点。
- *   直流电缆从屋面线槽穿过女儿墙套管沿东墙下到逆变器（青色光纹），
- *   交流电缆从逆变器沿东墙、南墙接到并网计量箱（橙色光纹），
- *   电流光纹随真实发电功率流动。
+ *   两层小楼（白主墙 + 灰腰线 + 大窗，夜里窗户发光）+ 屋顶光伏阵列
+ *   （8 排 × 10 块组件级建模：玻璃 / 铝边框 / 导轨 / 竖撑 + 检修走道 + 屋面线槽）
+ *   + 墙挂逆变器 + 通信模块 + 储能柜（光储一体柜：柜门、顶部空调、侧面 SOC 光柱）
+ *   + 并网点（计量箱 / 电杆 / 瓷瓶 / 架空线）。
  *
- *   场地按真实卫生院配置：草地、场坪、道路、围墙大门、绿篱行道树、
- *   邻舍与远山；天空为渐变穹顶（随页面主题换色温），日盘带光晕，
- *   组件玻璃借天空环境贴图带反光高光。
+ *   电流光纹分四条链路，方向跟着真实运行状态走：
+ *     · 直流（青）  屋面组串 → 线槽 → 逆变器
+ *     · 交流（橙）  逆变器 → 沿墙 → 并网计量箱
+ *     · 储能（青绿=放电 / 蓝=充电） 计量箱 ↔ 储能柜
+ *     · 关口（橙=馈电上网 / 蓝=从电网取） 计量箱 → 电杆 → 架空线
  *
  *   天气（SolarScene.setWeather）驱动画面：
- *     云量 → 天空/光照亮度、云朵多少
- *     降水 → 雨/雪粒子
- *     辐照度 → 光照强度、组件反光强度
- *     昼夜（is_day）→ 太阳 / 月亮
- *   发电功率（SolarScene.setPower）驱动：
- *     组件发光、电流光纹流速、逆变器指示灯、并网点状态与浮标数值
+ *     云量 → 天空/光照亮度、云朵多少；降水 → 雨/雪粒子；
+ *     辐照度 → 光照强度、组件反光强度；昼夜（is_day）→ 太阳 / 月亮
+ *   光伏功率（SolarScene.setPower）驱动：组件发光、直流/交流光纹流速、浮标
+ *   储能数据（SolarScene.setStorage）驱动：柜体 SOC 光柱、指示灯、充放电与买卖电方向
  * ============================================================ */
 window.SolarScene = (function () {
   'use strict';
@@ -33,7 +32,7 @@ window.SolarScene = (function () {
   const cards = {};                 // 设备明细卡：key -> .card3d 元素
   let activeCard = null;
   const clock = { last: 0 };
-  let cur = { power: 0, cap: 110.16, today: null, cloud: 0, precip: 0, isDay: 1, radiation: 0 };
+  let cur = { power: 0, cap: 110.16, today: null, cloud: 0, precip: 0, isDay: 1, radiation: 0, storPower: null, storSoc: null, loadKw: null };
   let theme = 'night';
 
   const THREE_ = () => window.THREE;
@@ -170,47 +169,30 @@ window.SolarScene = (function () {
     }, 320, 160, 2);
   }
 
-  /* 卫生院外墙：浅色墙面 + 窗带（侧面）；正面一张带门头院名的贴图 */
-  function wallTexture(front) {
+  /* 卫生院外墙：白色墙板 + 分缝（两层小楼沿用莒南厂房的观感：白主墙 + 灰带 + 大窗）。
+     窗、门单独做几何体，这样夜里窗户能发光、近景经得起看 */
+  function wallTexture() {
     return tex(function (g, w, h) {
-      g.fillStyle = '#d3d8d1'; g.fillRect(0, 0, w, h);
-      g.fillStyle = 'rgba(0,0,0,.05)';
-      for (let x = 0; x < w; x += 64) g.fillRect(x, 0, 2, h - 26);
+      g.fillStyle = '#dfe3e3'; g.fillRect(0, 0, w, h);
+      g.strokeStyle = 'rgba(120,138,140,.22)'; g.lineWidth = 2;
+      for (let i = 1; i < 12; i++) { const x = i * w / 12; g.beginPath(); g.moveTo(x, 0); g.lineTo(x, h); g.stroke(); }
+      g.fillStyle = 'rgba(120,138,140,.10)'; g.fillRect(0, 0, w, 10);
       g.fillStyle = '#adb2a8'; g.fillRect(0, h - 26, w, 26);          /* 勒脚 */
-      const n = front ? 7 : 6, sw = w / n;
-      for (let i = 0; i < n; i++) {
-        const cx = i * sw + sw / 2;
-        if (front && i === Math.floor(n / 2)) continue;                /* 正面中间留给大门 */
-        g.fillStyle = '#2d4a56';
-        g.fillRect(cx - sw * .30, h * .30, sw * .60, h * .34);
-        g.fillStyle = 'rgba(255,255,255,.35)';
-        g.fillRect(cx - sw * .30, h * .30, sw * .60, 6);
-        g.fillStyle = 'rgba(255,255,255,.5)';
-        g.fillRect(cx - sw * .30 + 2, h * .30 + 6, 3, h * .34 - 6);
-      }
-      if (front) {
-        const cx = w / 2;
-        g.fillStyle = '#cfd6d2';                                       /* 门套 */
-        g.fillRect(cx - 62, h * .30 - 8, 124, h - h * .30 + 8);
-        g.fillStyle = '#31505c';                                       /* 双开门 */
-        g.fillRect(cx - 54, h * .38, 108, h - h * .38);
-        g.fillStyle = 'rgba(255,255,255,.55)';
-        g.fillRect(cx - 3, h * .38, 6, h - h * .38);
-        g.fillStyle = 'rgba(210,235,245,.85)';
-        g.fillRect(cx - 54, h * .38, 108, 22);
-        g.fillStyle = '#eef4f2';                                       /* 院名牌 */
-        g.fillRect(cx - 100, 26, 200, 48);
-        g.strokeStyle = '#9fb0b4'; g.lineWidth = 2;
-        g.strokeRect(cx - 100, 26, 200, 48);
-        g.fillStyle = '#1d6ab0';
-        g.font = 'bold 30px "Microsoft YaHei", sans-serif';
-        g.textAlign = 'center'; g.textBaseline = 'middle';
-        g.fillText('洙边卫生院', cx, 51);
-        g.fillStyle = '#d33a2c';                                       /* 红十字 */
-        g.fillRect(cx + 104, 34, 12, 30);
-        g.fillRect(cx + 95, 43, 30, 12);
-      }
-    }, 1024, 256, front ? 2 : 1);
+    }, 512, 256);
+  }
+  /* 门头院名牌（单独一块板贴在大门上方） */
+  function namePlateTexture() {
+    return tex(function (g, w, h) {
+      g.fillStyle = '#eef4f2'; g.fillRect(0, 0, w, h);
+      g.strokeStyle = '#9fb0b4'; g.lineWidth = 4; g.strokeRect(3, 3, w - 6, h - 6);
+      g.fillStyle = '#1d6ab0';
+      g.font = 'bold 46px "Microsoft YaHei", sans-serif';
+      g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillText('洙边卫生院', w / 2 - 26, h / 2 + 2);
+      g.fillStyle = '#d33a2c';                                       /* 红十字 */
+      g.fillRect(w / 2 + 108, h / 2 - 24, 14, 48);
+      g.fillRect(w / 2 + 88, h / 2 - 7, 54, 14);
+    }, 512, 128, 2);
   }
 
   /* 网格地坪：科技感地台（夜里深底 + 青线，白天浅底 + 灰线） */
@@ -255,8 +237,11 @@ window.SolarScene = (function () {
   }
 
   /* ---------------- 场景尺寸常量 ---------------- */
-  const W2 = 26, H2 = 4.2, D2 = 16;              /* 卫生院：宽 × 高 × 深 */
+  const W2 = 26, H2 = 6.6, D2 = 16;              /* 卫生院：宽 × 高（两层小楼）× 深 */
+  const FLOOR_Y = 3.3;                           /* 二层楼面标高（相对勒脚顶） */
   const roofY = H2 + .3;                         /* 屋面标高（含 0.3 勒脚台） */
+  /* 储能柜：光储一体柜，摆在楼西侧场坪上，柜门朝东（对着楼与默认机位） */
+  const CAB_X = -17.6, CAB_Z = .6, CAB_W = 2.7, CAB_H = 2.6, CAB_D = 1.7;
   const COLS = 10;
   const MW = 2.28, MD = 1.13, MT = .045;         /* 组件：宽 × 深 × 厚 */
   const TILT = .49;                              /* 组件倾角 28°（+z 为南，朝太阳低下来） */
@@ -299,37 +284,92 @@ window.SolarScene = (function () {
     });
   }
 
-  /* ---------------- 卫生院建筑 ---------------- */
+  /* ---------------- 卫生院建筑（两层小楼：白主墙 + 灰腰线 + 大窗，沿用莒南厂房那套语言） ---------------- */
+  let winMat = null;
+  const WIN_GLOW = .8;
   function buildBuilding() {
     const T = THREE_();
-    const wallSide = new T.MeshStandardMaterial({ map: wallTexture(false), roughness: .82, metalness: .04, envMapIntensity: .16 });
-    const wallFront = new T.MeshStandardMaterial({ map: wallTexture(true), roughness: .82, metalness: .04, envMapIntensity: .16 });
+    const wallMat = new T.MeshStandardMaterial({ map: wallTexture(), roughness: .78, metalness: .1, envMapIntensity: .16 });
     const wallTop = std(0xbcc0b7, { roughness: .92, envMapIntensity: .14 });
     const wallBottom = std(0x545c58, { roughness: .95, envMapIntensity: .12 });
+    const trimMat = std(0x8d9598, { roughness: .62, metalness: .3 });     /* 灰带 / 窗框 */
+    const bandMat = std(0x232a2d, { roughness: .5, metalness: .35 });     /* 窗带底 */
     root.add(box(W2 + .9, .3, D2 + .9, std(0xa9ada3, { roughness: .9, envMapIntensity: .14 }), 0, .15, 0));
-    /* 房身：正面（+z）单独一张带门头院名的贴图 */
-    const bld = new T.Mesh(new T.BoxGeometry(W2, H2, D2),
-      [wallSide, wallSide, wallTop, wallBottom, wallFront, wallSide]);
+    /* 房身（两层一起） */
+    const bld = new T.Mesh(new T.BoxGeometry(W2, H2, D2), [wallMat, wallMat, wallTop, wallBottom, wallMat, wallMat]);
     bld.position.set(0, H2 / 2 + .3, 0);
     bld.castShadow = bld.receiveShadow = true;
     root.add(bld);
+    root.add(box(W2 + .2, .55, D2 + .2, bandMat, 0, .58, 0));              /* 深色基座带 */
+    /* 楼层腰线（一圈） */
+    [-1, 1].forEach(function (sz) { root.add(box(W2 + .24, .16, .18, trimMat, 0, FLOOR_Y + .3, sz * (D2 / 2 + .05))); });
+    [-1, 1].forEach(function (sx) { root.add(box(.18, .16, D2 + .24, trimMat, sx * (W2 / 2 + .05), FLOOR_Y + .3, 0)); });
     /* 女儿墙 */
     const par = std(0xb3b8ad, { roughness: .85, envMapIntensity: .16 });
     root.add(box(W2 + .6, .5, .3, par, 0, roofY + .25, -D2 / 2));
     root.add(box(W2 + .6, .5, .3, par, 0, roofY + .25, D2 / 2));
     root.add(box(.3, .5, D2, par, -W2 / 2, roofY + .25, 0));
     root.add(box(.3, .5, D2, par, W2 / 2, roofY + .25, 0));
-    /* 入口雨棚 + 雨棚立柱 + 台阶 */
+
+    /* 窗户玻璃：上亮下暗（屋里顶灯照下来），夜里点亮、白天偏暗 */
+    const glowTex = tex(function (g, w, h) {
+      const grd = g.createLinearGradient(0, 0, 0, h);
+      grd.addColorStop(0, 'rgba(255,255,255,.98)');
+      grd.addColorStop(.45, 'rgba(255,255,255,.62)');
+      grd.addColorStop(1, 'rgba(255,255,255,.20)');
+      g.fillStyle = grd; g.fillRect(0, 0, w, h);
+    }, 16, 64);
+    winMat = new T.MeshStandardMaterial({
+      color: 0x22333c, roughness: .18, metalness: .35,
+      emissive: new T.Color(0xeaf6f4), emissiveIntensity: WIN_GLOW, emissiveMap: glowTex
+    });
+    /* 一整层的大窗带：深色窗带里嵌 n 扇玻璃，中间用竖挺分开 */
+    const bandH = 1.75, bandD = .24, winY = FLOOR_Y + .3 + 1.5;
+    function winBand(alongX, len, n, cx, cz, ww) {
+      const inner = len - .7, wwv = ww || 1.6;
+      if (alongX) root.add(box(len, bandH, bandD, bandMat, cx, winY, cz));
+      else root.add(box(bandD, bandH, len, bandMat, cx, winY, cz));
+      for (let i = 0; i < n; i++) {
+        const off = -inner / 2 + (i + .5) * (inner / n);
+        const px = alongX ? cx + off : cx, pz = alongX ? cz : cz + off;
+        root.add(box(alongX ? wwv : bandD + .08, bandH - .46, alongX ? bandD + .08 : wwv, winMat, px, winY, pz));
+        if (i < n - 1) {
+          const mx = alongX ? cx + off + inner / (n * 2) : cx, mz = alongX ? cz : cz + off + inner / (n * 2);
+          root.add(box(alongX ? .1 : bandD + .12, bandH, alongX ? bandD + .12 : .1, trimMat, mx, winY, mz));
+        }
+      }
+    }
+    [-1, 1].forEach(function (sz) { winBand(true, W2 - .4, 5, 0, sz * (D2 / 2 + .04)); });      /* 南北两面各 5 扇 */
+    [-1, 1].forEach(function (sx) { winBand(false, D2 - .4, 3, sx * (W2 / 2 + .04), 0, 2.4); }); /* 东西两面各 3 扇 */
+    /* 一层：侧面各两扇窗，正面留给大门 */
+    [-1, 1].forEach(function (sx) {
+      [-3.2, 3.2].forEach(function (oz) {
+        root.add(box(.24, 1.5, 2.0, bandMat, sx * (W2 / 2 + .04), 1.85, oz));
+        root.add(box(.2, 1.1, 1.7, winMat, sx * (W2 / 2 + .07), 1.85, oz));
+      });
+    });
+    /* 正面大门：门套 + 双开门 + 雨棚 + 台阶 + 院名牌 */
+    const dz = D2 / 2;
+    root.add(box(3.4, 2.9, .24, std(0xcfd6d2, { roughness: .7, envMapIntensity: .16 }), 0, 1.75, dz + .04));
+    const doorMat = std(0x31505c, { roughness: .45, metalness: .35, envMapIntensity: .4 });
+    root.add(box(1.42, 2.5, .1, doorMat, -.74, 1.55, dz + .14));
+    root.add(box(1.42, 2.5, .1, doorMat, .74, 1.55, dz + .14));
+    root.add(box(.05, 2.5, .12, std(0xbfc9cb, { roughness: .4, metalness: .5 }), 0, 1.55, dz + .16));
+    root.add(box(2.2, .22, .1, std(0xbcd6dd, { roughness: .3, metalness: .3 }), 0, 2.62, dz + .16));   /* 门头玻璃 */
+    const plate = new T.Mesh(new T.PlaneGeometry(3.6, .9),
+      new T.MeshBasicMaterial({ map: namePlateTexture(), transparent: true }));
+    plate.position.set(0, 3.9, dz + .16);
+    root.add(plate);
     const aw = std(0xc3c8c2, { roughness: .8, envMapIntensity: .16 });
-    root.add(box(5.4, .16, 2.0, aw, 0, H2 - .35, D2 / 2 + 1.0));
-    root.add(box(.18, H2 - .5, .18, std(0xadb2ab, { roughness: .8 }), -2.5, (H2 - .5) / 2, D2 / 2 + 1.85));
-    root.add(box(.18, H2 - .5, .18, std(0xadb2ab, { roughness: .8 }), 2.5, (H2 - .5) / 2, D2 / 2 + 1.85));
-    root.add(box(5.0, .16, .5, std(0xaaafa6, { roughness: .9 }), 0, .38, D2 / 2 + .75));
-    root.add(box(4.4, .16, .5, std(0xa4a9a0, { roughness: .9 }), 0, .22, D2 / 2 + 1.2));
+    root.add(box(5.4, .16, 2.0, aw, 0, H2 - .35, dz + 1.0));
+    root.add(box(.18, H2 - .5, .18, std(0xadb2ab, { roughness: .8 }), -2.5, (H2 - .5) / 2, dz + 1.85));
+    root.add(box(.18, H2 - .5, .18, std(0xadb2ab, { roughness: .8 }), 2.5, (H2 - .5) / 2, dz + 1.85));
+    root.add(box(5.0, .16, .5, std(0xaaafa6, { roughness: .9 }), 0, .38, dz + .75));
+    root.add(box(4.4, .16, .5, std(0xa4a9a0, { roughness: .9 }), 0, .22, dz + 1.2));
     /* 北墙两台空调外机 */
     [[-8.5, 3.1], [7.5, 3.1]].forEach(function (p) {
-      root.add(box(1.05, .78, .42, std(0xdfe4e2, { roughness: .6 }), p[0], p[1], -D2 / 2 - .24));
-      root.add(box(.62, .05, .3, std(0x9aa5a6, { roughness: .5, metalness: .4 }), p[0], p[1] - .3, -D2 / 2 - .24));
+      root.add(box(1.05, .78, .42, std(0xdfe4e2, { roughness: .6 }), p[0], p[1] + 2.4, -D2 / 2 - .24));
+      root.add(box(.62, .05, .3, std(0x9aa5a6, { roughness: .5, metalness: .4 }), p[0], p[1] + 2.1, -D2 / 2 - .24));
     });
   }
 
@@ -400,6 +440,80 @@ window.SolarScene = (function () {
     addCard('array', 0, roofY + 5.6, 0);
   }
 
+  /* ---------------- 储能柜（光储一体柜：柜体 + 顶部空调 + 侧面 SOC 光柱） ---------------- */
+  function cabFrontTexture() {
+    return tex(function (g, w, h) {
+      g.fillStyle = '#e9edee'; g.fillRect(0, 0, w, h);
+      g.strokeStyle = 'rgba(96,116,120,.45)'; g.lineWidth = 3; g.strokeRect(8, 8, w - 16, h - 16);
+      g.fillStyle = 'rgba(206,216,218,.95)'; g.fillRect(16, 16, w - 32, 54);            /* 顶部空调段 */
+      g.strokeStyle = 'rgba(96,116,120,.35)'; g.strokeRect(16, 16, w - 32, 54);
+      for (let i = 0; i < 5; i++) { g.fillStyle = 'rgba(96,116,120,.25)'; g.fillRect(26, 25 + i * 9, w - 52, 3); }
+      g.strokeStyle = 'rgba(70,96,100,.5)'; g.lineWidth = 4;
+      g.beginPath(); g.moveTo(w / 2, 84); g.lineTo(w / 2, h - 20); g.stroke();          /* 门缝 */
+      g.lineWidth = 2; g.strokeStyle = 'rgba(96,116,120,.3)';
+      g.strokeRect(20, 90, w / 2 - 30, h - 122); g.strokeRect(w / 2 + 10, 90, w / 2 - 30, h - 122);
+      g.fillStyle = 'rgba(52,86,88,.55)'; g.fillRect(w / 2 - 20, h / 2 - 12, 6, 36); g.fillRect(w / 2 + 14, h / 2 - 12, 6, 36);
+      g.fillStyle = 'rgba(16,160,138,.5)'; g.fillRect(24, h - 36, 74, 11);              /* 铭牌 */
+      g.fillStyle = 'rgba(224,148,16,.6)'; g.fillRect(w - 98, h - 36, 74, 11);          /* 警示条 */
+    }, 256, 320, 2);
+  }
+  function cabSideTexture() {
+    return tex(function (g, w, h) {
+      g.fillStyle = '#e2e7e8'; g.fillRect(0, 0, w, h);
+      g.strokeStyle = 'rgba(96,116,120,.22)'; g.lineWidth = 2;
+      for (let i = 1; i < 4; i++) { const x = i * w / 4; g.beginPath(); g.moveTo(x, 6); g.lineTo(x, h - 6); g.stroke(); }
+      g.strokeStyle = 'rgba(96,116,120,.3)'; g.strokeRect(6, 6, w - 12, h - 12);
+      for (let i = 0; i < 9; i++) { g.fillStyle = 'rgba(96,116,120,.28)'; g.fillRect(18, h - 72 + i * 7, w - 36, 3); }
+    }, 256, 320, 2);
+  }
+  let cabLabelEl = null, cabSocBars = [], cabLed = null, cabGlow = null;
+  function buildStorageCabinet() {
+    const T = THREE_();
+    const g = new T.Group();
+    g.userData.key = 'storage';
+    g.position.set(CAB_X, 0, CAB_Z);
+    g.rotation.y = Math.PI / 2;                    /* 柜门朝东，正对楼与默认机位 */
+    const W = CAB_W, H = CAB_H, D = CAB_D;
+    const steel = std(0xc6ccce, { roughness: .45, metalness: .55, envMapIntensity: .6 });
+    const dark = std(0x22333a, { roughness: .5, metalness: .5, envMapIntensity: .5 });
+    const front = new T.MeshStandardMaterial({ map: cabFrontTexture(), roughness: .5, metalness: .35, envMapIntensity: .4 });
+    const side = new T.MeshStandardMaterial({ map: cabSideTexture(), roughness: .55, metalness: .35, envMapIntensity: .4 });
+    const topMat = std(0xd6dbdc, { roughness: .6, metalness: .3 });
+    g.add(box(W + .24, .18, D + .24, dark, 0, .09, 0));                                /* 底座 */
+    const body = new T.Mesh(new T.BoxGeometry(W, H, D), [side, side, topMat, side, front, side]);
+    body.position.y = H / 2 + .18;
+    body.castShadow = body.receiveShadow = true;
+    g.add(body);
+    [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(function (c) {                        /* 四角立柱 */
+      g.add(box(.1, H + .04, .1, steel, c[0] * (W / 2 - .02), H / 2 + .18, c[1] * (D / 2 - .02)));
+    });
+    g.add(box(W * .74, .32, D * .78, std(0xdfe4e2, { roughness: .6 }), 0, H + .36, 0));  /* 顶部空调 */
+    for (let k = 0; k < 4; k++) g.add(box(W * .6, .04, .07, steel, 0, H + .52, -.22 + k * .15));
+    /* 侧面 SOC 光柱：两侧各一条，从下往上长 */
+    cabSocBars = [];
+    const colH = H * .62, base = .18 + H * .5 - colH / 2;
+    [-1, 1].forEach(function (sgn) {
+      g.add(box(.06, colH + .1, .32, dark, sgn * (W / 2 + .04), .18 + H * .5, D * .2));
+      const geo = new T.BoxGeometry(.05, colH, .26); geo.translate(0, colH / 2, 0);
+      const bar = new T.Mesh(geo, new T.MeshBasicMaterial({ color: 0x6f9a94 }));
+      bar.position.set(sgn * (W / 2 + .07), base, D * .2);
+      g.add(bar);
+      cabSocBars.push(bar);
+    });
+    g.add(box(.22, .13, .04, dark, W / 2 - .5, .18 + H * .86, D / 2 + .03));            /* 指示灯底座 */
+    cabLed = new T.Mesh(new T.BoxGeometry(.16, .09, .05), new T.MeshBasicMaterial({ color: 0x6f9a94 }));
+    cabLed.position.set(W / 2 - .5, .18 + H * .86, D / 2 + .055);
+    g.add(cabLed);
+    cabGlow = new T.Mesh(new T.PlaneGeometry(W * 1.7, D * 1.9),
+      new T.MeshBasicMaterial({ color: 0x2ee6c8, transparent: true, opacity: .06, blending: T.AdditiveBlending, depthWrite: false }));
+    cabGlow.rotation.x = -Math.PI / 2;
+    cabGlow.position.y = .22;
+    g.add(cabGlow);
+    root.add(g);
+    cabLabelEl = label('储能柜 · 光储一体<i>-- kW</i><em>--</em>', 'tag3d-gt', CAB_X, CAB_H + 3.9, CAB_Z);
+    addCard('storage', CAB_X, CAB_H + 1.2, CAB_Z);
+  }
+
   /* ---------------- 设备：逆变器 / 通信模块 / 并网点 ---------------- */
   function buildEquipment() {
     const T = THREE_();
@@ -445,6 +559,9 @@ window.SolarScene = (function () {
     poles.forEach(function (p) {
       root.add(cyl(.10, .13, p[3], poleMat, p[0], p[3] / 2, p[2], 10));
       root.add(box(.12, .1, 1.15, poleMat, p[0], p[1] - .12, p[2]));                    /* 横担 */
+      [-.42, 0, .42].forEach(function (oz) {                                            /* 瓷瓶 */
+        root.add(cyl(.045, .055, .17, std(0xdfe6e8, { roughness: .35, metalness: .1 }), p[0], p[1] + .04, p[2] + oz, 8));
+      });
     });
     /* 引下线：电杆 → 计量箱箱顶 */
     const drop = new T.CatmullRomCurve3([
@@ -481,7 +598,7 @@ window.SolarScene = (function () {
       blending: THREE.AdditiveBlending, depthWrite: false
     });
     root.add(new THREE.Mesh(new THREE.TubeGeometry(curve, seg, (radius || .05) * 2.2, 8, false), tubeMat));
-    flows.push({ map: tubeMat.map, tubeMat: tubeMat, kind: kind, on: false, speed: 0 });
+    flows.push({ map: tubeMat.map, tubeMat: tubeMat, kind: kind, on: false, speed: 0, dir: 1, tint: 0 });
   }
 
   /* ---------------- 主搭建 ---------------- */
@@ -499,7 +616,7 @@ window.SolarScene = (function () {
     scene.fog = new T.Fog(skyP.fog, 120, 340);
 
     camera = new T.PerspectiveCamera(46, 1, .1, 900);
-    camera.position.set(28, 19, 36);
+    camera.position.set(31, 22, 40);
 
     renderer = new T.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
@@ -523,7 +640,7 @@ window.SolarScene = (function () {
       controls.enableDamping = true; controls.dampingFactor = .08;
       controls.minDistance = 14; controls.maxDistance = 110;
       controls.maxPolarAngle = 1.32;
-      controls.target.set(0, 3, 0);
+      controls.target.set(0, 4.2, 0);
       controls.update();
     }
     bindPick();
@@ -558,6 +675,7 @@ window.SolarScene = (function () {
     const edgeMat = new T.MeshStandardMaterial({ color: 0x8e9ba1, roughness: .45, metalness: .65, envMapIntensity: .45 });
     buildArray(glassMat, edgeMat);
     buildEquipment();
+    buildStorageCabinet();
 
     /* ---------- 能量流 ---------- */
     /* 直流侧：屋面线槽 → 女儿墙套管 → 沿东墙下到逆变器顶 */
@@ -582,6 +700,18 @@ window.SolarScene = (function () {
       new T.Vector3(-14.6, 1.05, 7.0),
       new T.Vector3(-14.6, 1.1, 6.0)
     ], 'ac', .06);
+    /* 交流支线：计量箱 → 储能柜（充电流进柜、放电流出柜） */
+    addFlow([
+      new T.Vector3(-14.4, .95, 5.9),
+      new T.Vector3(-15.6, .85, 4.2),
+      new T.Vector3(-16.7, .72, 2.0)
+    ], 'stor', .05);
+    /* 交流支线：计量箱 → 电杆 → 架空线（往电网卖电 / 从电网取电） */
+    addFlow([
+      new T.Vector3(-15.05, 1.35, 5.95),
+      new T.Vector3(-15.2, 2.6, 5.95),
+      new T.Vector3(-15.2, 3.95, 6.0)
+    ], 'grid', .045);
 
     /* ---------- 天气：太阳 / 月亮 / 云 / 降水 ---------- */
     sun = new T.Mesh(new T.SphereGeometry(3.2, 20, 20), new T.MeshBasicMaterial({ color: 0xffe9a8, fog: false }));
@@ -759,14 +889,16 @@ window.SolarScene = (function () {
       m.emissive.setHex(on ? (day ? 0x14507f : 0x0b3c60) : 0x061528);
     });
     flows.forEach(function (fl) {
+      if (fl.kind !== 'dc' && fl.kind !== 'ac') return;    /* 储能/关口两支线由 updateEnergyFlows 管 */
       fl.on = on;
       fl.speed = .35 + ratio * 1.9;
       fl.tubeMat.color.setHex(fl.on ? (fl.kind === 'dc' ? p.dc : p.ac) : p.idle);
     });
+    updateEnergyFlows();
     if (invLabelEl) invLabelEl.innerHTML = '逆变器 · SG100CX-P2-CN<i>' + cur.power.toFixed(2) + ' kW</i><em>' + (on ? '运行中' : '待机') + '</em>';
     if (arrLabelEl) arrLabelEl.innerHTML = '屋顶光伏阵列<i>' + cur.power.toFixed(2) + ' kW</i><em>今日 '
       + (cur.today === null ? '--' : cur.today.toFixed(1)) + ' 度 · 装机 ' + Number(cur.cap).toFixed(2) + ' kWp</em>';
-    if (gridLabelEl) gridLabelEl.innerHTML = '并网点<i>' + (on ? '并网运行中' : '无输出') + '</i><em>计量箱 · 关口表</em>';
+    /* 并网点标签由 updateEnergyFlows() 统一刷新（它知道储能与负载） */
     /* 明细卡内容同样跟着实时值走 */
     const todayTxt = cur.today === null ? '--' : cur.today.toFixed(1) + ' 度';
     const hoursTxt = (cur.today === null || !cur.cap) ? '--' : (cur.today / cur.cap).toFixed(2) + ' h';
@@ -791,6 +923,38 @@ window.SolarScene = (function () {
       ['并网方式', '低压并网 · 关口计量'],
       ['计量', '计量箱 · 关口表']
     ], on ? '实时并网' : '待机');
+  }
+
+  /* 储能柜实时（日升云）：驱动柜体 SOC 光柱、指示灯、浮标卡片，以及充放电光纹 */
+  function f1(v) { return (v === null || v === undefined || isNaN(Number(v))) ? '--' : Number(v).toFixed(1); }
+  function setStorage(st) {
+    if (!st) return;
+    const r = st.realtime || {};
+    cur.storPower = r.power_kw;
+    cur.loadKw = r.load_kw;
+    cur.storSoc = r.soc;
+    const soc = Math.max(0, Math.min(100, Number(cur.storSoc) || 0));
+    cabSocBars.forEach(function (bar) { bar.scale.y = Math.max(.02, soc / 100); });
+    const dis = Number(cur.storPower) > 0, chg = Number(cur.storPower) < 0;
+    const col = chg ? 0x8fd8ff : (dis ? 0x3df0a0 : 0x6f9a94);
+    if (cabLed) cabLed.material.color.setHex(col);
+    if (cabGlow) cabGlow.material.color.setHex(col);
+    const td = st.today || {}, dv = st.device || {};
+    const brand = (dv.bcu_brand ? dv.bcu_brand : 'SYL') + ' 电池 + ' + (dv.pcs_brand === 'EJ' ? '恩玖' : (dv.pcs_brand || 'PCS'));
+    if (cabLabelEl) {
+      cabLabelEl.innerHTML = '储能柜 · 光储一体<i>' + f1(cur.storPower) + ' kW</i><em>'
+        + (r.status_text || '--') + ' · SOC ' + Math.round(soc) + '%</em>';
+    }
+    setCard('storage', '储能柜 · 光储一体（' + brand + '）', [
+      ['SOC', Math.round(soc) + ' %'],
+      ['实时功率', f1(cur.storPower) + ' kW（' + (r.status_text || '--') + '）'],
+      ['今日充电', f1(td.charge_kwh) + ' 度'],
+      ['今日放电', f1(td.discharge_kwh) + ' 度'],
+      ['柜内配置', brand],
+      ['采样时间', String(r.time || '--').slice(11, 19)]
+    ], Math.abs(Number(cur.storPower) || 0) > .3
+      ? (dis ? '放电中（往系统送电）' : '充电中（把电存起来）') : '待机');
+    updateEnergyFlows();
   }
 
   /* 点击设备 → 弹明细卡（拖拽旋转时不触发） */
@@ -839,13 +1003,46 @@ window.SolarScene = (function () {
     }
   }
 
-  /* 电流光纹沿电缆滚动（速度随发电功率，无输出时静止变暗） */
+  /* 电流光纹沿电缆滚动（速度随功率，方向随充放/买卖电，无输出时静止变暗） */
   function stepFlow(dt) {
     if (!flows.length || !dt) return;
     for (let i = 0; i < flows.length; i++) {
       const fl = flows[i];
       fl.tubeMat.opacity = fl.on ? .95 : .3;
-      if (fl.on) fl.map.offset.x -= fl.speed * dt * .35;
+      if (!fl.on) continue;
+      fl.map.offset.x -= (fl.dir || 1) * fl.speed * dt * .35;
+      if (fl.tint) fl.tubeMat.color.setHex(fl.tint);
+    }
+  }
+
+  /* 光伏 / 储能 / 负载三者决定两条支线的方向与颜色：
+     储能充放：充电流进柜（蓝）、放电流出柜（青绿）
+     关口：发得多就往外卖（橙，往电网去）、不够就从电网取（蓝） */
+  function updateEnergyFlows() {
+    const c = FLOWC[theme] || FLOWC.night;
+    const pv = Number(cur.power) || 0;
+    const st = Number(cur.storPower) || 0;
+    const load = Number(cur.loadKw) || 0;
+    const surplus = pv + st - load;
+    flows.forEach(function (fl) {
+      if (fl.kind === 'stor') {
+        fl.on = Math.abs(st) > .3;
+        fl.dir = st > 0 ? -1 : 1;
+        fl.tint = st > 0 ? 0x3df0a0 : 0x8fd8ff;
+        fl.speed = .3 + Math.min(1, Math.abs(st) / 100) * 1.8;
+        if (!fl.on) fl.tubeMat.color.setHex(c.idle);
+      } else if (fl.kind === 'grid') {
+        fl.on = Math.abs(surplus) > .3;
+        fl.dir = surplus > 0 ? 1 : -1;
+        fl.tint = surplus > 0 ? 0xffb020 : 0x8fd8ff;
+        fl.speed = .3 + Math.min(1, Math.abs(surplus) / 100) * 1.8;
+        if (!fl.on) fl.tubeMat.color.setHex(c.idle);
+      }
+    });
+    if (gridLabelEl) {
+      gridLabelEl.innerHTML = '并网点<i>' + (Math.abs(surplus) > .3
+        ? (surplus > 0 ? '馈电上网 ' + surplus.toFixed(1) + ' kW' : '从电网取 ' + Math.abs(surplus).toFixed(1) + ' kW')
+        : '无交换') + '</i><em>计量箱 · 关口表</em>';
     }
   }
 
@@ -903,8 +1100,8 @@ window.SolarScene = (function () {
   }
   function resetView() {
     if (!camera || !controls) return;
-    camera.position.set(28, 19, 36);
-    controls.target.set(0, 3, 0);
+    camera.position.set(31, 22, 40);
+    controls.target.set(0, 4.2, 0);
     controls.update();
   }
 
@@ -918,5 +1115,5 @@ window.SolarScene = (function () {
     if (onReady) onReady();
   }
 
-  return { init, resize, setWeather, setPower, applyTheme, setActive, setLabels, setRotate, resetView };
+  return { init, resize, setWeather, setPower, setStorage, applyTheme, setActive, setLabels, setRotate, resetView };
 })();
