@@ -43,22 +43,64 @@ const EVAL = `(() => {
 
 function save(data) {
   if (!data || !data.accessToken) throw new Error('没有读到 accessToken');
-  const cfg = {
+  let old = {};
+  try { old = JSON.parse(fs.readFileSync(OUT, 'utf8')); } catch (_) {}
+  const cfg = Object.assign({}, old, {
     accessToken: data.accessToken,
-    refreshToken: data.refreshToken || '',
-    tenantId: String(data.tenantId || '214'),
-    user: data.user || null,
+    refreshToken: data.refreshToken || old.refreshToken || '',
+    tenantId: String(data.tenantId || old.tenantId || '214'),
+    user: data.user || old.user || null,
     savedAt: new Date().toISOString()
-  };
+  });
   fs.writeFileSync(OUT, JSON.stringify(cfg, null, 2));
   console.log('已写入 ' + OUT);
   console.log('  tenantId=' + cfg.tenantId + '　accessToken ' + cfg.accessToken.length +
-    ' 字符　refreshToken ' + cfg.refreshToken.length + ' 字符');
+    ' 字符　refreshToken ' + cfg.refreshToken.length + ' 字符' +
+    (cfg.username ? '　（保留了已有的账号密码，可自动登录）' : ''));
 }
 
 /* ---------------- 从文件导入（服务器上用） ---------------- */
 if (IMPORT) {
   save(JSON.parse(fs.readFileSync(IMPORT, 'utf8')));
+  process.exit(0);
+}
+
+/* ---------------- 配置账号密码（给采集服务自动登录用） ---------------- */
+if (argv.indexOf('--set-login') >= 0) {
+  const readline = require('readline');
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  const ask = q => new Promise(res => rl.question(q, res));
+  (async () => {
+    let cfg = {};
+    try { cfg = JSON.parse(fs.readFileSync(OUT, 'utf8')); } catch (_) {}
+    const name = (await ask('日升云账号（回车沿用 ' + (cfg.username || '空') + '）：')).trim();
+    process.stdout.write('日升云密码（输入时不显示，回车沿用原值）：');
+    const pwd = await new Promise(function (res) {
+      const stdin = process.stdin, stdout = process.stdout;
+      let buf = '';
+      stdin.resume();
+      stdin.setRawMode(true);
+      const onData = function (ch) {
+        ch = ch.toString('utf8');
+        if (ch === '\r' || ch === '\n' || ch === '\u0004') {
+          stdin.removeListener('data', onData); stdin.setRawMode(false); stdin.pause();
+          stdout.write('\n'); res(buf);
+        } else if (ch === '\u0003') {          /* Ctrl+C */
+          stdin.setRawMode(false); process.exit(1);
+        } else if (ch === '\u007f' || ch === '\b') {
+          buf = buf.slice(0, -1);
+        } else buf += ch;
+      };
+      stdin.on('data', onData);
+    });
+    if (name) cfg.username = name;
+    if (pwd) cfg.password = pwd;
+    fs.writeFileSync(OUT, JSON.stringify(cfg, null, 2));
+    rl.close();
+    console.log('已写入 ' + OUT + '：账号 ' + (cfg.username || '(空)') +
+      '，密码 ' + (cfg.password ? '已设置（' + cfg.password.length + ' 位）' : '未设置'));
+    console.log('接着跑：node tools/deploy-risen.js   （服务器上会自动登录，不再需要人工导出 token）');
+  })();
   process.exit(0);
 }
 

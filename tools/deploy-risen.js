@@ -78,25 +78,32 @@ function tmp(name, content) {
       remoteOk = /"ok":true/.test(await exec(conn, 'curl -s -m 8 http://127.0.0.1:' + PORT + '/risen/healthz || true'));
     } catch (_) {}
     const FORCE = process.argv.indexOf('--force') >= 0;
-    if (remoteOk && !FORCE) {
-      console.log('远端服务已在运行且数据正常，本次只更新代码，凭据沿用服务器上的（要强制覆盖：--force）');
-    } else {
-      /* 种子凭据（只落在服务器上，600）；续期后的 token 由服务写进 DATA_DIR */
-      const env = [
-        'RISEN_ACCESS_TOKEN=' + cfg.accessToken,
-        'RISEN_REFRESH_TOKEN=' + cfg.refreshToken,
-        'RISEN_TENANT_ID=' + (cfg.tenantId || '214'),
-        'RISEN_PLANT_ID=' + (cfg.plantId || ''),
-        'RISEN_CONFIG=' + DATA_DIR + '/risen.config.json',
-        'RISEN_PORT=' + PORT,
-        'RISEN_DIR=' + DATA_DIR,
-        'RISEN_POLL=300',
-        'RISEN_DAYS=3'
-      ].join('\n') + '\n';
-      await put(conn, tmp('lichu-risen.env', env), '/tmp/lichu-risen.env');
-      await exec(conn, 'sudo mv /tmp/lichu-risen.env /etc/lichu-risen.env && sudo chmod 600 /etc/lichu-risen.env');
+    const seedTokens = !remoteOk || FORCE;
+
+    /* 账号密码是固定的（不轮换），每次部署都写；token 只在需要时当种子写 */
+    const q = s => '"' + String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+    const lines = [];
+    if (seedTokens) {
+      lines.push('RISEN_ACCESS_TOKEN=' + cfg.accessToken);
+      lines.push('RISEN_REFRESH_TOKEN=' + cfg.refreshToken);
+    }
+    lines.push('RISEN_TENANT_ID=' + (cfg.tenantId || '214'));
+    if (cfg.plantId) lines.push('RISEN_PLANT_ID=' + cfg.plantId);
+    if (cfg.username) lines.push('RISEN_USERNAME=' + cfg.username);
+    if (cfg.password) lines.push('RISEN_PASSWORD=' + q(cfg.password));
+    lines.push('RISEN_CONFIG=' + DATA_DIR + '/risen.config.json');
+    lines.push('RISEN_PORT=' + PORT);
+    lines.push('RISEN_DIR=' + DATA_DIR);
+    lines.push('RISEN_POLL=300');
+    lines.push('RISEN_DAYS=3');
+
+    await put(conn, tmp('lichu-risen.env', lines.join('\n') + '\n'), '/tmp/lichu-risen.env');
+    await exec(conn, 'sudo mv /tmp/lichu-risen.env /etc/lichu-risen.env && sudo chmod 600 /etc/lichu-risen.env');
+    console.log('凭据已写入 /etc/lichu-risen.env（600）' +
+      (cfg.username ? (cfg.password ? '：账号 + 密码已配，可自动登录' : '：只有账号，缺密码') : '：没配账号密码（只能靠 refreshToken）') +
+      (seedTokens ? '' : '；token 沿用服务器上的（远端本来就健康）'));
+    if (seedTokens) {
       await exec(conn, 'rm -f ' + DATA_DIR + '/risen.config.json');    /* 让这次部署的种子凭据生效 */
-      console.log('凭据已写入 /etc/lichu-risen.env（600）');
     }
 
     const unit = [

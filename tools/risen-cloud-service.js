@@ -17,9 +17,10 @@
  *     GET /risen/poll               立即拉一次
  *
  *   凭据：tools/risen.config.json（不进仓库），字段 accessToken / refreshToken /
- *   tenantId / plantId。服务会在 token 失效时用 refreshToken 换新的一对，
- *   并把新值写回该文件；refreshToken 也过期后，需要用浏览器登录一次再导出
- *   （tools/risen-cloud-token.js）。
+ *   tenantId / plantId，可选 username / password。
+ *   · 平时用 refreshToken 自动续期，新值写回配置文件
+ *   · refreshToken 过期后：有账号密码就自己重新登录（无需人工）
+ *   · 没配账号密码才需要浏览器登录一次再导出（tools/risen-cloud-token.js）
  *
  *   用法：node tools/risen-cloud-service.js [--port 8097] [--poll 300] [--dir logs/risen]
  * ============================================================ */
@@ -28,6 +29,7 @@
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
+const crypto = require('crypto');
 
 const ROOT = path.join(__dirname, '..');
 const argv = process.argv.slice(2);
@@ -67,6 +69,8 @@ function loadCfg() {
   cfg.accessToken = cfg.accessToken || process.env.RISEN_ACCESS_TOKEN || '';
   cfg.refreshToken = cfg.refreshToken || process.env.RISEN_REFRESH_TOKEN || '';
   cfg.tenantId = cfg.tenantId || process.env.RISEN_TENANT_ID || '';
+  cfg.username = cfg.username || process.env.RISEN_USERNAME || '';
+  cfg.password = cfg.password || process.env.RISEN_PASSWORD || '';
   if (OPT.plantId) cfg.plantId = OPT.plantId;
   return cfg;
 }
@@ -79,7 +83,10 @@ function saveCfg(cfg) {
 /* ---------------- 请求 ---------------- */
 async function call(pathname, params, opt) {
   const cfg = loadCfg();
-  if (!cfg.accessToken) throw new Error('没有 accessToken：请把 tools/risen.config.json 补好');
+  if (!cfg.accessToken) {
+    if (!(opt && opt.loginTried) && await login()) return call(pathname, params, { loginTried: true });
+    throw new Error('没有 accessToken，自动登录也不可用（检查 RISEN_USERNAME / RISEN_PASSWORD）');
+  }
   const url = new URL(API_BASE + pathname);
   Object.keys(params || {}).forEach(function (k) {
     if (params[k] !== undefined && params[k] !== null && params[k] !== '') url.searchParams.set(k, params[k]);
@@ -138,13 +145,98 @@ async function refreshToken() {
       return true;
     } catch (e) {
       state.lastError = 'token 续期失败：' + e.message;
-      log('token 续期失败：' + e.message + '（需要用浏览器登录一次再导出，见 tools/risen-cloud-token.js）');
-      return false;
+      log('token 续期失败：' + e.message + '，改用账号密码重新登录');
+      return await login();
     } finally {
       refreshing = null;
     }
   })();
   return refreshing;
+}
+
+/* ---------------- 自动登录 ----------------
+ * 登录接口是 /system/auth/login/decrypt：前端把密码用 AES 加密后提交，密钥写死在前端
+ * bundle 里（dfrs7aa0290b15bc）。服务端不区分「解密失败」和「密码不对」，所以这里把几种
+ * 常见方案依次试一遍，第一个成功的会记进配置文件（密码对的话通常第一次就成）。
+ * 账号密码放 /etc/lichu-risen.env：RISEN_USERNAME / RISEN_PASSWORD。
+ * ------------------------------------------------------------------ */
+const LOGIN_KEY = Buffer.from('dfrs7aa0290b15bc', 'utf8');
+
+function encEcb(text) {
+  const c = crypto.createCipheriv('aes-128-ecb', LOGIN_KEY, null);
+  return Buffer.concat([c.update(text, 'utf8'), c.final()]).toString('base64');
+}
+function encCbc(text, iv) {
+  const c = crypto.createCipheriv('aes-128-cbc', LOGIN_KEY, iv);
+  return Buffer.concat([c.update(text, 'utf8'), c.final()]).toString('base64');
+}
+/* CryptoJS 直接拿字符串当口令时的默认算法：EvpKDF(MD5) + 随机盐，密文带 "Salted__" 前缀 */
+function encEvpKdf(text) {
+  const salt = crypto.randomBytes(8);
+  const md5 = b => crypto.createHash('md5').update(b).digest();
+  let derived = Buffer.alloc(0), prev = Buffer.alloc(0);
+  while (derived.length < 48) {
+    prev = md5(Buffer.concat([prev, LOGIN_KEY, salt]));
+    derived = Buffer.concat([derived, prev]);
+  }
+  const c = crypto.createCipheriv('aes-128-cbc', derived.slice(0, 16), derived.slice(16, 32));
+  const body = Buffer.concat([c.update(text, 'utf8'), c.final()]);
+  return Buffer.concat([Buffer.from('Salted__', 'utf8'), salt, body]).toString('base64');
+}
+
+const LOGIN_SCHEMES = [
+  ['aes-128-ecb', encEcb],
+  ['aes-128-cbc(密钥当IV)', t => encCbc(t, LOGIN_KEY)],
+  ['aes-128-cbc(IV全0)', t => encCbc(t, Buffer.alloc(16, 0))],
+  ['cryptojs口令模式', encEvpKdf]
+];
+const LOGIN_TYPES = ['uname', 'mobile'];
+
+async function login() {
+  const cfg = loadCfg();
+  if (!cfg.username || !cfg.password) {
+    log('没有账号密码，跳过自动登录（需要的话在 /etc/lichu-risen.env 里填 RISEN_USERNAME / RISEN_PASSWORD）');
+    return false;
+  }
+  for (let i = 0; i < LOGIN_SCHEMES.length; i++) {
+    const label = LOGIN_SCHEMES[i][0], enc = LOGIN_SCHEMES[i][1];
+    for (let j = 0; j < LOGIN_TYPES.length; j++) {
+      const type = LOGIN_TYPES[j];
+      try {
+        const res = await fetch(API_BASE + '/system/auth/login/decrypt', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'tenant-id': String(cfg.tenantId),
+            'language': 'zh',
+            'Accept': 'application/json, text/plain, */*'
+          },
+          body: JSON.stringify({
+            loginType: type === 'mobile' ? 'sms' : 'uname',
+            username: cfg.username, password: enc(cfg.password), type: type,
+            mobile: '', mobileCode: '', rememberMe: true, tenantName: '', readed: true
+          })
+        });
+        const json = await res.json();
+        if (json.code === 200 && json.data && json.data.accessToken) {
+          cfg.accessToken = json.data.accessToken;
+          cfg.refreshToken = json.data.refreshToken || cfg.refreshToken;
+          cfg.loginScheme = label + ' / type=' + type;
+          cfg.loggedInAt = new Date().toISOString();
+          saveCfg(cfg);
+          state.token = cfg.accessToken;
+          log('自动登录成功（' + cfg.loginScheme + '）');
+          return true;
+        }
+        log('登录未通过：' + label + ' / type=' + type + ' → ' + (json.msg || json.code));
+      } catch (e) {
+        log('登录请求出错：' + label + ' → ' + e.message);
+      }
+      await new Promise(r => setTimeout(r, 1200));      /* 别把失败次数堆得太快 */
+    }
+  }
+  log('自动登录所有方案都没通过 —— 先确认账号密码对不对（密码改过就更新 RISEN_PASSWORD 再重启服务）');
+  return false;
 }
 
 /* ---------------- 时间 ---------------- */
@@ -164,7 +256,14 @@ function dayStartCN(offsetDays) {
 }
 
 /* ---------------- 一次完整拉取 ---------------- */
-async function poll() {
+let polling = null;
+function poll() {
+  /* 启动时的首拉和页面/自测请求可能撞在一起，这里保证同一时刻只有一次在跑 */
+  if (polling) return polling;
+  polling = doPoll().catch(function () {}).then(function (v) { polling = null; return v; });
+  return polling;
+}
+async function doPoll() {
   state.polls++;
   try {
     /* 1. 电站 */
@@ -447,15 +546,24 @@ const server = http.createServer(async function (req, res) {
   }
 });
 
-prune();
-setInterval(prune, 3600000);
-setInterval(function () { poll().catch(function () {}); }, OPT.poll * 1000);
-server.listen(OPT.port, OPT.host, function () {
-  const cfg = loadCfg();
-  log('日升云接入服务已启动：http://' + OPT.host + ':' + OPT.port + '　数据目录 ' + OPT.dir +
-    '　拉取周期 ' + OPT.poll + 's' + (cfg.accessToken ? '' : '　⚠ 缺 accessToken'));
-  poll().catch(function () {});
-});
-server.on('error', function (e) { log('监听失败：' + e.message); process.exit(1); });
-process.on('SIGTERM', function () { server.close(function () { process.exit(0); }); });
-process.on('SIGINT', function () { server.close(function () { process.exit(0); }); });
+/* ---------------- 启动 ---------------- */
+if (argv.indexOf('--login') >= 0) {
+  /* 只测一次自动登录，不启服务：node tools/risen-cloud-service.js --login */
+  login().then(function (ok) {
+    console.log(ok ? '自动登录可用' : '自动登录失败');
+    process.exit(ok ? 0 : 1);
+  });
+} else {
+  prune();
+  setInterval(prune, 3600000);
+  setInterval(function () { poll().catch(function () {}); }, OPT.poll * 1000);
+  server.listen(OPT.port, OPT.host, function () {
+    const cfg = loadCfg();
+    log('日升云接入服务已启动：http://' + OPT.host + ':' + OPT.port + '　数据目录 ' + OPT.dir +
+      '　拉取周期 ' + OPT.poll + 's' + (cfg.accessToken ? '' : '　⚠ 缺 accessToken'));
+    poll().catch(function () {});
+  });
+  server.on('error', function (e) { log('监听失败：' + e.message); process.exit(1); });
+  process.on('SIGTERM', function () { server.close(function () { process.exit(0); }); });
+  process.on('SIGINT', function () { server.close(function () { process.exit(0); }); });
+}
