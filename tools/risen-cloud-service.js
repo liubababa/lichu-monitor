@@ -9,12 +9,22 @@
  *   对外接口（给页面用）：
  *     GET /risen/summary            电站 + 储能实时：SOC、状态、功率、今日充放、
  *                                   累计充放、温度、剩余电量、收益、子设备统计
- *     GET /risen/devices            柜内子设备清单（BCU/PCS/电表/空调/4G，含在线状态）
+ *     GET /risen/pcs                PCS 实时：三相电压电流、有功/无功/视在、频率、
+ *                                   功率因数、环境与 IGBT 温度
+ *     GET /risen/battery            电池簇 + 液冷空调：SOC/SOH/SOE、簇压簇流、
+ *                                   单体电压温度极值（含编号）、进出水温度压力
+ *     GET /risen/devices            柜内子设备（含量型号/版本/在线状态）
+ *     GET /risen/full               上面全部 + 补传情况，一次拿全
  *     GET /risen/trend?range=today|yesterday|days3
  *                                   5 分钟粒度曲线：{ t, soc, power_kw, charge_kwh, discharge_kwh, pv_kw }
  *     GET /risen/raw                最近一次原始返回（排查用）
  *     GET /risen/healthz            连通性、最近拉取时间、错误
  *     GET /risen/poll               立即拉一次
+ *
+ *   拉取节奏：本柜实时（EMS 快照 / PCS / 电池簇+空调 / 子设备在线）按 --poll 秒
+ *   一轮（默认 60 秒）；电站、统计、收益、曲线等变化慢的每 5 分钟一轮（慢轮询）。
+ *   注意云端自己也是约 5 分钟记一条，所以 1 分钟拉到的常是同一个值 —— 好处是
+ *   云端一更新我们 1 分钟内就能拿到。
  *
  *   凭据：tools/risen.config.json（不进仓库），字段 accessToken / refreshToken /
  *   tenantId / plantId，可选 username / password。
@@ -44,7 +54,7 @@ const OPT = {
   host: arg('host', process.env.RISEN_HOST || '127.0.0.1'),
   port: parseInt(arg('port', process.env.RISEN_PORT || '8097'), 10),
   dir: arg('dir', process.env.RISEN_DIR || path.join(ROOT, 'logs', 'risen')),
-  poll: parseInt(arg('poll', process.env.RISEN_POLL || '300'), 10),   // 秒；云端记录本身 5 分钟一条
+  poll: parseInt(arg('poll', process.env.RISEN_POLL || '60'), 10),   // 秒；本柜实时 1 分钟一拉，聚合类 5 分钟一拉
   plantId: arg('plant', process.env.RISEN_PLANT_ID || ''),
   days: parseInt(arg('days', process.env.RISEN_DAYS || '3'), 10)
 };
@@ -54,8 +64,9 @@ fs.mkdirSync(OPT.dir, { recursive: true });
 
 const state = {
   token: null, plants: [], plant: null, binding: null, snap: null,
-  things: [], stats: null, storage: null, revenue: null, fault: null, alarms: null,
-  polls: 0, errors: 0, last: null, lastError: null, raw: {}
+  things: [], subs: [], pcs: null, bcu: null, air: null, complete: null,
+  stats: null, storage: null, revenue: null, fault: null, alarms: null, pemsStats: null,
+  polls: 0, errors: 0, last: null, lastError: null, lastSlow: 0, slowRuns: 0, raw: {}
 };
 let refreshing = null;
 
@@ -239,6 +250,65 @@ async function login() {
   return false;
 }
 
+/* ---------------- 接口探测（找数据用）----------------
+ * node tools/risen-cloud-service.js --probe
+ * 会把各接口的原始返回写到 <dir>/probe/*.json，并在终端打一行摘要。
+ * ------------------------------------------------------------------ */
+async function probe() {
+  const dir = path.join(OPT.dir, 'probe');
+  fs.mkdirSync(dir, { recursive: true });
+
+  /* 先拉一次，拿到 plantId / SN */
+  await poll();
+  const cfg = loadCfg();
+  const pid = state.plant ? state.plant.id : cfg.plantId;
+  const sn = state.binding ? state.binding.deviceCode : '';
+  const id = state.binding ? state.binding.id : '';
+  log('探测用：plantId=' + pid + '　sn=' + sn + '　bindingId=' + id);
+
+  const P = { plantId: pid, sn: sn, deviceCode: sn };
+  const CASES = [
+    ['pems_statistics', '/station/pems/detail/statistics', [{ plantId: pid }, { sn: sn }, {}]],
+    ['pems_pcs', '/station/pems/detail/storage/pcs', [{ sn: sn }, { plantId: pid }, { deviceCode: sn }]],
+    ['pems_bcu_air', '/station/pems/detail/storage/bcu/air', [{ sn: sn }, { plantId: pid }, { deviceCode: sn }]],
+    ['pems_inverter', '/station/pems/detail/solar/inverter', [{ plantId: pid }, { sn: sn }]],
+    ['ems_list', '/station/iot/ems/list/' + sn, [{ sn: sn }, {}]],
+    ['ems_menu', '/station/iot/ems/menu/' + pid, [{}]],
+    ['ems_subsn', '/station/iot/ems/subSnList', [{ plantId: pid }, { sn: sn }]],
+    ['thing_list', '/station/iot/ems/thing/list/' + sn, [{ sn: sn }]],
+    ['device_log', '/station/device/Log/page', [{ pageNo: 1, pageSize: 5, deviceCode: sn }, { pageNo: 1, pageSize: 5, sn: sn }]],
+    ['history_complete_device', '/station/system/binding/history/complete/device', [{ sn: sn }, { deviceCode: sn }]],
+    ['dataDirection', '/station/system/binding/dataDirection/list', [{ plantId: pid }, { sn: sn }]],
+    ['revenue_kilowatt', '/station/home/plant/revenue/kilowatt', [{ type: 'STORAGE', queryType: 'DAY', plantId: pid }]],
+    ['revenue_curve', '/station/home/plant/revenue/curve', [{ queryType: 'DAY', startTime: dayStartCN(0) + ' 00:00:00', endTime: fmtTime(new Date()), plantId: pid }]],
+    ['power_curve_hour', '/station/home/plant/power/curve', [{ queryType: 'HOUR', startTime: dayStartCN(0) + ' 00:00:00', endTime: fmtTime(new Date()), plantId: pid }]],
+    ['power_curve_day', '/station/home/plant/power/curve', [{ queryType: 'DAY', startTime: dayStartCN(-6) + ' 00:00:00', endTime: fmtTime(new Date()), plantId: pid }]],
+    ['electricity_page', '/station/electricity/report/page', [{ pageNo: 1, pageSize: 5, plantId: pid }]],
+    ['bind_detail', '/station/system/binding/detail/' + id, [{}]]
+  ];
+
+  for (const [name, pathname, paramSets] of CASES) {
+    for (let k = 0; k < paramSets.length; k++) {
+      const params = paramSets[k];
+      const tag = name + (k ? '-' + k : '');
+      try {
+        const data = await call(pathname, params);
+        const text = JSON.stringify(data);
+        fs.writeFileSync(path.join(dir, tag + '.json'), text);
+        let brief = text.slice(0, 180);
+        if (Array.isArray(data)) brief = 'array(' + data.length + ') ' + JSON.stringify(data[0] || {}).slice(0, 150);
+        else if (data && typeof data === 'object' && Array.isArray(data.list)) brief = 'page(total=' + data.total + ') ' + JSON.stringify(data.list[0] || {}).slice(0, 150);
+        else if (data && typeof data === 'object') brief = 'keys[' + Object.keys(data).slice(0, 18).join(',') + '] ' + text.slice(0, 140);
+        log(tag + '  ' + JSON.stringify(params) + '  → ' + text.length + 'B  ' + brief);
+      } catch (e) {
+        log(tag + '  ' + JSON.stringify(params) + '  → 失败：' + e.message);
+      }
+      await new Promise(r => setTimeout(r, 400));
+    }
+  }
+  log('探测完成，结果在 ' + dir);
+}
+
 /* ---------------- 时间 ---------------- */
 function fmtTime(d) {
   const p = n => String(n).padStart(2, '0');
@@ -265,64 +335,97 @@ function poll() {
 }
 async function doPoll() {
   state.polls++;
+  const now = Date.now();
+  /* 慢轮询：电站/统计/收益/曲线这些变化慢的，每 5 分钟拉一次；
+     快的（本柜 EMS 快照、PCS、电池簇、子设备在线）每次轮询都拉 */
+  const slow = !state.lastSlow || (now - state.lastSlow) > 240000;
   try {
-    /* 1. 电站 */
-    const pl = await call('/station/gcc/plant/all/list', { plantState: '', column: 'start_time', ascFlag: 'false', pageSize: 10, pageNo: 1 });
-    state.plants = (pl && pl.list) || [];
-    const cfg = loadCfg();
-    state.plant = cfg.plantId
-      ? state.plants.filter(function (p) { return String(p.id) === String(cfg.plantId); })[0]
-      : state.plants[0];
-    if (!state.plant) throw new Error('账号下没有可见电站（或 plantId 填错）');
-    state.raw.plants = pl;
+    /* 1. 电站 + 这台柜子的绑定（慢轮询 / 首次） */
+    if (slow || !state.binding) {
+      const pl = await call('/station/gcc/plant/all/list', { plantState: '', column: 'start_time', ascFlag: 'false', pageSize: 10, pageNo: 1 });
+      state.plants = (pl && pl.list) || [];
+      const cfg = loadCfg();
+      state.plant = cfg.plantId
+        ? state.plants.filter(function (p) { return String(p.id) === String(cfg.plantId); })[0]
+        : state.plants[0];
+      if (!state.plant) throw new Error('账号下没有可见电站（或 plantId 填错）');
 
-    /* 2. 这台柜子（EMS 主设备） */
-    const bl = await call('/station/system/binding/list', { pageNo: 1, pageSize: 10 });
-    const list = (bl && bl.list) || [];
-    let bind = list.filter(function (b) { return String(b.plantId) === String(state.plant.id); })[0] || list[0];
-    if (!bind) throw new Error('电站下没有绑定的 EMS 设备');
-    try {   /* bind/list 那条记录字段更全（BCU/PCS 品牌、运营商、各版本号） */
-      const rich = await call('/station/system/binding/bind/list/' + state.plant.id);
-      const r0 = (rich || [])[0];
-      if (r0) bind = Object.assign({}, bind, r0);
-    } catch (_) {}
-    state.binding = bind;
-    state.raw.binding = bl;
-    const sn = bind.deviceCode;
+      const bl = await call('/station/system/binding/list', { pageNo: 1, pageSize: 10 });
+      const list = (bl && bl.list) || [];
+      let bind = list.filter(function (b) { return String(b.plantId) === String(state.plant.id); })[0] || list[0];
+      if (!bind) throw new Error('电站下没有绑定的 EMS 设备');
+      try {   /* bind/list 那条记录字段更全（BCU/PCS 品牌、运营商、各版本号） */
+        const rich = await call('/station/system/binding/bind/list/' + state.plant.id);
+        const r0 = (rich || [])[0];
+        if (r0) bind = Object.assign({}, bind, r0);
+      } catch (_) {}
+      state.binding = bind;
+    }
+    const sn = state.binding.deviceCode;
+    const pid = state.plant.id;
 
-    /* 3. 子设备 + 实时快照 + 统计 + 曲线上游 */
-    const [things, latest, stats, storage, revenue, fault, alarms] = await Promise.all([
-      call('/station/iot/ems/thing/list/' + sn, { sn: sn }),
+    /* 2. 快轮询：本柜实时数据（EMS 总览 / PCS / 电池簇+液冷空调 / 子设备在线） */
+    const [latest, pcs, bcu, things] = await Promise.all([
       call('/station/system/binding/history', { pageNo: 1, pageSize: 1, type: 0, dataType: 'EMS', deviceCode: sn }),
-      call('/station/home/plant/statistics'),
-      call('/station/home/storage/power/stats'),
-      call('/station/home/revenue/information'),
-      call('/station/home/plant/device/fault'),
-      call('/station/home/plant/alarm/count')
+      call('/station/pems/detail/storage/pcs', { plantId: pid }).catch(function (e) { log('PCS 读数失败：' + e.message); return null; }),
+      call('/station/pems/detail/storage/bcu/air', { plantId: pid }).catch(function (e) { log('电池簇读数失败：' + e.message); return null; }),
+      call('/station/iot/ems/thing/list/' + sn, { sn: sn }).catch(function () { return null; })
     ]);
-    state.things = things || [];
-    state.snap = ((latest && latest.list) || [])[0] || null;
-    state.stats = stats || null;
-    state.storage = storage || null;
-    state.revenue = revenue || null;
-    state.fault = fault || null;
-    state.alarms = Number(alarms) || 0;
-    state.raw = { plant: state.plant, binding: bind, snapshot: state.snap, things: state.things, stats: state.stats, storage: state.storage, revenue: state.revenue, fault: state.fault, alarms: state.alarms };
+    const snap = ((latest && latest.list) || [])[0];
+    if (snap) state.snap = snap;
+    if (pcs && pcs[0]) state.pcs = pcs[0];
+    const bcuRow = bcu && bcu[0];
+    if (bcuRow) { state.bcu = bcuRow; state.air = (bcuRow.air && bcuRow.air[0]) || null; }
+    if (things) state.things = things;
 
-    /* 4. 今天的 5 分钟曲线（顺带把当天历史补齐） */
-    const trend = await pullTrend(sn, 'today').catch(function (e) { log('曲线拉取失败：' + e.message); return []; });
-    state.trend = trend;
+    /* 3. 慢轮询：子设备型号版本 / 统计 / 收益 / 故障 / 今日曲线 / 补传情况 */
+    if (slow) {
+      const [subs, pemsStats, stats, storage, revenue, fault, alarms, comp] = await Promise.all([
+        call('/station/iot/ems/list/' + sn, { sn: sn }).catch(function () { return null; }),
+        call('/station/pems/detail/statistics', { sn: sn }).catch(function () { return null; }),
+        call('/station/home/plant/statistics').catch(function () { return null; }),
+        call('/station/home/storage/power/stats').catch(function () { return null; }),
+        call('/station/home/revenue/information').catch(function () { return null; }),
+        call('/station/home/plant/device/fault').catch(function () { return null; }),
+        call('/station/home/plant/alarm/count').catch(function () { return null; }),
+        call('/station/system/binding/history/complete/device', { sn: sn }).catch(function () { return null; })
+      ]);
+      if (subs) state.subs = subs;
+      if (pemsStats) state.pemsStats = pemsStats;
+      if (stats) state.stats = stats;
+      if (storage) state.storage = storage;
+      if (revenue) state.revenue = revenue;
+      if (fault) state.fault = fault;
+      if (alarms !== null) state.alarms = Number(alarms) || 0;
+      if (comp) state.complete = comp;
+      state.trend = await pullTrend(sn, 'today').catch(function (e) { log('曲线拉取失败：' + e.message); return state.trend || []; });
+      state.lastSlow = now;
+      state.slowRuns++;
+    }
 
-    fs.appendFileSync(dayFile(Date.now()), JSON.stringify({
-      t: Date.now(), plant: state.plant, snapshot: state.snap, things: state.things,
-      stats: state.stats, storage: state.storage, revenue: state.revenue, trend: trend.length
+    /* 4. 落盘：每分钟一条，含本柜全部实时数据 */
+    fs.appendFileSync(dayFile(now), JSON.stringify({
+      t: now,
+      ems: state.snap,
+      pcs: state.pcs,
+      bcu: state.bcu,
+      air: state.air,
+      subs: state.subs,
+      things: (state.things || []).map(function (t) { return { n: t.name, k: t.kind, s: t.workStatus }; }),
+      stats: slow ? state.stats : undefined,
+      storage: slow ? state.storage : undefined,
+      revenue: slow ? state.revenue : undefined,
+      fault: slow ? state.fault : undefined,
+      complete: slow ? state.complete : undefined
     }) + '\n');
 
     state.last = new Date().toISOString();
     state.lastError = null;
-    log('拉取成功：' + state.plant.plantName + '　SOC ' + (state.snap ? state.snap.totalSoc : '--') +
-      '%　' + statusText(state.snap ? state.snap.energyStorageStatus : null) +
-      '　曲线 ' + trend.length + ' 点');
+    log('拉取成功：SOC ' + (state.snap ? state.snap.totalSoc : '--') + '%　' +
+      statusText(state.snap ? state.snap.energyStorageStatus : null) +
+      '　PCS ' + (state.pcs ? state.pcs.totalActivePower + 'kW' : '--') +
+      '　电池簇 ' + (state.bcu ? state.bcu.clusterVoltage + 'V/' + state.bcu.clusterCurrent + 'A' : '--') +
+      (slow ? '　[慢轮询 第' + state.slowRuns + '轮]' : ''));
   } catch (e) {
     state.errors++;
     state.lastError = e.message;
@@ -434,6 +537,52 @@ function summary() {
       warning: s.warning || '',
       fault: s.fault || ''
     },
+    /* PCS 实时（/station/pems/detail/storage/pcs） */
+    pcs: state.pcs ? {
+      time: state.pcs.recordTime,
+      work_status: workStatusText(state.pcs.workStatus),
+      power_kw: num(state.pcs.totalActivePower),
+      reactive_kvar: num(state.pcs.totalReactivePower),
+      apparent_kva: num(state.pcs.totalApparentPower),
+      freq_hz: num(state.pcs.gridFrequency),
+      power_factor: num(state.pcs.powerFactor),
+      volt_v: [num(state.pcs.av), num(state.pcs.bv), num(state.pcs.cv)],
+      curr_a: [num(state.pcs.ai), num(state.pcs.bi), num(state.pcs.ci)],
+      ambient_c: num(state.pcs.ambientTemperature),
+      igbt_a_c: num(state.pcs.aigbtTemperature)
+    } : null,
+    /* 电池簇 + 液冷空调（/station/pems/detail/storage/bcu/air） */
+    battery: state.bcu ? {
+      time: state.bcu.recordTime,
+      soc: num(state.bcu.soc),
+      soh: num(state.bcu.soh),
+      soe: num(state.bcu.soe),
+      voltage_v: num(state.bcu.clusterVoltage),
+      current_a: num(state.bcu.clusterCurrent),
+      remaining_kwh: num(state.bcu.dischargingCapacity),
+      rechargeable_kwh: num(state.bcu.rechargeableCapacity),
+      cell_volt_avg_mv: num(state.bcu.averageVoltageCells),
+      cell_volt_max_mv: num(state.bcu.maxVoltageCells),
+      cell_volt_min_mv: num(state.bcu.minVoltageCells),
+      cell_volt_max_id: state.bcu.maxVoltageCellsId || null,
+      cell_volt_min_id: state.bcu.minVoltageCellsId || null,
+      cell_temp_avg: num(state.bcu.averageTemperatureCells),
+      cell_temp_max: num(state.bcu.maxTemperatureCells),
+      cell_temp_min: num(state.bcu.minTemperatureCells),
+      cell_temp_max_id: state.bcu.maxTemperatureCellsId || null,
+      cell_temp_min_id: state.bcu.minTemperatureCellsId || null,
+      cooler: state.air ? {
+        time: state.air.recordTime,
+        inlet_water_c: num(state.air.inletWaterTemperature),
+        outlet_water_c: num(state.air.drainWaterTemperature),
+        ambient_c: num(state.air.ambientTemperature),
+        inlet_pressure: num(state.air.inletWaterPressure),
+        outlet_pressure: num(state.air.drainWaterPressure),
+        cooling_point: num(state.air.coolingPoint),
+        heating_point: num(state.air.heatingPoint),
+        fault_flag: num(state.air.faultFlag)
+      } : null
+    } : null,
     today: {
       charge_kwh: num(s.dailyCharge),
       discharge_kwh: num(s.dailyDischarge),
@@ -472,18 +621,33 @@ function summary() {
 
 function deviceList() {
   const b = state.binding || {};
-  return state.things.map(function (t) {
+  /* /station/iot/ems/list 里有型号/版本（EJ=恩玖 PCS、SYL=电池、YWK=英维克空调） */
+  const subsByKind = {};
+  (state.subs || []).forEach(function (s) { if (s.kind && !subsByKind[s.kind]) subsByKind[s.kind] = s; });
+  const out = (state.things || []).map(function (t) {
+    const s = subsByKind[t.kind] || {};
     return {
       name: t.name,
       kind: t.kind,
       status: t.workStatus,
       status_text: workStatusText(t.workStatus),
+      brand: s.type || null,
+      version: s.version ? String(s.version).split('\r\n')[0] : null,
       model: t.model || null,
-      version: t.version || null,
       sn: b.deviceCode || null,
       iot_id: t.iotDeviceId
     };
   });
+  /* 柜子里还有 3 台光伏逆变器，thing/list 里没有，从 ems/list 补上 */
+  (state.subs || []).forEach(function (s) {
+    if (s.kind !== 'INVERTER') return;
+    out.push({
+      name: s.name, kind: s.kind, status: s.workStatus, status_text: workStatusText(s.workStatus),
+      brand: s.type || null, version: s.version ? String(s.version).split('\r\n')[0] : null,
+      model: null, sn: b.deviceCode || null, iot_id: null
+    });
+  });
+  return out;
 }
 
 /* ---------------- 保留天数 ---------------- */
@@ -515,18 +679,41 @@ const server = http.createServer(async function (req, res) {
         ok: !state.lastError,          /* 刚重启时还没拉过，但也没出错 —— 也算健康 */
         base: OPT.base, plant_id: state.plant ? state.plant.id : (loadCfg().plantId || null),
         device_sn: state.binding ? state.binding.deviceCode : null,
-        polls: state.polls, errors: state.errors,
-        last_poll: state.last, last_error: state.lastError,
-        dir: OPT.dir, poll_seconds: OPT.poll
+        polls: state.polls, errors: state.errors, slow_runs: state.slowRuns,
+        last_poll: state.last, last_error: state.lastError, poll_seconds: OPT.poll,
+        dir: OPT.dir
       });
     }
     if (u.pathname === '/risen/summary') {
       if (!state.snap) await poll();
       return json({ ok: !!state.snap, data: summary(), last_error: state.lastError });
     }
+    if (u.pathname === '/risen/pcs') {
+      if (!state.pcs) await poll();
+      return json({ ok: !!state.pcs, data: summary().pcs, last_error: state.lastError });
+    }
+    if (u.pathname === '/risen/battery') {
+      if (!state.bcu) await poll();
+      return json({ ok: !!state.bcu, data: summary().battery, last_error: state.lastError });
+    }
     if (u.pathname === '/risen/devices') {
       if (!state.things.length) await poll();
       return json({ ok: !!state.things.length, data: deviceList(), last_error: state.lastError });
+    }
+    /* 一次给全：总览 + PCS + 电池簇/空调 + 子设备 + 补传情况 */
+    if (u.pathname === '/risen/full') {
+      if (!state.snap) await poll();
+      const sm = summary();
+      return json({
+        ok: !!state.snap,
+        data: Object.assign({}, sm, {
+          devices: deviceList(),
+          pems_stats: state.pemsStats || null,
+          complete: state.complete || null,
+          trend_points: (state.trend || []).length
+        }),
+        last_error: state.lastError
+      });
     }
     if (u.pathname === '/risen/trend') {
       const range = u.searchParams.get('range') || 'today';
@@ -540,14 +727,18 @@ const server = http.createServer(async function (req, res) {
     if (u.pathname === '/risen/raw') return json({ ok: true, data: state.raw });
     if (u.pathname === '/risen/poll') { await poll(); return json({ ok: !state.lastError, last_error: state.lastError }); }
     res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
-    res.end('risen cloud service\n  GET /risen/summary\n  GET /risen/devices\n  GET /risen/trend?range=today|yesterday|days3\n  GET /risen/raw\n  GET /risen/healthz\n  GET /risen/poll\n');
+    res.end('risen cloud service\n  GET /risen/summary\n  GET /risen/pcs\n  GET /risen/battery\n  GET /risen/devices\n  GET /risen/full\n  GET /risen/trend?range=today|yesterday|days3\n  GET /risen/raw\n  GET /risen/healthz\n  GET /risen/poll\n');
   } catch (e) {
     json({ ok: false, error: e.message }, 500);
   }
 });
 
 /* ---------------- 启动 ---------------- */
-if (argv.indexOf('--login') >= 0) {
+if (argv.indexOf('--probe') >= 0) {
+  /* 摸接口用：把各接口的原始返回写到 <dir>/probe/，不启服务 */
+  probe().then(function () { process.exit(0); })
+    .catch(function (e) { console.error('探测失败：' + e.message); process.exit(1); });
+} else if (argv.indexOf('--login') >= 0) {
   /* 只测一次自动登录，不启服务：node tools/risen-cloud-service.js --login */
   login().then(function (ok) {
     console.log(ok ? '自动登录可用' : '自动登录失败');

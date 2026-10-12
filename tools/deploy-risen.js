@@ -94,7 +94,7 @@ function tmp(name, content) {
     lines.push('RISEN_CONFIG=' + DATA_DIR + '/risen.config.json');
     lines.push('RISEN_PORT=' + PORT);
     lines.push('RISEN_DIR=' + DATA_DIR);
-    lines.push('RISEN_POLL=300');
+    lines.push('RISEN_POLL=60');
     lines.push('RISEN_DAYS=3');
 
     await put(conn, tmp('lichu-risen.env', lines.join('\n') + '\n'), '/tmp/lichu-risen.env');

@@ -9,8 +9,10 @@
  *                          点：{ t, power_kw, daily_yield_kwh, total_yield_kwh }
  *
  *   储能数据来自日升云接入服务（现场那台柜子自己用 4G 上报到日升云）：
- *     GET /risen/summary   SOC、状态、功率、今日/累计充放、温度、剩余电量、收益
- *     GET /risen/devices   柜内子设备：BCU / PCS / 电表 / 空调 / 4G（含在线状态）
+ *     GET /risen/full   一次拿全：EMS 总览（SOC/状态/功率/充放电量/收益）
+ *                       + PCS 实时（三相电压电流/频率/功率因数）
+ *                       + 电池簇（SOC/SOH/单体电压温度极值）+ 液冷空调
+ *                       + 柜内子设备清单（型号/版本/在线状态）
  *
  *   页面字段对齐两家云平台（App / 网页）上的那一套；收益按电价估算，
  *   电价存在浏览器本地，点「电价」即可改。
@@ -144,10 +146,11 @@ window.SolarUI = (function () {
         if (w && w.data) wx = w.data;
       } catch (_) {}
       try {                                   /* 储能服务没起来时，光伏照常显示 */
-        const b = await getJSON('summary', API_STOR + '/risen/');
-        if (b && b.data) stor = b.data;
-        const bd = await getJSON('devices', API_STOR + '/risen/');
-        if (bd && bd.data) storDevs = bd.data;
+        const b = await getJSON('full', API_STOR + '/risen/');
+        if (b && b.data) {
+          stor = b.data;
+          if (Array.isArray(b.data.devices)) storDevs = b.data.devices;
+        }
       } catch (_) {}
       render();
       if (src) src.textContent = sum ? ('阳光云接入 · 更新 ' + fmtTime(sum.updated_at)) : '服务未就绪';
@@ -244,8 +247,11 @@ window.SolarUI = (function () {
   /* 储能柜（东方日升「日升云」）：SOC / 状态 / 功率 / 充放电量 + 柜内子设备 */
   const KIND = {
     BCU: '电池簇', PCS: '储能变流器', EMS: '主控', HVAC: '空调',
-    IN_METER: '内电表', EX_METER: '防逆流电表', PV_METER: '光伏电表', SIGNAL: '4G 信号'
+    IN_METER: '内电表', EX_METER: '防逆流电表', PV_METER: '光伏电表', SIGNAL: '4G 信号',
+    INVERTER: '光伏逆变器'
   };
+  /* 柜内设备的品牌代号（日升云 ems/list 里的 type 字段） */
+  const BRAND = { EJ: '恩玖', SYL: 'SYL', YWK: '英维克' };
   function renderStorage() {
     const box = byId('slBatt'), meta = byId('slBattMeta');
     if (!box) return;
@@ -255,17 +261,25 @@ window.SolarUI = (function () {
       return;
     }
     const r = stor.realtime || {}, td = stor.today || {}, tt = stor.total || {}, dv = stor.device || {};
+    const pc = stor.pcs || null, bt = stor.battery || null;
     if (meta) meta.textContent = '日升云 · 更新 ' + String(r.time || '--').slice(11, 16);
     const row = (k, v) => '<div class="sl-wx-row"><span>' + k + '</span><b>' + v + '</b></div>';
     const big = (label, v, u) => '<div class="sl-green-row"><b>' + v + '</b><u>' + u + '</u><span>' + label + '</span></div>';
+    const arrRow = (label, arr, unit, d) => row(label, Array.isArray(arr) ? (arr.map(v => fmt(v, d)).join(' / ') + ' ' + unit) : '--');
     box.innerHTML =
       '<div class="sl-wx-top"><b>储能柜 · ' + (r.status_text || '--') + '</b><span>' + fmt(r.soc, 0) + '<u>%</u></span></div>'
       + row('实时功率', fmt(r.power_kw, 1) + ' kW')
       + row('剩余电量', fmt(r.remaining_kwh, 1) + ' / ' + fmt(r.rated_kwh, 0) + ' 度')
-      + row('总压 / 总流', fmt(r.voltage_v, 1) + ' V　' + fmt(r.current_a, 1) + ' A')
+      + row('额定功率 / 效率', fmt(dv.rated_power_kw, 0) + ' kW　' + fmt(tt.efficiency, 2) + ' %')
       + row('电芯温度', fmt(r.temp_avg, 1) + ' ℃（高 ' + fmt(r.temp_max, 0) + ' / 低 ' + fmt(r.temp_min, 0) + '）')
       + row('电网 / 负载', fmt(r.grid_kw, 1) + ' / ' + fmt(r.load_kw, 1) + ' kW')
-      + row('额定功率 / 效率', fmt(dv.rated_power_kw, 0) + ' kW　' + fmt(tt.efficiency, 2) + ' %')
+      + (pc ? arrRow('PCS 三相电压', pc.volt_v, 'V', 1) : '')
+      + (pc ? arrRow('PCS 三相电流', pc.curr_a, 'A', 1) : '')
+      + (pc ? row('PCS 频率 / 功率因数', fmt(pc.freq_hz, 2) + ' Hz　' + fmt(pc.power_factor, 2)) : '')
+      + (bt ? row('总压 / 总流', fmt(bt.voltage_v, 1) + ' V　' + fmt(bt.current_a, 1) + ' A') : '')
+      + (bt ? row('单体电压 高 / 低', fmt(bt.cell_volt_max_mv, 0) + ' / ' + fmt(bt.cell_volt_min_mv, 0) + ' mV') : '')
+      + (bt ? row('单体温度 高 / 低', fmt(bt.cell_temp_max, 0) + ' / ' + fmt(bt.cell_temp_min, 0) + ' ℃') : '')
+      + (bt && bt.cooler ? row('液冷进出水温', fmt(bt.cooler.inlet_water_c, 1) + ' / ' + fmt(bt.cooler.outlet_water_c, 1) + ' ℃') : '')
       + '<div class="sl-green">'
       + big('今日充电', fmt(td.charge_kwh, 1), '度')
       + big('今日放电', fmt(td.discharge_kwh, 1), '度')
@@ -273,8 +287,11 @@ window.SolarUI = (function () {
       + '</div>'
       + (storDevs.length ? ('<div class="sl-devs">' + storDevs.map(function (d) {
         const ok = d.status === 'HEALTHY';
+        const sub = (KIND[d.kind] || d.kind)
+          + (d.brand ? ' · ' + (BRAND[d.brand] || d.brand) : '')
+          + (d.version ? ' ' + String(d.version).slice(0, 12) : '');
         return '<div class="sl-dev"><div class="sl-devmain"><b>' + (d.name || d.kind)
-          + '</b><span>' + (KIND[d.kind] || d.kind) + (d.model ? '　' + d.model : '') + '　' + (d.sn || '') + '</span></div>'
+          + '</b><span>' + sub + '</span></div>'
           + '<i class="sl-badge' + (ok ? '' : ' warn') + '">' + (d.status_text || '--') + '</i></div>';
       }).join('') + '</div>') : '');
   }
