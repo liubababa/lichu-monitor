@@ -29,7 +29,8 @@ window.SolarUI = (function () {
 
   let chart = null, timer = null, range = 'today', busyUntil = 0, last = null;
   let sum = null, devices = [], trend = [], wx = null, sceneOn = true;
-  let stor = null, storDevs = [];
+  let stor = null, storDevs = [], storTrend = [], revTrend = [], powTrend = [];
+  let storChart = null, revChart = null, powChart = null;
 
   /* ---------------- 小工具 ---------------- */
   const num = v => (v === null || v === undefined || v === '' || isNaN(Number(v))) ? null : Number(v);
@@ -151,6 +152,12 @@ window.SolarUI = (function () {
           stor = b.data;
           if (Array.isArray(b.data.devices)) storDevs = b.data.devices;
         }
+        const st = await getJSON('trend?range=today', API_STOR + '/risen/');
+        if (st && Array.isArray(st.points)) storTrend = st.points;
+        const rt = await getJSON('revenue-trend?days=7', API_STOR + '/risen/');
+        if (rt && Array.isArray(rt.points)) revTrend = rt.points;
+        const pt = await getJSON('power-trend?days=7', API_STOR + '/risen/');
+        if (pt && Array.isArray(pt.points)) powTrend = pt.points;
       } catch (_) {}
       render();
       if (src) src.textContent = sum ? ('阳光云接入 · 更新 ' + fmtTime(sum.updated_at)) : '服务未就绪';
@@ -296,6 +303,249 @@ window.SolarUI = (function () {
       }).join('') + '</div>') : '');
   }
 
+  /* ================= 整页版式（储能 / 光伏 / 收益） =================
+     视觉沿用莒南「设备总览」那套卡片语言（ov-sec / gv3-* / dt-kv），
+     数据来自日升云接入服务：/risen/full + /risen/trend + /risen/revenue-trend + /risen/power-trend */
+  const kvRow = (k, v) => '<div class="gv3-kvrow"><span>' + k + '</span><b>' + v + '</b></div>';
+  const kvGrid = rows => '<div class="gv3-skv">' + rows.map(r => kvRow(r[0], r[1])).join('') + '</div>';
+  const gvKpi = (label, val, unit, tag, cls) =>
+    '<div class="gv3-kpi' + (cls ? ' ' + cls : '') + '"><span class="gv3-klabel">' + label + '</span>'
+    + '<b class="gv3-kval">' + val + '</b><u class="gv3-kunit">' + (unit || '') + '</u>'
+    + (tag ? '<em class="gv3-ktag">' + tag + '</em>' : '') + '</div>';
+  const gvTile = (label, val, unit, tag) =>
+    '<div class="gv3-tile"><span class="gv3-tlabel">' + label + '</span>'
+    + '<b class="gv3-tval">' + val + '</b><u>' + (unit || '') + '</u>'
+    + (tag ? '<em class="gv3-ttag">' + tag + '</em>' : '') + '</div>';
+  function sec(span, title, chip, body) {
+    return '<section class="ov-sec gv3-sec ' + span + '"><div class="ov-sec-head"><b>' + title + '</b>'
+      + (chip ? '<span class="ov-tagchip">' + chip + '</span>' : '')
+      + '<i class="ov-online on"></i></div><div class="ov-sec-body gv3-body">' + body + '</div></section>';
+  }
+  function socRingHtml(soc) {
+    const c = 2 * Math.PI * 40;
+    const off = soc === null ? c : c * (1 - Math.max(0, Math.min(100, soc)) / 100);
+    return '<div class="gv3-ring"><svg viewBox="0 0 96 96">'
+      + '<circle class="rbg" cx="48" cy="48" r="40"/>'
+      + '<circle class="rfg" cx="48" cy="48" r="40" style="stroke-dasharray:' + c.toFixed(1)
+      + ';stroke-dashoffset:' + off.toFixed(1) + '"/></svg>'
+      + '<b><span>' + (soc === null ? '--' : Math.round(soc)) + '</span><i>%</i></b>'
+      + '<span class="gv3-ring-label">储能 SOC</span></div>';
+  }
+  /* 整页里的图表：innerHTML 重建后实例会指向旧的 DOM，这里保证对得上节点 */
+  function ensureChart(cur, id) {
+    const el = byId(id);
+    if (!el || typeof echarts === 'undefined') return cur;
+    if (cur && cur.getDom() === el) return cur;
+    if (cur) { try { cur.dispose(); } catch (_) {} }
+    return echarts.init(el);
+  }
+  const axisLabel = { fontSize: 10, hideOverlap: true };
+  const splitLine = { lineStyle: { color: 'rgba(46,230,200,.08)', type: 'dashed' } };
+  const chartTip = {
+    trigger: 'axis', backgroundColor: 'rgba(6,18,20,.92)',
+    borderColor: 'rgba(46,230,200,.35)', textStyle: { color: '#cfeee8', fontSize: 11 }
+  };
+  const chartLegend = { top: 0, right: 2, itemWidth: 10, itemHeight: 4, itemGap: 12, textStyle: { fontSize: 10 } };
+
+  function deviceRowsHtml() {
+    return '<div class="sl-devs">' + storDevs.map(function (d) {
+      const ok = d.status === 'HEALTHY';
+      const sub = (KIND[d.kind] || d.kind)
+        + (d.brand ? ' · ' + (BRAND[d.brand] || d.brand) : '')
+        + (d.version ? ' ' + String(d.version).slice(0, 12) : '');
+      return '<div class="sl-dev"><div class="sl-devmain"><b>' + (d.name || d.kind) + '</b><span>' + sub + '</span></div>'
+        + '<i class="sl-badge' + (ok ? '' : ' warn') + '">' + (d.status_text || '--') + '</i></div>';
+    }).join('') + '</div>';
+  }
+
+  /* ---------------- 储能页 ---------------- */
+  function renderStoragePage() {
+    const view = byId('slStorView'), box = byId('slStorBody');
+    if (!view || !box || view.classList.contains('hidden')) return;
+    if (!stor) {
+      box.innerHTML = '<div class="sl-empty">储能数据暂时读不到（日升云接入服务未启动，或凭据过期需重新登录）。</div>';
+      return;
+    }
+    const r = stor.realtime || {}, td = stor.today || {}, tt = stor.total || {}, dv = stor.device || {};
+    const pc = stor.pcs || null, bt = stor.battery || null, cool = bt && bt.cooler ? bt.cooler : null;
+    const cls = r.status === 2 ? 'chg' : (r.status === 1 ? 'dischg' : '');
+
+    const hero = sec('sp12', '储能总览',
+      dv.bcu_brand || dv.pcs_brand ? ((dv.bcu_brand ? '电池 ' + (BRAND[dv.bcu_brand] || dv.bcu_brand) : '')
+        + (dv.pcs_brand ? ' · PCS ' + (BRAND[dv.pcs_brand] || dv.pcs_brand) : '')) : '',
+      '<div class="gv3-hero">' + socRingHtml(num(r.soc)) + '<div class="gv3-kpis">'
+      + gvKpi('实时功率', fmt(r.power_kw, 1), 'kW', r.status_text || '', cls)
+      + gvKpi('今日充电', fmt(td.charge_kwh, 1), '度')
+      + gvKpi('今日放电', fmt(td.discharge_kwh, 1), '度')
+      + gvKpi('转换效率', fmt(tt.efficiency, 2), '%', '累计')
+      + gvKpi('剩余电量', fmt(r.remaining_kwh, 1), 'kWh', '/ ' + fmt(r.rated_kwh, 0) + ' kWh')
+      + gvKpi('额定功率', fmt(dv.rated_power_kw, 0), 'kW')
+      + gvKpi('累计充电', fmt(tt.charge_kwh, 0), '度')
+      + gvKpi('累计放电', fmt(tt.discharge_kwh, 0), '度')
+      + '</div></div>');
+
+    const bcu = bt ? kvGrid([
+      ['SOC / SOH', fmt(bt.soc, 0) + ' % / ' + fmt(bt.soh, 0) + ' %'],
+      ['SOE', fmt(bt.soe, 0) + ' %'],
+      ['簇总压', fmt(bt.voltage_v, 1) + ' V'],
+      ['簇总流', fmt(bt.current_a, 1) + ' A'],
+      ['剩余容量', fmt(bt.remaining_kwh, 1) + ' kWh'],
+      ['可充容量', fmt(bt.rechargeable_kwh, 1) + ' kWh'],
+      ['单体均压', fmt(bt.cell_volt_avg_mv, 0) + ' mV'],
+      ['单体压差', (num(bt.cell_volt_max_mv) !== null && num(bt.cell_volt_min_mv) !== null)
+        ? (num(bt.cell_volt_max_mv) - num(bt.cell_volt_min_mv)) + ' mV' : '--'],
+      ['最高单体', fmt(bt.cell_volt_max_mv, 0) + ' mV ' + (bt.cell_volt_max_id || '')],
+      ['最低单体', fmt(bt.cell_volt_min_mv, 0) + ' mV ' + (bt.cell_volt_min_id || '')],
+      ['平均温度', fmt(bt.cell_temp_avg, 0) + ' ℃'],
+      ['最高温度', fmt(bt.cell_temp_max, 0) + ' ℃ ' + (bt.cell_temp_max_id || '')],
+      ['最低温度', fmt(bt.cell_temp_min, 0) + ' ℃ ' + (bt.cell_temp_min_id || '')],
+      ['采样时间', String(bt.time || '--').slice(11, 19)]
+    ]) : '<div class="gv3-empty">暂无电池簇数据</div>';
+
+    const pcs = pc ? ('<div class="gv3-flow">'
+      + gvTile('有功功率', fmt(pc.power_kw, 1), 'kW', pc.work_status || '')
+      + gvTile('无功功率', fmt(pc.reactive_kvar, 1), 'kVar')
+      + gvTile('视在功率', fmt(pc.apparent_kva, 1), 'kVA')
+      + gvTile('电网频率', fmt(pc.freq_hz, 2), 'Hz')
+      + gvTile('功率因数', fmt(pc.power_factor, 2), '')
+      + '</div>' + kvGrid([
+        ['三相电压', Array.isArray(pc.volt_v) ? pc.volt_v.map(v => fmt(v, 1)).join(' / ') + ' V' : '--'],
+        ['三相电流', Array.isArray(pc.curr_a) ? pc.curr_a.map(v => fmt(v, 1)).join(' / ') + ' A' : '--'],
+        ['环境温度', fmt(pc.ambient_c, 1) + ' ℃'],
+        ['IGBT 温度', fmt(pc.igbt_a_c, 1) + ' ℃'],
+        ['采样时间', String(pc.time || '--').slice(11, 19)]
+      ])) : '<div class="gv3-empty">暂无 PCS 数据</div>';
+
+    const aux = cool ? ('<div class="gv3-auxcard"><div class="gv3-ahead">液冷机组</div>'
+      + '<div class="gv3-atemp"><div><span>进水</span><b>' + fmt(cool.inlet_water_c, 1) + '</b><u>℃</u></div>'
+      + '<span class="arrow">→</span>'
+      + '<div><span>出水</span><b>' + fmt(cool.outlet_water_c, 1) + '</b><u>℃</u></div></div>'
+      + kvGrid([
+        ['进水压力', fmt(cool.inlet_pressure, 2) + ' MPa'],
+        ['出水压力', fmt(cool.outlet_pressure, 2) + ' MPa'],
+        ['制冷 / 加热点', fmt(cool.cooling_point, 0) + ' / ' + fmt(cool.heating_point, 0) + ' ℃'],
+        ['环境温度', fmt(cool.ambient_c, 1) + ' ℃'],
+        ['机组状态', num(cool.fault_flag) ? '<span class="dt-alarm">有告警</span>' : '<span class="dt-ok">正常</span>'],
+        ['采样时间', String(cool.time || '--').slice(11, 19)]
+      ]) + '</div>') : '<div class="gv3-empty">暂无液冷数据</div>';
+
+    const comp = Array.isArray(stor.complete) ? stor.complete : null;
+    const compHtml = comp ? ('<div class="gv3-ahead" style="margin-top:10px">数据补传（待补条数）</div><div class="gv3-mgrid">'
+      + comp.map(c => '<div class="gv3-mitem"><span>' + c.name + '</span><b class="'
+        + (c.code ? 'warn' : '') + '">' + (c.code || 0) + '</b></div>').join('') + '</div>') : '';
+    const devs = storDevs.length
+      ? (deviceRowsHtml() + compHtml)
+      : '<div class="gv3-empty">暂无子设备数据</div>';
+
+    box.innerHTML = '<div class="dt-body">' + hero + '<div class="ov-grid">'
+      + sec('sp6', '电池堆 / 电池簇', dv.bcu_brand || 'SYL', bcu)
+      + sec('sp6', 'PCS 交流侧', dv.pcs_brand ? (BRAND[dv.pcs_brand] || dv.pcs_brand) : 'PCS', pcs)
+      + sec('sp12', '功率与 SOC（今日 · 5 分钟）',
+        (storTrend && storTrend.length ? storTrend.length + ' 点' : '--'), '<div class="dt-chart" id="slStorChart"></div>')
+      + sec('sp6', '液冷空调', 'YWK', aux)
+      + sec('sp6', '柜内子设备', storDevs.length + ' 台', devs)
+      + '</div></div>';
+
+    storChart = ensureChart(storChart, 'slStorChart');
+    if (storChart) {
+      const pts = (storTrend || []).filter(p => num(p.power_kw) !== null || num(p.soc) !== null);
+      storChart.setOption({
+        grid: { left: 52, right: 48, top: 30, bottom: 24 },
+        legend: Object.assign({}, chartLegend, { data: ['储能功率', 'SOC'] }),
+        tooltip: chartTip,
+        xAxis: { type: 'time', axisLabel: axisLabel, axisLine: { lineStyle: { color: 'rgba(46,230,200,.25)' } }, axisTick: { show: false } },
+        yAxis: [
+          { type: 'value', name: 'kW', nameTextStyle: { fontSize: 10 }, axisLabel: { fontSize: 10 }, splitLine: splitLine },
+          { type: 'value', name: 'SOC %', min: 0, max: 100, nameTextStyle: { fontSize: 10 }, axisLabel: { fontSize: 10 }, splitLine: { show: false } }
+        ],
+        series: [
+          { name: '储能功率', type: 'line', smooth: true, symbol: 'none', yAxisIndex: 0, lineStyle: { width: 2, color: '#ffb020' }, data: pts.map(p => [p.t, num(p.power_kw)]) },
+          { name: 'SOC', type: 'line', smooth: true, symbol: 'none', yAxisIndex: 1, lineStyle: { width: 1.6, color: '#3df0a0' }, data: pts.map(p => [p.t, num(p.soc)]) }
+        ]
+      }, false, true);
+    }
+  }
+
+  /* ---------------- 收益页 ---------------- */
+  function renderRevenuePage() {
+    const view = byId('slRevView'), box = byId('slRevBody');
+    if (!view || !box || view.classList.contains('hidden')) return;
+    const rev = (stor && stor.revenue) || {};
+    const td = (stor && stor.today) || {};
+    const price = tariff();
+    const pvTodayKwh = sum ? kwh(sum.daily_yield) : null;
+    const pvTotalKwh = sum ? kwh(sum.total_yield) : null;
+    const pvTodayMoney = pvTodayKwh === null ? null : pvTodayKwh * price;
+
+    const tiles = '<div class="gv3-flow">'
+      + gvTile('今日收益（日升云）', fmt(rev.day, 2), '元', '储能 + 光伏')
+      + gvTile('累计收益', fmt(rev.total, 2), '元', '日升云')
+      + gvTile('储能累计收益', fmt(rev.storage, 2), '元')
+      + gvTile('光伏累计收益', fmt(rev.solar, 2), '元')
+      + gvTile('储能度电收益', fmt(rev.per_kwh, 2), '元/度', '日升云')
+      + gvTile('今日光伏发电', fmt(pvTodayKwh, 1), '度', '阳光云 · 折合 ' + fmt(pvTodayMoney, 2) + ' 元')
+      + gvTile('今日储能充 / 放', fmt(td.charge_kwh, 1) + ' / ' + fmt(td.discharge_kwh, 1), '度')
+      + gvTile('累计光伏发电', fmt(pvTotalKwh, 0), '度', '阳光云')
+      + '</div>';
+
+    const green = kvGrid([
+      ['CO₂ 减排', fmt(rev.reduce_carbon_t, 2) + ' 吨'],
+      ['节约标准煤', fmt(rev.coal_t, 2) + ' 吨'],
+      ['等效植树', fmt(rev.trees, 0) + ' 棵'],
+      ['光伏累计（阳光云）', fmt(pvTotalKwh, 0) + ' 度'],
+      ['电价（估算用）', '<i id="slRevPrice" title="点击修改">' + fmt(price, 2) + ' 元/度</i>'],
+      ['数据来源', '日升云 / 阳光云']
+    ]);
+
+    box.innerHTML = '<div class="dt-body">'
+      + sec('sp12', '收益总览', rev.day === null && rev.day === undefined ? '' : ('今日 ' + fmt(rev.day, 2) + ' 元'), tiles)
+      + '<div class="ov-grid">'
+      + sec('sp8', '近 7 日收益（储能 / 光伏）', (revTrend && revTrend.length ? revTrend.length + ' 天' : '--'), '<div class="dt-chart" id="slRevChart"></div>')
+      + sec('sp4', '减排贡献', '累计', green)
+      + sec('sp12', '近 7 日充放电量与效率', (powTrend && powTrend.length ? powTrend.length + ' 天' : '--'), '<div class="dt-chart" id="slPowChart"></div>')
+      + '</div></div>';
+
+    const priceEl = byId('slRevPrice');
+    if (priceEl) priceEl.addEventListener('click', function () { editTariff(); renderRevenuePage(); });
+
+    revChart = ensureChart(revChart, 'slRevChart');
+    if (revChart) {
+      const pts = revTrend || [];
+      revChart.setOption({
+        grid: { left: 56, right: 20, top: 30, bottom: 24 },
+        legend: Object.assign({}, chartLegend, { data: ['储能收益', '光伏收益', '合计'] }),
+        tooltip: chartTip,
+        xAxis: { type: 'category', data: pts.map(p => String(p.date || '').slice(5)), axisLabel: axisLabel, axisLine: { lineStyle: { color: 'rgba(46,230,200,.25)' } } },
+        yAxis: { type: 'value', name: '元', nameTextStyle: { fontSize: 10 }, axisLabel: { fontSize: 10 }, splitLine: splitLine },
+        series: [
+          { name: '储能收益', type: 'bar', stack: 'r', barMaxWidth: 22, itemStyle: { color: 'rgba(46,230,200,.75)' }, data: pts.map(p => num(p.storage)) },
+          { name: '光伏收益', type: 'bar', stack: 'r', barMaxWidth: 22, itemStyle: { color: 'rgba(255,176,32,.7)' }, data: pts.map(p => num(p.solar)) },
+          { name: '合计', type: 'line', smooth: true, symbolSize: 6, lineStyle: { width: 2, color: '#8fd8ff' }, data: pts.map(p => num(p.total)) }
+        ]
+      }, false, true);
+    }
+
+    powChart = ensureChart(powChart, 'slPowChart');
+    if (powChart) {
+      const pts = powTrend || [];
+      powChart.setOption({
+        grid: { left: 56, right: 48, top: 30, bottom: 24 },
+        legend: Object.assign({}, chartLegend, { data: ['充电量', '放电量', '效率'] }),
+        tooltip: chartTip,
+        xAxis: { type: 'category', data: pts.map(p => String(p.date || '').slice(5)), axisLabel: axisLabel, axisLine: { lineStyle: { color: 'rgba(46,230,200,.25)' } } },
+        yAxis: [
+          { type: 'value', name: '度', nameTextStyle: { fontSize: 10 }, axisLabel: { fontSize: 10 }, splitLine: splitLine },
+          { type: 'value', name: '%', nameTextStyle: { fontSize: 10 }, axisLabel: { fontSize: 10 }, splitLine: { show: false } }
+        ],
+        series: [
+          { name: '充电量', type: 'bar', barMaxWidth: 20, itemStyle: { color: 'rgba(143,216,255,.75)' }, data: pts.map(p => num(p.charge)) },
+          { name: '放电量', type: 'bar', barMaxWidth: 20, itemStyle: { color: 'rgba(46,230,200,.8)' }, data: pts.map(p => num(p.discharge)) },
+          { name: '效率', type: 'line', yAxisIndex: 1, smooth: true, symbolSize: 6, lineStyle: { width: 2, color: '#ffb020' }, data: pts.map(p => num(p.efficiency)) }
+        ]
+      }, false, true);
+    }
+  }
+
   function renderInfo() {
     const box = byId('slInfo');
     if (!box) return;
@@ -361,26 +611,32 @@ window.SolarUI = (function () {
     setTimeout(function () { if (window.SolarScene) SolarScene.resize(); }, 120);
   }
 
-  /* ---------------- 三个标签页：同一套卡片移动挂载，只渲染一份 ---------------- */
+  /* ---------------- 四个标签页：三维监控 / 储能 / 光伏 / 收益 ----------------
+     三维监控用右侧滑出面板；另外三页是整页；光伏页里的卡片是从 #slBlocks 移过去的 */
   let tab = 'monitor';
+  const PAGES = { storage: 'slStorView', solar: 'slSolarView', revenue: 'slRevView' };
   function mountTab(which) {
     tab = which || tab;
+    Object.keys(PAGES).forEach(function (k) {
+      const v = byId(PAGES[k]);
+      if (v) v.classList.toggle('hidden', tab !== k);
+    });
     const conf = {
-      monitor: ['slPanel', ['slKpisBlock', 'slTrendBlock', 'slWxBlock', 'slDevBlock', 'slBattBlock', 'slInfoBlock']],
-      data: ['slDataBody', ['slKpisBlock', 'slBattBlock', 'slTrendBlock', 'slGreenBlock', 'slInfoBlock']],
-      devices: ['slDevBody', ['slDevBlock', 'slWxBlock', 'slGreenBlock', 'slInfoBlock']]
-    }[tab] || null;
-    if (!conf) return;
-    const host = byId(conf[0]);
-    if (host) conf[1].forEach(function (id) { const el = byId(id); if (el) host.appendChild(el); });
-    const isMon = tab === 'monitor';
-    const L = byId('slLeft'); if (L) L.style.display = isMon ? '' : 'none';
-    const R = byId('slRight'); if (R) R.style.display = isMon ? '' : 'none';
-    const dv = byId('slDataView'); if (dv) dv.classList.toggle('hidden', tab !== 'data');
-    const ev = byId('slDevView'); if (ev) ev.classList.toggle('hidden', tab !== 'devices');
-    if (isMon && sceneOn) setTimeout(ensureScene, 60);
+      monitor: ['slPanel', ['slBattBlock']],
+      solar: ['slSolarBody', ['slKpisBlock', 'slTrendBlock', 'slWxBlock', 'slDevBlock', 'slGreenBlock', 'slInfoBlock']]
+    }[tab];
+    if (conf) {
+      const host = byId(conf[0]);
+      if (host) conf[1].forEach(function (id) { const el = byId(id); if (el) host.appendChild(el); });
+    }
+    const page = !!PAGES[tab];
+    const L = byId('slLeft'); if (L) L.style.display = page ? 'none' : '';
+    const R = byId('slRight'); if (R) R.style.display = page ? 'none' : '';
+    if (!page && sceneOn) setTimeout(ensureScene, 60);
+    if (tab === 'storage') renderStoragePage();
+    if (tab === 'revenue') renderRevenuePage();
     setTimeout(function () {
-      if (chart) chart.resize();
+      [chart, storChart, revChart, powChart].forEach(function (c) { if (c) c.resize(); });
       if (window.SolarScene) SolarScene.resize();
     }, 90);
   }
@@ -388,6 +644,7 @@ window.SolarUI = (function () {
   function render() {
     renderKpis(); renderTrend(); renderDevices(); renderInfo(); renderGreen();
     renderWeather(); renderAlarm(); renderStorage(); pushScene();
+    renderStoragePage(); renderRevenuePage();
   }
 
   function renderAlarm() {

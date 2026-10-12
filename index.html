@@ -84,13 +84,17 @@ window.addEventListener('error', function (e) {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 17l6-5 4 3 8-7"/><path d="M3 21h18"/></svg>
         <span>三维监控</span><i>▾</i>
       </button>
-      <button class="tab" data-stab="data">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19V5M4 19h16"/><path d="M8 16V9M12 16v-4M16 16v-7"/></svg>
-        <span>数据总览</span><i>▾</i>
+      <button class="tab" data-stab="storage">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="8" width="17" height="9" rx="1.5"/><path d="M22 11v3M6 11.5v2M9.5 11.5v2M13 11.5v2"/></svg>
+        <span>储能</span><i>▾</i>
       </button>
-      <button class="tab" data-stab="devices">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="7" height="16"/><rect x="13" y="9" width="7" height="11"/><path d="M7 8h1M7 12h1M7 16h1M16 13h1M16 16h1"/></svg>
-        <span>设备与天气</span><i>▾</i>
+      <button class="tab" data-stab="solar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19V5M4 19h16"/><path d="M8 16V9M12 16v-4M16 16v-7"/></svg>
+        <span>光伏</span><i>▾</i>
+      </button>
+      <button class="tab" data-stab="revenue">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        <span>收益</span><i>▾</i>
       </button>
     </nav>
 
@@ -326,10 +330,12 @@ window.addEventListener('error', function (e) {
     <div class="side-inner" id="slPanel"></div>
   </aside>
 
-  <!-- 数据总览（整页） -->
-  <section id="slDataView" class="hidden"><div class="ov-body sl-body" id="slDataBody"></div></section>
-  <!-- 设备与天气（整页） -->
-  <section id="slDevView" class="hidden"><div class="ov-body sl-body" id="slDevBody"></div></section>
+  <!-- 储能（整页）：电池簇 / PCS / 液冷 / 子设备 / 曲线 -->
+  <section id="slStorView" class="hidden"><div class="ov-body sl-body" id="slStorBody"></div></section>
+  <!-- 光伏（整页）：实时概览 + 发电趋势 + 天气 + 设备 + 电站信息 -->
+  <section id="slSolarView" class="hidden"><div class="ov-body sl-body" id="slSolarBody"></div></section>
+  <!-- 收益（整页）：今日/累计收益、收益趋势、减排 -->
+  <section id="slRevView" class="hidden"><div class="ov-body sl-body" id="slRevBody"></div></section>
 
   <!-- 数据卡片：在三个标签之间移动挂载（同一套 DOM，只渲染一次） -->
   <div class="hidden" id="slBlocks">

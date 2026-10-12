@@ -17,6 +17,8 @@
  *     GET /risen/full               上面全部 + 补传情况，一次拿全
  *     GET /risen/trend?range=today|yesterday|days3
  *                                   5 分钟粒度曲线：{ t, soc, power_kw, charge_kwh, discharge_kwh, pv_kw }
+ *     GET /risen/revenue-trend?days=7   日粒度收益：{ date, storage, solar, total }
+ *     GET /risen/power-trend?days=7     日粒度充放：{ date, charge, discharge, efficiency }
  *     GET /risen/raw                最近一次原始返回（排查用）
  *     GET /risen/healthz            连通性、最近拉取时间、错误
  *     GET /risen/poll               立即拉一次
@@ -380,7 +382,7 @@ async function doPoll() {
 
     /* 3. 慢轮询：子设备型号版本 / 统计 / 收益 / 故障 / 今日曲线 / 补传情况 */
     if (slow) {
-      const [subs, pemsStats, stats, storage, revenue, fault, alarms, comp] = await Promise.all([
+      const [subs, pemsStats, stats, storage, revenue, fault, alarms, comp, kilo] = await Promise.all([
         call('/station/iot/ems/list/' + sn, { sn: sn }).catch(function () { return null; }),
         call('/station/pems/detail/statistics', { sn: sn }).catch(function () { return null; }),
         call('/station/home/plant/statistics').catch(function () { return null; }),
@@ -388,7 +390,8 @@ async function doPoll() {
         call('/station/home/revenue/information').catch(function () { return null; }),
         call('/station/home/plant/device/fault').catch(function () { return null; }),
         call('/station/home/plant/alarm/count').catch(function () { return null; }),
-        call('/station/system/binding/history/complete/device', { sn: sn }).catch(function () { return null; })
+        call('/station/system/binding/history/complete/device', { sn: sn }).catch(function () { return null; }),
+        call('/station/home/plant/revenue/kilowatt', { type: 'STORAGE', queryType: 'DAY' }).catch(function () { return null; })
       ]);
       if (subs) state.subs = subs;
       if (pemsStats) state.pemsStats = pemsStats;
@@ -398,6 +401,7 @@ async function doPoll() {
       if (fault) state.fault = fault;
       if (alarms !== null) state.alarms = Number(alarms) || 0;
       if (comp) state.complete = comp;
+      state.kilowatt = (kilo && kilo[0]) || state.kilowatt;
       state.trend = await pullTrend(sn, 'today').catch(function (e) { log('曲线拉取失败：' + e.message); return state.trend || []; });
       state.lastSlow = now;
       state.slowRuns++;
@@ -603,6 +607,7 @@ function summary() {
       total: num(r.totalIncomeSum),
       storage: num(r.totalStorageIncomeSum),
       solar: num(r.totalSolarIncomeSum),
+      per_kwh: state.kilowatt ? num(state.kilowatt.storageKilowatt) : null,
       reduce_carbon_t: num(r.reduceCarbon),
       trees: num(r.equivalentTree),
       coal_t: num(r.savingStandardCoal)
@@ -724,10 +729,40 @@ const server = http.createServer(async function (req, res) {
       }
       return json({ ok: true, range: range, points: pts });
     }
+    /* 日粒度收益曲线（近 N 天）：{date, storage, solar, total} */
+    if (u.pathname === '/risen/revenue-trend') {
+      const days = Math.max(1, Math.min(30, parseInt(u.searchParams.get('days') || '7', 10)));
+      const pid = state.plant ? state.plant.id : loadCfg().plantId;
+      const d = await call('/station/home/plant/revenue/curve', {
+        queryType: 'DAY', plantId: pid,
+        startTime: dayStartCN(-(days - 1)) + ' 00:00:00', endTime: fmtTime(new Date())
+      });
+      return json({
+        ok: true, days: days,
+        points: (d || []).map(function (x) {
+          return { date: x.xset, storage: num(x.storageProfit), solar: num(x.solarProfit), total: num(x.totalProfit) };
+        })
+      });
+    }
+    /* 日粒度充放电曲线（近 N 天）：{date, charge, discharge, efficiency} */
+    if (u.pathname === '/risen/power-trend') {
+      const days = Math.max(1, Math.min(30, parseInt(u.searchParams.get('days') || '7', 10)));
+      const pid = state.plant ? state.plant.id : loadCfg().plantId;
+      const d = await call('/station/home/plant/power/curve', {
+        queryType: 'DAY', plantId: pid,
+        startTime: dayStartCN(-(days - 1)) + ' 00:00:00', endTime: fmtTime(new Date())
+      });
+      return json({
+        ok: true, days: days,
+        points: (d || []).map(function (x) {
+          return { date: x.xset, charge: num(x.powerCharge), discharge: num(x.powerConsume), efficiency: num(x.efficiency) };
+        })
+      });
+    }
     if (u.pathname === '/risen/raw') return json({ ok: true, data: state.raw });
     if (u.pathname === '/risen/poll') { await poll(); return json({ ok: !state.lastError, last_error: state.lastError }); }
     res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
-    res.end('risen cloud service\n  GET /risen/summary\n  GET /risen/pcs\n  GET /risen/battery\n  GET /risen/devices\n  GET /risen/full\n  GET /risen/trend?range=today|yesterday|days3\n  GET /risen/raw\n  GET /risen/healthz\n  GET /risen/poll\n');
+    res.end('risen cloud service\n  GET /risen/summary\n  GET /risen/pcs\n  GET /risen/battery\n  GET /risen/devices\n  GET /risen/full\n  GET /risen/trend?range=today|yesterday|days3\n  GET /risen/revenue-trend?days=7\n  GET /risen/power-trend?days=7\n  GET /risen/raw\n  GET /risen/healthz\n  GET /risen/poll\n');
   } catch (e) {
     json({ ok: false, error: e.message }, 500);
   }

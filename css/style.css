@@ -831,6 +831,12 @@ button{font-family:inherit;cursor:pointer;background:none;border:none;color:inhe
 .gv3-kvrow{display:flex;justify-content:space-between;gap:5px;border-bottom:1px dotted rgba(46,230,200,.1);padding:2px 0}
 .gv3-kvrow span{font-size:10px;color:var(--dim)}
 .gv3-kvrow b{font-size:11.5px;color:#eafffa;font-family:var(--num)}
+/* 收益页里可点击修改的电价 */
+.gv3-kvrow b i{font-style:normal;color:var(--teal);border-bottom:1px dashed rgba(46,230,200,.5);cursor:pointer}
+/* 整页里 gv3 卡片组与图表跟随 sl 页面宽度 */
+.sl-body .gv3-kpis{min-width:0}
+.sl-body .gv3-hero{gap:16px}
+.sl-body .dt-chart{height:260px}
 
 /* 热力图 */
 .gv3-heatline{margin-bottom:7px}
