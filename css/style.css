@@ -224,26 +224,26 @@ button{font-family:inherit;cursor:pointer;background:none;border:none;color:inhe
 /* 注意：外层 wrapper 的 transform 由 CSS2DRenderer 控制，偏移写在 .tag3d / .card3d 上 */
 .tag3d{
   /* --lbl-scale 由三维场景按相机距离写入：拉远时浮标整体缩小、慢慢变淡 */
-  position:relative;transform:translateY(-62%) scale(var(--lbl-scale,1));transform-origin:14px 100%;
+  position:relative;transform:translateY(-62%) scale(var(--lbl-scale,1));transform-origin:11px 100%;
   background:linear-gradient(160deg,rgba(7,22,24,.92),rgba(4,12,14,.9));
   border:1px solid rgba(46,230,200,.45);border-left:3px solid var(--teal);
-  padding:12px 16px 11px;min-width:134px;white-space:nowrap;
+  padding:7px 11px 8px;min-width:100px;white-space:nowrap;
   box-shadow:0 4px 18px rgba(0,0,0,.5),0 0 12px rgba(46,230,200,.12);
   transition:box-shadow .2s,border-color .2s;
 }
 .tag3d::after{
-  content:"";position:absolute;left:14px;bottom:-5.5px;width:10px;height:10px;
+  content:"";position:absolute;left:11px;bottom:-4.5px;width:8px;height:8px;
   background:#071616;border-right:1px solid rgba(46,230,200,.45);
   border-bottom:1px solid rgba(46,230,200,.45);transform:rotate(45deg);
 }
-.tag3d b{display:block;font-size:14px;color:var(--teal);letter-spacing:1px;margin-bottom:7px;font-weight:normal}
-.tag3d span{display:flex;justify-content:space-between;gap:18px;font-size:11.5px;color:var(--dim);line-height:1.9}
+.tag3d b{display:block;font-size:12px;color:var(--teal);letter-spacing:.6px;margin-bottom:4px;font-weight:normal}
+.tag3d span{display:flex;justify-content:space-between;gap:14px;font-size:10.5px;color:var(--dim);line-height:1.8}
 .tag3d span i{font-style:normal;font-family:var(--num);color:#d9fff6}
 .tag3d.hot{border-color:var(--teal);box-shadow:0 0 16px rgba(46,230,200,.35)}
 /* 高特场景浮标：名称 / 数值 / 状态三行；数值用等宽数字（此前 <i><em> 没吃到样式，
    数字是浏览器默认斜体、状态还跟在数值后面挤在同一行） */
-.tag3d-gt>i{display:block;font-style:normal;font-family:var(--num);font-size:14.5px;color:#d9fff6;letter-spacing:.4px;margin-top:5px}
-.tag3d-gt>em{display:block;font-style:normal;font-size:11.5px;color:var(--dim);letter-spacing:.4px;margin-top:4px}
+.tag3d-gt>i{display:block;font-style:normal;font-family:var(--num);font-size:12.5px;color:#d9fff6;letter-spacing:.4px;margin-top:3px}
+.tag3d-gt>em{display:block;font-style:normal;font-size:10.5px;color:var(--dim);letter-spacing:.4px;margin-top:2px}
 
 .card3d{
   position:relative;transform:translateY(-55%) scale(var(--lbl-scale,1));transform-origin:26px 100%;width:228px;pointer-events:auto;

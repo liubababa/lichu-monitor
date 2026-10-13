@@ -693,11 +693,12 @@ window.SolarScene = (function () {
     addCard('storage', CAB_X, CAB_H + 1.2, CAB_Z);
   }
 
-  /* ---------------- 并网铁塔（国网风格格构塔：收腰塔身 + 三层横担 + 绝缘子串 + 架空线）
+  /* ---------------- 并网铁塔（国网风格格构塔：收腰塔身 + 三层横担 + 绝缘子串）
      本站储能要往电网卖电，线路上立一座塔比排几根电杆更像回事。塔身沿 y 轴，
-     横担沿 z，导线沿 x（西向出线），整塔绕 y 转 90° 让导线与本场景的东西向一致。 ---------------- */
+     横担沿 z，整塔绕 y 转 90° 对准东西向。进线走地面电缆（计量箱 → 塔基电缆终端箱），
+     塔上不架空中导线——按现场观感，天上不留电线。 ---------------- */
   const TWR_X = -31, TWR_Z = 7.0, TWR_H = 10.4;
-  let twrLabelEl = null, twrArms = [];
+  let twrLabelEl = null;
   function buildTower() {
     const T = THREE_();
     const g = new T.Group();
@@ -710,8 +711,6 @@ window.SolarScene = (function () {
       { color: 0x2ee6c8, emissive: 0x0a5a4a, emissiveIntensity: .35 },
       { color: 0x18b39a, emissive: 0x000000, emissiveIntensity: 0 });
     const insMat = std(0xd8e6e4, { roughness: .35, metalness: .1 });
-    const condMat = regThemeMat(new T.LineBasicMaterial({ color: 0x2ee6c8, transparent: true, opacity: .32 }),
-      { color: 0x2ee6c8 }, { color: 0x0d8f7a });
     /* 塔身半宽：底部宽 → 腰部收窄 → 上部略开 */
     const halfAt = function (y) {
       const t = Math.max(0, Math.min(1, y / hgt));
@@ -756,10 +755,10 @@ window.SolarScene = (function () {
         });
       }
     }
-    /* 三层横担（每层左右各一挑），端部下挂绝缘子串，导线沿线路方向（本塔即 x）穿越 */
+    /* 三层横担（每层左右各一挑）+ 端部下挂绝缘子串。
+       本站进线走地面电缆（见 buildEquipment 的电缆敷设），塔上不再架空中导线 */
     const ARMS = [[6.6, 3.0], [7.8, 2.7], [9.0, 2.4]];
-    twrArms = [];
-    ARMS.forEach(function (a, ai) {
+    ARMS.forEach(function (a) {
       const y = a[0], len = a[1], w = halfAt(y);
       [-1, 1].forEach(function (s) {
         const inn = new T.Vector3(s * w, y, 0);
@@ -775,30 +774,13 @@ window.SolarScene = (function () {
           ins.add(disc);
         }
         g.add(ins);
-        const wy = tip.y - .55, wx = tip.x;
-        const pts = [];
-        for (let k = 0; k <= 24; k++) {                                                /* 导线带垂弧，穿过塔位向西出线 */
-          const z = -20 + (k / 24) * 40;
-          const sag = Math.sin(Math.min(1, Math.abs(z) / 20) * Math.PI / 2) * .95;
-          pts.push(new T.Vector3(wx, wy - sag, z));
-        }
-        g.add(new T.Line(new T.BufferGeometry().setFromPoints(pts), condMat));
-        /* 记录挂点（世界坐标）：给"电杆 → 铁塔"那三跨导线用 */
-        g.updateMatrixWorld(true);
-        twrArms.push({ v: tip.clone().applyMatrix4(g.matrixWorld), s: s, ai: ai });
       });
     });
-    /* 塔顶地线支架 + 地线 */
+    /* 塔顶地线支架（结构件，保留塔顶轮廓） */
     const tw = halfAt(hgt);
     member(new T.Vector3(-tw, hgt, 0), new T.Vector3(0, hgt + .9, 0), legMat, .04);
     member(new T.Vector3(tw, hgt, 0), new T.Vector3(0, hgt + .9, 0), legMat, .04);
     g.add(box(tw * 2.6, .06, .06, braceMat, 0, hgt + .55, 0));
-    const gpts = [];
-    for (let k = 0; k <= 24; k++) {
-      const z = -20 + (k / 24) * 40;
-      gpts.push(new T.Vector3(0, hgt + .9 - Math.sin(Math.min(1, Math.abs(z) / 20) * Math.PI / 2) * .6, z));
-    }
-    g.add(new T.Line(new T.BufferGeometry().setFromPoints(gpts), condMat));
     /* 塔顶航空障碍灯：红点 + 加色光晕，呼吸闪烁（给暗色画面一个活点） */
     beacon = new T.Mesh(new T.SphereGeometry(.13, 10, 10),
       new T.MeshBasicMaterial({ color: 0xff5a3c, transparent: true, opacity: .9, fog: false }));
@@ -866,38 +848,24 @@ window.SolarScene = (function () {
     mg.add(box(.56, .86, .02, regThemeMat(std(0xcfd6d2, { roughness: .45, metalness: .3 }), { color: 0x3a4b53 }), 0, .82, .46));           /* 箱门（朝南） */
     mg.add(box(.16, .1, .03, std(0x8f9a9c, { roughness: .5, metalness: .5 }), -.12, 1.0, .48));
     root.add(mg);
-    const poleMat = regThemeMat(std(0xb9c2c4, { roughness: .6, metalness: .3 }), { color: 0x46565d });
-    const px = mx - .6;
-    /* 只留近处一根电杆做引下；远段线路改由并网铁塔承担（见 buildTower） */
-    const poles = [[px, 4.25, mz, 4.5]];
-    poles.forEach(function (p) {
-      root.add(cyl(.10, .13, p[3], poleMat, p[0], p[3] / 2, p[2], 10));
-      root.add(box(.12, .1, 1.15, poleMat, p[0], p[1] - .12, p[2]));                    /* 横担 */
-      [-.42, 0, .42].forEach(function (oz) {                                            /* 瓷瓶 */
-        root.add(cyl(.045, .055, .17, std(0xdfe6e8, { roughness: .35, metalness: .1 }), p[0], p[1] + .04, p[2] + oz, 8));
-      });
-    });
-    /* 引下线：电杆 → 计量箱箱顶 */
-    const drop = new T.CatmullRomCurve3([
-      new T.Vector3(px + .12, 3.6, mz + .1),
-      new T.Vector3(mx + .1, 2.4, mz + .3),
-      new T.Vector3(mx + .02, 1.5, mz + .02)
-    ]);
-    root.add(new T.Mesh(new T.TubeGeometry(drop, 12, .02, 5, false), std(0x2c3a40, { roughness: .7 })));
-    /* 三跨导线：近杆横担 → 并网铁塔的三层横担（带弧垂）—— 卖电就从这条线送出去 */
-    const wireMat = std(0x2c3a40, { roughness: .7, metalness: .2 });
-    const towerSide = twrArms.filter(function (a) { return a.s === -1; })
-      .sort(function (a, b) { return a.ai - b.ai; });
-    [[-.42, 0], [0, 1], [.42, 2]].forEach(function (o) {
-      const tip = towerSide[o[1]];
-      if (!tip) return;
-      const a = new T.Vector3(px, 4.29, mz + o[0]);
-      const b = new T.Vector3(tip.v.x, tip.v.y - .55, tip.v.z);
-      const mid = new T.Vector3((a.x + b.x) / 2, Math.min(a.y, b.y) - .34, (a.z + b.z) / 2);
-      root.add(new T.Mesh(new T.TubeGeometry(new T.CatmullRomCurve3([a, mid, b]), 14, .022, 5, false), wireMat));
-    });
-    gridLabelEl = label('并网点<i>无输出</i><em>计量箱 · 关口表</em>', 'tag3d-gt', px - .2, 5.05, mz);
-    addCard('grid', px - .2, 4.1, mz);
+    /* 并网电缆走地面：计量箱底 → 沿场坪（混凝土电缆墩托着）→ 铁塔基座的电缆终端箱。
+       原来这里是「电杆 + 三跨空中导线」，按现场观感改成地面敷设，空中不再有电线 */
+    const G_CY = .36;                                             /* 电缆中心离场坪的高度 */
+    const gx0 = mx + .15, gz0 = mz + .05, gx1 = -28.6, gz1 = TWR_Z;
+    const saddleMat = std(0x5a6a70, { roughness: .85, envMapIntensity: .2 });
+    for (let i = 1; i <= 8; i++) {                                /* 电缆墩：每 1.8m 左右一个 */
+      const t = i / 9;
+      root.add(box(.16, .12, .16, saddleMat, gx0 + (gx1 - gx0) * t, .24, gz0 + (gz1 - gz0) * t));
+    }
+    /* 铁塔基座旁的电缆终端箱（地面电缆从这里进塔） */
+    const tbox = new T.Group();
+    tbox.position.set(-28.75, 0, TWR_Z);
+    tbox.add(box(.72, .1, .62, std(0x2b3a42, { roughness: .9 }), 0, .23, 0));
+    tbox.add(box(.6, .72, .5, regThemeMat(std(0xb9c2c4, { roughness: .5, metalness: .35 }), { color: 0x33454d }), 0, .64, 0));
+    tbox.add(box(.66, .06, .56, std(0x2b3a42, { roughness: .6, metalness: .4 }), 0, 1.03, 0));
+    root.add(tbox);
+    gridLabelEl = label('并网点<i>无输出</i><em>计量箱 · 关口表</em>', 'tag3d-gt', mx - .2, 3.3, mz);
+    addCard('grid', mx - .2, 2.2, mz);
   }
 
   /* ---------------- 电流光纹 ---------------- */
@@ -1024,13 +992,15 @@ window.SolarScene = (function () {
       new T.Vector3(-15.6, .85, 4.2),
       new T.Vector3(-16.7, .72, 2.0)
     ], 'stor', .063);
-    /* 交流支线：计量箱 → 电杆 → 沿三跨导线 → 并网铁塔（往电网卖电 / 从电网取电） */
+    /* 交流支线：计量箱底 → 地面电缆（沿电缆墩敷设）→ 铁塔基座终端箱（卖电 / 买电走这条） */
     addFlow([
-      new T.Vector3(-15.05, 1.35, 5.95),
-      new T.Vector3(-15.2, 2.6, 5.95),
-      new T.Vector3(-15.4, 4.1, 6.0),
-      new T.Vector3(-22, 5.6, 7.6),
-      new T.Vector3(-30, 6.4, 7.0)
+      new T.Vector3(-14.54, 1.28, 6.02),
+      new T.Vector3(-14.5, .78, 6.04),
+      new T.Vector3(-14.45, .36, 6.05),
+      new T.Vector3(-18.6, .36, 6.32),
+      new T.Vector3(-22.5, .36, 6.58),
+      new T.Vector3(-26.0, .36, 6.82),
+      new T.Vector3(-28.6, .38, 7.0)
     ], 'grid', .068);
 
     /* ---------- 天气：太阳 / 月亮 / 云 / 降水 ---------- */
@@ -1382,8 +1352,8 @@ window.SolarScene = (function () {
   }
 
   /* 浮标按相机距离缩放：HTML 浮标固定像素大小，拉远后模型缩成一点、浮标还是原尺寸，
-     就会糊成一片。按"默认机位距离 = 100%"算缩放，远处再略微淡出 */
-  const LBL_REF = 48;                // 默认机位附近：浮标 100%
+     就会糊成一片。按"默认机位距离 = 72%"算缩放（站点默认机位约 58m），远处再淡出 */
+  const LBL_REF = 42;                // 默认机位附近：浮标 72%（原来 48 → 100%，太大挡视线）
   let _lblV = null;
   function scaleLabels() {
     if (!labelPairs.length || !camera) return;
@@ -1393,12 +1363,12 @@ window.SolarScene = (function () {
       it.obj.getWorldPosition(_lblV);
       const d = camera.position.distanceTo(_lblV);
       let k = LBL_REF / Math.max(1, d);
-      k = Math.min(1.15, Math.max(0.45, k));
+      k = Math.min(1, Math.max(0.36, k));
       if (Math.abs((it.k || 0) - k) < 0.01) continue;      /* 变化太小就不写样式，免得每帧折腾 DOM */
       it.k = k;
       it.el.style.setProperty('--lbl-scale', k.toFixed(3));
-      /* 拉得越远越淡：0.45 时降到 0.35，远景不至于是"一片标签" */
-      it.el.style.opacity = (0.35 + 0.65 * Math.min(1, (k - 0.45) / 0.55)).toFixed(2);
+      /* 拉得越远越淡：0.36 时降到 0.3，远景不至于是"一片标签" */
+      it.el.style.opacity = (0.3 + 0.7 * Math.min(1, (k - 0.36) / 0.64)).toFixed(2);
     }
   }
 
