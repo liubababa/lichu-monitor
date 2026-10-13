@@ -1332,13 +1332,20 @@ window.GaoteScene3D = (function () {
     if (facWinMat) facWinMat.emissiveIntensity = facWinBase;
   }
 
-  /* 机位：不写死坐标，按当前画布宽高比二分出"刚好装下全场"的距离。
-     宽屏（用户显示器那种）就贴近，画面填满；窄屏自动退后，最右侧厂房不会出画。
-     允许用到画面的 88% / 86%（横向 / 纵向），右边再留出收起的面板拉手 */
-  const FIT_X = .88, FIT_Y = .86;
-  const fitCam = typeof THREE !== 'undefined' ? new THREE.PerspectiveCamera(46, 1, .1, 300) : null;
+  /* 机位：不写死坐标，按当前画布宽高比二分出"装下全场还留出余量"的距离。
+     只用到画面的 70% / 68%（横向 / 纵向）—— 屏幕越宽，卡住构图的其实是纵向
+     （浮标摞得高），所以两个方向都放宽；数值越小 = 相机退得越远、画面越小。
+     除设备本体外，浮标占的高度也算进装框范围（用户："至少能看见他们的全部"） */
+  const FIT_X = .70, FIT_Y = .68;
+  /* 注意：three.js 是 main.js 之后才动态加载的，本文件刚解析时 THREE 还不存在，
+     所以这个"量尺寸用的临时相机"必须等真正用到时再建（写成模块级常量会永远是 null，
+     fitDistance 就会一直走兜底值，机位等于没算） */
+  let fitCam = null;
   function fitDistance(tgt, dir, pts, aspect) {
-    if (!fitCam) return 31.3;
+    if (!fitCam) {
+      if (typeof THREE === 'undefined' || !THREE.PerspectiveCamera) return 44;
+      fitCam = new THREE.PerspectiveCamera(46, 1, .1, 300);
+    }
     let lo = 10, hi = 95, best = hi;
     for (let i = 0; i < 26; i++) {
       const mid = (lo + hi) / 2;
@@ -1369,13 +1376,17 @@ window.GaoteScene3D = (function () {
        所以只固定目标点与视线方向，距离按当前画布算（fitDistance） */
     const camTgt = new THREE.Vector3(3.5, 2, 1);
     const camDir = new THREE.Vector3(15, 9, 26).normalize();
-    /* 装下这些点，全场就都在画里：厂房外角、附房、储能柜、汇流柜、塔脚与塔尖 */
+    /* 装下这些点（含浮标高度），全场连名字就都在画里：
+       厂房外角 + 厂房浮标、附房、储能柜 + 柜顶浮标、汇流柜 + 浮标、塔脚与塔尖 */
     const fitPts = [
       new THREE.Vector3(23.3, 0, 4.8), new THREE.Vector3(23.3, 8.2, 4.8),
       new THREE.Vector3(23.3, 8.2, -3.2), new THREE.Vector3(10.3, 8.2, -3.2),
       new THREE.Vector3(10.3, 0, 4.8), new THREE.Vector3(7.7, 2.0, 4.8),
+      new THREE.Vector3(16.8, 10.6, .8),                                    // 厂房浮标
       new THREE.Vector3(-3.9, 0, -.8), new THREE.Vector3(3.9, 2.8, .8),
+      new THREE.Vector3(-3.9, 6.2, -.8), new THREE.Vector3(3.9, 7.0, .8),    // 两个柜顶浮标（奇数柜再高一档）
       new THREE.Vector3(-10.9, 0, 3.7), new THREE.Vector3(-10.9, 2.4, 2.3),
+      new THREE.Vector3(-10.9, 5.2, 3.7),                                    // 汇流柜浮标
       new THREE.Vector3(-17, 0, -2.8), new THREE.Vector3(-17, 8.2, -2.8),
       new THREE.Vector3(-9.4, 8.2, -2.8), new THREE.Vector3(-13.2, 9.4, -2.8)
     ];
@@ -1415,10 +1426,10 @@ window.GaoteScene3D = (function () {
     if (typeof THREE.OrbitControls === 'function') {
       controls = new THREE.OrbitControls(camera, renderer.domElement);
       controls.enableDamping = true; controls.dampingFactor = .08;
-      controls.minDistance = 12; controls.maxDistance = 70;
+      controls.minDistance = 12; controls.maxDistance = 95;
       /* 视角限制在水平线以上：压低到最低也看不到台面下方与地坪边缘 */
       controls.maxPolarAngle = 1.35;
-      controls.target.set(2, 2, 1);
+      controls.target.copy(camTgt);      /* 必须和机位用同一个目标点，否则每帧 update() 会把镜头重新瞄偏 */
       controls.autoRotate = rot.auto; controls.autoRotateSpeed = rot.speed * 6;
     }
     if (typeof THREE.EffectComposer === 'function' && THREE.RenderPass && THREE.UnrealBloomPass) {
