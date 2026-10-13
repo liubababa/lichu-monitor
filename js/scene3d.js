@@ -32,6 +32,8 @@ window.Scene3D = (function () {
   const deviceGroups = {};      // key -> Group
   const labelEls = {};          // key -> .tag3d 元素
   const labelWraps = {};        // key -> CSS2D wrapper
+  const labelObjs = {};         // key -> CSS2DObject（遮挡判断要用世界坐标）
+  const labelBlocked = {};      // key -> 是否被模型挡住
   const cardEls = {};           // key -> .card3d 元素
   const picking = [];           // 可点选的设备组
   const scanRings = [];         // 扫描光环
@@ -354,7 +356,7 @@ window.Scene3D = (function () {
     const o = new THREE.CSS2DObject(wrap);
     o.position.copy(pos);
     deviceGroups[key].add(o);
-    labelEls[key] = el; labelWraps[key] = wrap;
+    labelEls[key] = el; labelWraps[key] = wrap; labelObjs[key] = o;
   }
   function addCard(key, pos) {
     const wrap = document.createElement('div');
@@ -376,7 +378,40 @@ window.Scene3D = (function () {
   }
   function applyLabelVisibility() {
     for (const k in labelEls)
-      labelEls[k].style.visibility = (labelsVisible && activeCardKey !== k) ? 'visible' : 'hidden';
+      labelEls[k].style.visibility = (labelsVisible && activeCardKey !== k && !labelBlocked[k]) ? 'visible' : 'hidden';
+  }
+
+  /* 浮标遮挡：浮标是 HTML 图层，天生盖在三维模型之上。从相机朝浮标锚点打一条射线，
+     被别的设备/建筑挡住的浮标就藏掉（自己那一组的构件不算遮挡）。
+     每 6 帧算一次（约 12 次/秒），开销可以忽略 */
+  let _occRay = null, _occV = null, _occDir = null, _occN = 0;
+  function updateLabelOcclusion() {
+    if (!camera || !picking.length) return;
+    if (++_occN % 6) return;
+    if (!_occRay) {
+      _occRay = new THREE.Raycaster();
+      _occV = new THREE.Vector3();
+      _occDir = new THREE.Vector3();
+    }
+    let dirty = false;
+    for (const k in labelObjs) {
+      const o = labelObjs[k];
+      o.getWorldPosition(_occV);
+      const dist = _occV.distanceTo(camera.position);
+      _occDir.copy(_occV).sub(camera.position).normalize();
+      _occRay.set(camera.position, _occDir);
+      _occRay.near = 0;
+      _occRay.far = Math.max(.5, dist - .6);
+      const hits = _occRay.intersectObjects(picking, true);
+      let blocked = false;
+      for (let h = 0; h < hits.length; h++) {
+        let p = hits[h].object, own = false;
+        while (p) { if (p === deviceGroups[k]) { own = true; break; } p = p.parent; }
+        if (!own) { blocked = true; break; }
+      }
+      if (blocked !== !!labelBlocked[k]) { labelBlocked[k] = blocked; dirty = true; }
+    }
+    if (dirty) applyLabelVisibility();
   }
 
   /* ---------------- 设备注册 ---------------- */
@@ -655,6 +690,8 @@ window.Scene3D = (function () {
       const ts = hoverRing.userData.targetScale || 6;
       hoverRing.scale.setScalar(ts);
     }
+
+    updateLabelOcclusion();          /* 被模型挡住的浮标藏起来（每 6 帧算一次） */
 
     composer.render();
     labelRenderer.render(scene, camera);

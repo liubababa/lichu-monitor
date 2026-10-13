@@ -282,7 +282,7 @@ window.GaoteScene3D = (function () {
     o.position.copy(pos);
     (groups[key] || scene).add(o);
     labelEls[key] = el;
-    labelPairs.push({ obj: o, el: el });       /* 供按距离缩放用 */
+    labelPairs.push({ obj: o, el: el, key: key, owner: groups[key] || scene });       /* 供距离缩放 + 遮挡判断 */
   }
   function addCard(key, pos) {
     const wrap = document.createElement('div');
@@ -302,6 +302,44 @@ window.GaoteScene3D = (function () {
     if (key && cardEls[key]) cardEls[key].style.display = '';
     applyLabelVisibility();
   }
+  /* 浮标遮挡：浮标是 HTML 图层，天生盖在三维模型之上。这里从相机朝浮标锚点打一条射线，
+     被别的设备/建筑挡住的浮标就藏掉（自己那一组的构件不算遮挡，否则浮标会被自己的柜子误挡）。
+     每 6 帧算一次（约 12 次/秒），开销可以忽略 */
+  const occluders = [];
+  const labelBlocked = {};
+  let _occRay = null, _occV = null, _occDir = null, _occN = 0;
+  function updateLabelOcclusion() {
+    if (!labelPairs.length || !camera) return;
+    if (!occluders.length) { for (const k in groups) occluders.push(groups[k]); }
+    if (!occluders.length) return;
+    if (++_occN % 6) return;
+    if (!_occRay) {
+      _occRay = new THREE.Raycaster();
+      _occV = new THREE.Vector3();
+      _occDir = new THREE.Vector3();
+    }
+    let dirty = false;
+    for (let i = 0; i < labelPairs.length; i++) {
+      const it = labelPairs[i];
+      if (!it.key) continue;
+      it.obj.getWorldPosition(_occV);
+      const dist = _occV.distanceTo(camera.position);
+      _occDir.copy(_occV).sub(camera.position).normalize();
+      _occRay.set(camera.position, _occDir);
+      _occRay.near = 0;
+      _occRay.far = Math.max(.5, dist - .6);
+      const hits = _occRay.intersectObjects(occluders, true);
+      let blocked = false;
+      for (let h = 0; h < hits.length; h++) {
+        let o = hits[h].object, own = false;
+        while (o) { if (o === it.owner) { own = true; break; } o = o.parent; }
+        if (!own) { blocked = true; break; }
+      }
+      if (blocked !== !!labelBlocked[it.key]) { labelBlocked[it.key] = blocked; dirty = true; }
+    }
+    if (dirty) applyLabelVisibility();
+  }
+
   function applyLabelVisibility() {
     /* 明细卡片打开时把所有浮标藏起来：浮标按 3D 位置投影，会压在卡片上（重叠很难看） */
     const cardOpen = !!activeCardKey;
@@ -310,10 +348,10 @@ window.GaoteScene3D = (function () {
       const idx = isStack ? parseInt(k.slice(5), 10) : -1;
       /* 没内容的浮标不显示（否则会剩个空心框，看不出是什么） */
       const empty = !labelEls[k].textContent.trim();
-      const hide = cardOpen || !labelsOn || empty || (isStack && idx >= stackN);
+      const hide = cardOpen || !labelsOn || empty || (isStack && idx >= stackN) || labelBlocked[k];
       labelEls[k].style.display = hide ? 'none' : '';
     }
-    if (facLabelEl) facLabelEl.style.display = (labelsOn && !cardOpen) ? '' : 'none';
+    if (facLabelEl) facLabelEl.style.display = (labelsOn && !cardOpen && !labelBlocked.factory) ? '' : 'none';
   }
 
   /* ---------------- 能量流 ---------------- */
@@ -658,6 +696,11 @@ window.GaoteScene3D = (function () {
     }, 256, 256, 2);
   }
 
+  /* 厂房门口的人气（叉车 + 工人）：都不投影，位置在 loop 里推进 */
+  const YARD_Y = .18;                      /* 场地台座顶面：人和叉车站在这个高度 */
+  const facWalk = [];
+  let facFork = null;
+
   function buildFactory(root) {
     const g = new THREE.Group();
     const fx = FAC_X, fz = FAC_Z;
@@ -809,6 +852,43 @@ window.GaoteScene3D = (function () {
     spill.rotation.x = -Math.PI / 2;
     spill.position.set(doorX, top + .27, D / 2 + .9);
     g.add(spill);
+
+    /* 门口的人气：一台叉车在货台前来回跑 + 两个工人在门口走动。
+       都刻意抽象（不做五官/手脚这类细节），也都不投影——省阴影开销，
+       而且不会因为"动的东西留在静态阴影里"出现鬼影 */
+    const wBodyMat = regMat(std(0x8fa6ab, { roughness: .85 }), { color: 0x9fb3b8 }, { color: 0x8e9ea3 });
+    const wHeadMat = regMat(std(0xb9c8cb, { roughness: .8 }), { color: 0xc8d4d6 }, { color: 0xb2c2c6 });
+    function addWorker(x0, z0, x1, z1, phase, speed) {
+      const p = new THREE.Group();
+      const b = new THREE.Mesh(new THREE.CylinderGeometry(.15, .185, .82, 8), wBodyMat);
+      b.position.y = .55;
+      const h = new THREE.Mesh(new THREE.SphereGeometry(.135, 10, 8), wHeadMat);
+      h.position.y = 1.06;
+      p.add(b, h);
+      g.add(p);
+      const len = Math.hypot(x1 - x0, z1 - z0);
+      facWalk.push({ g: p, a: [x0, z0], b: [x1, z1], len: len, dist: (phase || 0) * len, speed: speed || .8 });
+    }
+    addWorker(-3.5, 6.0, 1.6, 6.0, 0, .72);                    /* 货台前的人行道（厂房局部坐标） */
+    addWorker(-1.0, 6.0, 2.4, 6.0, .55, .95);
+    /* 叉车：车身 + 门架 + 货叉 + 顶灯，在货台前那条独立车道上来回跑（不跟人重叠） */
+    const fl = new THREE.Group();
+    const flBody = regMat(std(0xd9a13a, { roughness: .6, metalness: .3 }), { color: 0xb8862c }, { color: 0xd9a13a });
+    const flDark = std(0x1d2a2e, { roughness: .7, metalness: .35 });
+    const flSteel = std(0x9fb0b6, { roughness: .45, metalness: .6 });
+    [[1.5, .6, .95, flBody, 0, .5, 0], [1.3, .3, .82, flDark, 0, .2, 0],
+    [.12, 1.3, .12, flSteel, -.62, 1.0, -.3], [.12, 1.3, .12, flSteel, -.62, 1.0, .3],
+    [.08, .09, 1.0, flSteel, -.7, .34, 0]].forEach(function (a) {
+      const m = box(a[0], a[1], a[2], a[3], a[4], a[5], a[6]);
+      m.castShadow = false;
+      fl.add(m);
+    });
+    const flLamp = new THREE.Mesh(new THREE.SphereGeometry(.075, 8, 6),
+      new THREE.MeshBasicMaterial({ color: 0xffb020 }));
+    flLamp.position.set(-.5, 1.35, 0);
+    fl.add(flLamp);
+    g.add(fl);
+    facFork = { g: fl, x0: -6.2, x1: 2.2, dist: 0, speed: 1.35 };
 
     /* 落水管（正面两根，从檐口顺墙到基座） */
     [-1, 1].forEach(function (sx) {
@@ -1251,6 +1331,7 @@ window.GaoteScene3D = (function () {
     if (controls) controls.update();
     stepFlow(dt);
     scaleLabels();                       /* 浮标跟着相机距离缩放 */
+    updateLabelOcclusion();              /* 被模型挡住的浮标藏起来 */
     /* 厂房灯（玻璃 / 门里的光 / 墙面柔光 / 地面光晕）一起呼吸：
        慢一点（约 4.6 秒一轮）、幅度小一点，才显得高级 */
     if (facWinMat) {
@@ -1258,6 +1339,26 @@ window.GaoteScene3D = (function () {
       facWinMat.emissiveIntensity = facWinBase * breath;
       if (facSpillMat) facSpillMat.opacity = .34 * breath;
       if (facFaceMat) facFaceMat.opacity = .24 * breath;
+    }
+    /* 厂房门口的人气：工人来回走、叉车在货台前那条道上来回跑（都不投影） */
+    for (let i = 0; i < facWalk.length; i++) {
+      const w = facWalk[i];
+      w.dist += dt * w.speed;
+      const mm = w.dist % (w.len * 2);
+      const k = w.len > 0 ? (mm <= w.len ? mm : w.len * 2 - mm) / w.len : 0;
+      w.g.position.set(
+        w.a[0] + (w.b[0] - w.a[0]) * k,
+        YARD_Y + Math.abs(Math.sin(w.dist * 3.6)) * .05,
+        w.a[1] + (w.b[1] - w.a[1]) * k
+      );
+    }
+    if (facFork) {
+      facFork.dist += dt * facFork.speed;
+      const span = facFork.x1 - facFork.x0;
+      const mm = facFork.dist % (span * 2);
+      const fwd = mm <= span;
+      facFork.g.position.set(facFork.x0 + (fwd ? mm : span * 2 - mm), YARD_Y, 7.0);
+      facFork.g.rotation.y = fwd ? Math.PI : 0;          /* 门架朝行进方向 */
     }
     if (composer) composer.render(); else renderer.render(scene, camera);
     labelRenderer.render(scene, camera);

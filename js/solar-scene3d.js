@@ -179,9 +179,92 @@ window.SolarScene = (function () {
   }
   /* 卡片打开时把所有浮标藏起来：浮标按 3D 位置投影，会压在卡片上 */
   function applyLabelVisibility() {
-    const hide = !!activeCard;
-    labelObjs.forEach(function (o) { o.visible = labelsOn && !hide; });
+    const hide = !labelsOn || !!activeCard;
+    for (let i = 0; i < labelPairs.length; i++) {
+      const it = labelPairs[i];
+      const vis = !hide && !it.blocked;
+      if (it.obj.visible !== vis) it.obj.visible = vis;
+    }
     for (const k in cards) cards[k].style.display = (k === activeCard) ? '' : 'none';
+  }
+
+  /* 浮标遮挡：浮标是 HTML 图层，天生盖在三维模型之上（楼后面的浮标也会透出来）。
+     这里从相机朝浮标锚点打一条射线，被大体积模型挡住的浮标就藏起来。
+     省开销：每 6 帧算一次（约 12 次/秒），而且只对登记的"大块头"做检测，
+     不把铁塔杆件这类细碎构件算进去——否则浮标会被自己的支架误挡 */
+  const occluders = [];
+  let _occRay = null, _occV = null, _occDir = null, _occN = 0;
+  function updateLabelOcclusion() {
+    if (!labelPairs.length || !camera || !occluders.length) return;
+    if (++_occN % 6) return;
+    if (!_occRay) {
+      _occRay = new THREE.Raycaster();
+      _occV = new THREE.Vector3();
+      _occDir = new THREE.Vector3();
+    }
+    let dirty = false;
+    for (let i = 0; i < labelPairs.length; i++) {
+      const it = labelPairs[i];
+      it.obj.getWorldPosition(_occV);
+      const dist = _occV.distanceTo(camera.position);
+      _occDir.copy(_occV).sub(camera.position).normalize();
+      _occRay.set(camera.position, _occDir);
+      _occRay.near = 0;
+      _occRay.far = Math.max(.5, dist - .6);      /* 留一点余量：浮标贴着的构件不算遮挡 */
+      const blocked = _occRay.intersectObjects(occluders, true).length > 0;
+      if (blocked !== !!it.blocked) { it.blocked = blocked; dirty = true; }
+    }
+    if (dirty) applyLabelVisibility();
+  }
+
+  /* ---------------- 院内走动的人 ----------------
+     人来人往的氛围：胶囊身子 + 球脑袋的抽象小人，沿设定路线匀速走、带一点上下起伏。
+     刻意不做五官/手脚这类具象细节；也刻意不投影（阴影贴图是冻结的，动的东西会留下鬼影） */
+  const walkers = [];
+  function makeWalker(pts, opt) {
+    const T = THREE_();
+    const g = new T.Group();
+    const body = new T.Mesh(new T.CylinderGeometry(.15, .185, .82, 8),
+      regThemeMat(std(0x8fa6ab, { roughness: .85 }), { color: 0x9fb3b8 }, { color: 0x8e9ea3 }));
+    body.position.y = .55;
+    const head = new T.Mesh(new T.SphereGeometry(.135, 10, 8),
+      regThemeMat(std(0xb9c8cb, { roughness: .8 }), { color: 0xc8d4d6 }, { color: 0xb2c2c6 }));
+    head.position.y = 1.06;
+    g.add(body, head);
+    root.add(g);
+    const seg = [];
+    let total = 0;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const dx = pts[i + 1][0] - pts[i][0], dzz = pts[i + 1][1] - pts[i][1];
+      const L = Math.sqrt(dx * dx + dzz * dzz);
+      seg.push(L); total += L;
+    }
+    walkers.push({
+      g: g, pts: pts, seg: seg, total: total,
+      dist: ((opt && opt.phase) || 0) * total,
+      speed: (opt && opt.speed) || .85,
+      loop: !!(opt && opt.loop)
+    });
+  }
+  function pointOnPath(w, d) {
+    let rem = w.loop ? (((d % w.total) + w.total) % w.total) : d;
+    for (let i = 0; i < w.seg.length; i++) {
+      if (rem <= w.seg[i] || i === w.seg.length - 1) {
+        const k = w.seg[i] > 0 ? Math.min(1, Math.max(0, rem / w.seg[i])) : 0;
+        const a = w.pts[i], b = w.pts[i + 1];
+        return { x: a[0] + (b[0] - a[0]) * k, z: a[1] + (b[1] - a[1]) * k };
+      }
+      rem -= w.seg[i];
+    }
+    return { x: w.pts[0][0], z: w.pts[0][1] };
+  }
+  function buildWalkers() {
+    /* 门前广场绕一圈（三个人错开相位）+ 门口往西侧设备区往返一个 */
+    const plaza = [[-4.0, 9.8], [8.6, 11.2], [10.6, 14.6], [1.0, 16.4], [-9.2, 14.6], [-11.0, 10.6]];
+    makeWalker(plaza, { phase: 0, speed: .72, loop: true });
+    makeWalker(plaza, { phase: .34, speed: .88, loop: true });
+    makeWalker(plaza, { phase: .68, speed: .8, loop: true });
+    makeWalker([[-1.6, 9.9], [-6.6, 10.4], [-11.6, 9.2], [-13.8, 7.6]], { phase: .1, speed: .68 });
   }
 
   /* ---------------- 贴图 ---------------- */
@@ -454,6 +537,7 @@ window.SolarScene = (function () {
     bld.position.set(0, H2 / 2 + .3, 0);
     bld.castShadow = bld.receiveShadow = true;
     root.add(bld);
+    occluders.push(bld);                       /* 楼体：挡住它后面的浮标 */
     root.add(box(W2 + .2, .55, D2 + .2, bandMat, 0, .58, 0));              /* 深色基座带 */
     /* 楼层腰线（一圈） */
     [-1, 1].forEach(function (sz) { root.add(box(W2 + .24, .16, .18, trimMat, 0, FLOOR_Y + .3, sz * (D2 / 2 + .05))); });
@@ -528,9 +612,17 @@ window.SolarScene = (function () {
     const dz = D2 / 2;
     root.add(box(3.4, 2.9, .24, regThemeMat(std(0xcfd6d2, { roughness: .7, envMapIntensity: .16 }), { color: 0x22333c, envMapIntensity: .3 }), 0, 1.75, dz + .04));
     const doorMat = regThemeMat(std(0x31505c, { roughness: .45, metalness: .35, envMapIntensity: .4 }), { color: 0x14262e, envMapIntensity: .7 });
-    root.add(box(1.42, 2.5, .1, doorMat, -.74, 1.55, dz + .14));
-    root.add(box(1.42, 2.5, .1, doorMat, .74, 1.55, dz + .14));
-    root.add(box(.05, 2.5, .12, regThemeMat(std(0xbfc9cb, { roughness: .4, metalness: .5 }), { color: 0x3a4d55 }), 0, 1.55, dz + .16));
+    /* 大门开着：两扇门绕合页向外敞开（约 66°），门洞里压暗、透出大厅的暖光 */
+    [1, -1].forEach(function (s) {
+      const pv = new T.Group();
+      pv.position.set(s * .03, 1.55, dz + .14);
+      pv.add(box(1.42, 2.5, .1, doorMat, s * .71, 0, 0));
+      pv.rotation.y = -s * 1.15;
+      root.add(pv);
+    });
+    root.add(box(2.92, 2.56, .04, std(0x060d11, { roughness: 1 }), 0, 1.55, dz + .175));      /* 门洞（压暗，衬出开着的门） */
+    root.add(box(2.6, 2.28, .03, regThemeMat(new T.MeshBasicMaterial({ color: 0x4e4b40 }),
+      { color: 0x4e4b40 }, { color: 0x8e8a7e }), 0, 1.5, dz + .2));                          /* 门里透出的光 */
     root.add(box(2.2, .22, .1, regThemeMat(std(0xbcd6dd, { roughness: .3, metalness: .3 }), { color: 0x16333c, envMapIntensity: .8 }), 0, 2.62, dz + .16));   /* 门头玻璃 */
     const plate = new T.Mesh(new T.PlaneGeometry(3.6, .9),
       new T.MeshBasicMaterial({ map: namePlateTexture(), transparent: true }));
@@ -673,6 +765,7 @@ window.SolarScene = (function () {
     body.position.y = H / 2 + .18;
     body.castShadow = body.receiveShadow = true;
     g.add(body);
+    occluders.push(body);                              /* 储能柜体：挡住它后面的浮标 */
     [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(function (c) {                        /* 四角立柱 */
       g.add(box(.1, H + .04, .1, steel, c[0] * (W / 2 - .02), H / 2 + .18, c[1] * (D / 2 - .02)));
     });
@@ -976,6 +1069,7 @@ window.SolarScene = (function () {
     buildTower();
     buildEquipment();
     buildStorageCabinet();
+    buildWalkers();               /* 院内走动的人（抽象小人） */
 
     /* ---------- 能量流 ---------- */
     /* 直流侧：屋面线槽 → 女儿墙套管 → 沿东墙下到逆变器顶 */
@@ -990,14 +1084,20 @@ window.SolarScene = (function () {
     ], 'dc', .069);
     /* 过墙套管（电缆从套管中间穿出女儿墙，避免穿模） */
     root.add(box(.7, .2, .2, regThemeMat(std(0x9aa5a6, { roughness: .5, metalness: .5 }), { color: 0x3d4d55 }), W2 / 2 + .28, roofY + .42, .55));
-    /* 交流侧：逆变器底部 → 沿东墙 / 南墙 → 并网计量箱 */
+    /* 交流侧：逆变器 → 沿东墙上到檐口 → 沿南立面上沿走（大门上方，不穿门前）→ 西端下来进并网计量箱。
+       原来贴南墙 1 米高横穿大门前，视觉上很碍事，改走檐口一线（y 6.6，避开雨棚顶 6.33 与女儿墙） */
     addFlow([
-      new T.Vector3(W2 / 2 + .42, 1.4, 1.2),
-      new T.Vector3(W2 / 2 + .22, 1.05, 1.9),
-      new T.Vector3(W2 / 2 + .2, 1.05, 7.0),
-      new T.Vector3(W2 / 2 + .2, 1.05, D2 / 2 + .2),
-      new T.Vector3(-13.6, 1.05, D2 / 2 + .2),
-      new T.Vector3(-14.6, 1.05, 7.0),
+      new T.Vector3(W2 / 2 + .5, 1.45, 1.2),                    /* 逆变器底部出线（接进柜底） */
+      new T.Vector3(W2 / 2 + .7, 2.7, 1.22),
+      new T.Vector3(W2 / 2 + .7, 6.4, 1.5),                     /* 沿东墙向上（贴墙外 0.26，不碰窗带） */
+      new T.Vector3(W2 / 2 + .62, 6.6, 5.4),
+      new T.Vector3(W2 / 2 + .2, 6.6, D2 / 2 + .25),            /* 东南角转过来 */
+      new T.Vector3(6.0, 6.6, D2 / 2 + .25),
+      new T.Vector3(-6.0, 6.6, D2 / 2 + .25),
+      new T.Vector3(-W2 / 2 + .2, 6.6, D2 / 2 + .25),           /* 南立面上沿通长（大门在下方，不挡门） */
+      new T.Vector3(-W2 / 2 - .5, 6.5, D2 / 2 - .35),           /* 西南角 */
+      new T.Vector3(-14.5, 5.4, 6.5),
+      new T.Vector3(-14.6, 1.9, 6.05),                          /* 落到计量箱 */
       new T.Vector3(-14.6, 1.1, 6.0)
     ], 'ac', .075);
     /* 交流支线：计量箱 → 储能柜（充电流进柜、放电流出柜） */
@@ -1453,8 +1553,21 @@ window.SolarScene = (function () {
       beacon.material.opacity = bk;
       if (beaconGlow) beaconGlow.material.opacity = .16 + .44 * bk;
     }
+    /* 院内走动的人：沿路线匀速走 + 一点上下起伏（不投影，阴影是冻结的） */
+    for (let i = 0; i < walkers.length; i++) {
+      const w = walkers[i];
+      w.dist += dt * w.speed;
+      let d = w.dist;
+      if (!w.loop) {                                  /* 往返路线：走到头再折回来 */
+        const m = w.dist % (w.total * 2);
+        d = m <= w.total ? m : w.total * 2 - m;
+      }
+      const wp = pointOnPath(w, d);
+      w.g.position.set(wp.x, .18 + Math.abs(Math.sin(w.dist * 3.6)) * .05, wp.z);
+    }
     stepFlow(dt);
     scaleLabels();                       /* 浮标跟着相机距离缩放 */
+    updateLabelOcclusion();              /* 被模型挡住的浮标藏起来（每 6 帧算一次） */
     if (controls) controls.update();
     if (composer) composer.render(); else renderer.render(scene, camera);
     if (labelR) labelR.render(scene, camera);
