@@ -24,11 +24,10 @@ window.SolarScene = (function () {
   let inited = false, root = null, scene, camera, renderer, composer = null, bloomPass = null, vigPass = null, controls, labelR = null;
   let sun = null, moon = null, sunGlow = null, sunLight = null, hemi = null, fillLight = null, skyDome = null;
   let cloudGroup = null, envRT = null;
-  let particles = null, sweepMesh = null, slabEdge = null, siteGlow = null, beacon = null, beaconGlow = null;
+  let sweepMesh = null, slabEdge = null, siteGlow = null, beacon = null, beaconGlow = null;
   let rainInst = null, rainMat = null;               /* 雨滴合批成一个 InstancedMesh（1 个 draw call） */
   const RAIN_N = 420, rainX = [], rainY = [], rainZ = [], rainV = [];
   let _rainM = null;                                 /* 雨滴矩阵复用的临时对象 */
-  const PARTICLE_N = 300;                            /* 氛围粒子数量 */
   const cloudMats = [];                              /* 云朵材质（跟主题换色） */
   let panelMats = [], invLabelEl = null, arrLabelEl = null, gridLabelEl = null;
   let raf = null, W = 0, H = 0;
@@ -403,6 +402,11 @@ window.SolarScene = (function () {
     /* 场坪：数字孪生底座 —— 深色底盘 + 细格网（每格约 3m），四周一圈发光描边 */
     slabYardMat = regThemeMat(new T.MeshStandardMaterial({ map: slabTexture(theme), roughness: .93, metalness: .02 }),
       { envMapIntensity: .5 }, { envMapIntensity: .35 });
+    /* 场坪面往深度里推一点：四周那圈发光描边（EdgesGeometry 正好落在场坪棱上）
+       和柜体底座顶面都跟坪面共面，不推开会远看闪烁 */
+    slabYardMat.polygonOffset = true;
+    slabYardMat.polygonOffsetFactor = 1;
+    slabYardMat.polygonOffsetUnits = 1;
     slabYardMat.map.repeat.set(4, 58 / 24);
     root.add(box(96, .18, 58, slabYardMat, 0, .09, 0));
     /* 场坪描边：EdgesGeometry 细线，就是画面里"场地边界"的那圈光 */
@@ -460,13 +464,14 @@ window.SolarScene = (function () {
     root.add(box(W2 + .6, .5, .3, par, 0, roofY + .25, D2 / 2));
     root.add(box(.3, .5, D2, par, -W2 / 2, roofY + .25, 0));
     root.add(box(.3, .5, D2, par, W2 / 2, roofY + .25, 0));
-    /* 屋面发光轮廓线：沿女儿墙顶走一圈（坐在墙顶面上，不与墙穿模） */
+    /* 屋面发光轮廓线：沿女儿墙顶走一圈。比墙顶抬高 1cm、纵横两组再错开 2cm——
+       原来正好坐在墙顶面上，远看线条会跟墙顶深度打架（一闪一闪） */
     const roofLineMat = regThemeMat(new T.MeshBasicMaterial({ color: 0x2ee6c8, transparent: true, opacity: .72 }),
       {}, { color: 0x0f9682, opacity: .4 });
-    root.add(box(W2 + .66, .05, .05, roofLineMat, 0, roofY + .525, D2 / 2));
-    root.add(box(W2 + .66, .05, .05, roofLineMat, 0, roofY + .525, -D2 / 2));
-    root.add(box(.05, .05, D2 + .06, roofLineMat, W2 / 2, roofY + .525, 0));
-    root.add(box(.05, .05, D2 + .06, roofLineMat, -W2 / 2, roofY + .525, 0));
+    root.add(box(W2 + .66, .05, .05, roofLineMat, 0, roofY + .535, D2 / 2));
+    root.add(box(W2 + .66, .05, .05, roofLineMat, 0, roofY + .535, -D2 / 2));
+    root.add(box(.05, .05, D2 + .06, roofLineMat, W2 / 2, roofY + .555, 0));
+    root.add(box(.05, .05, D2 + .06, roofLineMat, -W2 / 2, roofY + .555, 0));
 
     /* 窗户贴图（改进版）：窗框 + 窗格 + 暖色室内。
        同一张贴图既当 map 也当 emissiveMap —— 发光时透出的是格子里的暖光，
@@ -529,7 +534,9 @@ window.SolarScene = (function () {
     root.add(box(2.2, .22, .1, regThemeMat(std(0xbcd6dd, { roughness: .3, metalness: .3 }), { color: 0x16333c, envMapIntensity: .8 }), 0, 2.62, dz + .16));   /* 门头玻璃 */
     const plate = new T.Mesh(new T.PlaneGeometry(3.6, .9),
       new T.MeshBasicMaterial({ map: namePlateTexture(), transparent: true }));
-    plate.position.set(0, 3.9, dz + .16);
+    /* 院名牌往外挪 10cm、并卡在门楣（顶 3.2）与二层窗带（底 4.225）之间的空档：
+       原来贴在 z=8.16 与窗带前脸完全共面，远看会深度闪烁 */
+    plate.position.set(0, 3.72, dz + .26);
     root.add(plate);
     const aw = regThemeMat(std(0xc3c8c2, { roughness: .8, envMapIntensity: .16 }), { color: 0x1c2a31, envMapIntensity: .26 });
     const awPost = regThemeMat(std(0xadb2ab, { roughness: .8 }), { color: 0x18242a });
@@ -1064,22 +1071,6 @@ window.SolarScene = (function () {
     rainInst.instanceMatrix.setUsage(T.DynamicDrawUsage);
     root.add(rainInst);
 
-    /* 氛围粒子：缓慢上升的青色光点（1 个 draw call），暗色画面里的"数据感" */
-    const parr = new Float32Array(PARTICLE_N * 3);
-    for (let i = 0; i < PARTICLE_N; i++) {
-      parr[i * 3] = (Math.random() - .5) * 120;
-      parr[i * 3 + 1] = Math.random() * 26 + .5;
-      parr[i * 3 + 2] = (Math.random() - .5) * 80;
-    }
-    const pgeo = new T.BufferGeometry();
-    pgeo.setAttribute('position', new T.BufferAttribute(parr, 3));
-    particles = new T.Points(pgeo, regThemeMat(new T.PointsMaterial({
-      color: 0x2ee6c8, size: .25, transparent: true, opacity: .34,
-      blending: T.AdditiveBlending, depthWrite: false, sizeAttenuation: true
-    }), {}, { color: 0x0f9e86, opacity: .16 }));
-    particles.frustumCulled = false;
-    root.add(particles);
-
     /* ---------- 场景浮标 ---------- */
     arrLabelEl = label('屋顶光伏阵列<i>-- kW</i><em>装机 110.16 kWp</em>', 'tag3d-gt', 0, roofY + 3.6, 0);
     label('洙边卫生院<i>屋顶分布式光伏</i>', 'tag3d-gt', 0, H2 + 1.8, D2 / 2 + 6.2);
@@ -1095,7 +1086,9 @@ window.SolarScene = (function () {
         composer = new T.EffectComposer(renderer, msaa || undefined);
         if (msaa) composer.setPixelRatio(renderer.getPixelRatio());
         composer.addPass(new T.RenderPass(scene, camera));
-        bloomPass = new T.UnrealBloomPass(new T.Vector2(w, h),
+        /* 泛光按半分辨率跑：模糊效果肉眼看不出差别，但填充率省 4 倍——
+           高 DPI 屏（DPR 2）上这是拖动卡顿的大头 */
+        bloomPass = new T.UnrealBloomPass(new T.Vector2(w * .5, h * .5),
           tp.bloom.strength, tp.bloom.radius, tp.bloom.threshold);
         composer.addPass(bloomPass);
         if (typeof T.ShaderPass === 'function') {
@@ -1371,7 +1364,7 @@ window.SolarScene = (function () {
       const d = camera.position.distanceTo(_lblV);
       let k = LBL_REF / Math.max(1, d);
       k = Math.min(1, Math.max(0.36, k));
-      if (Math.abs((it.k || 0) - k) < 0.01) continue;      /* 变化太小就不写样式，免得每帧折腾 DOM */
+      if (Math.abs((it.k || 0) - k) < 0.04) continue;      /* 变化小于 4% 就不写样式：拖动时每帧改 CSS 也要重排，是顿挫的来源 */
       it.k = k;
       it.el.style.setProperty('--lbl-scale', k.toFixed(3));
       /* 拉得越远越淡：0.36 时降到 0.3，远景不至于是"一片标签" */
@@ -1460,15 +1453,6 @@ window.SolarScene = (function () {
       beacon.material.opacity = bk;
       if (beaconGlow) beaconGlow.material.opacity = .16 + .44 * bk;
     }
-    if (particles && particles.visible) {
-      const pa = particles.geometry.attributes.position;
-      for (let i = 0; i < pa.count; i++) {
-        let y = pa.getY(i) + dt * .5;
-        if (y > 28) y = .4;
-        pa.setY(i, y);
-      }
-      pa.needsUpdate = true;
-    }
     stepFlow(dt);
     scaleLabels();                       /* 浮标跟着相机距离缩放 */
     if (controls) controls.update();
@@ -1488,7 +1472,7 @@ window.SolarScene = (function () {
     camera.updateProjectionMatrix();
     if (labelR) labelR.setSize(w, h);
     if (composer) composer.setSize(w, h);
-    if (bloomPass) bloomPass.setSize(w, h);
+    if (bloomPass) bloomPass.setSize(w * .5, h * .5);
   }
 
   /* ---------------- 对外 ---------------- */
