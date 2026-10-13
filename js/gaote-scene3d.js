@@ -32,6 +32,7 @@ window.GaoteScene3D = (function () {
   let theme = 'night';
   let groundMat = null, slabYardMat = null;
   let hemiLight = null, sunLight = null, fillLight = null, bloomPass = null;
+  let camHome = null;              // 默认机位（按画布宽高比算好后存下来，重置视角复用）
   const THEMES = {
     night: {
       bg: 0x04090c, fog: 0x04090c, fogNear: 34, fogFar: 95,
@@ -437,8 +438,10 @@ window.GaoteScene3D = (function () {
 
     g.userData.key = key;
     groups[key] = g;
-    /* 相邻柜子的浮标错开高度，避免排成一列时相互压住（浮标约 1.3 个世界单位高） */
-    addLabel(key, new THREE.Vector3(0, H + .95 + (parseInt(String(key).replace('stack', ''), 10) % 2) * 1.3, 0), 'tag3d tag3d-gt');
+    /* 相邻柜子的浮标错开高度 + 再往两侧让一点：光靠高度错开不够，
+       在扁画布上「堆 1 / 堆 2」浮标仍会横向压住（实测重叠 15×51 px） */
+    const si = parseInt(String(key).replace('stack', ''), 10) || 0;
+    addLabel(key, new THREE.Vector3(si % 2 ? 1.0 : -1.0, H + .95 + (si % 2) * 1.3, 0), 'tag3d tag3d-gt');
     addCard(key, new THREE.Vector3(0, H + .1, 0));
     return g;
   }
@@ -1336,8 +1339,16 @@ window.GaoteScene3D = (function () {
     scene = new THREE.Scene();
     scene.fog = new THREE.Fog(THEMES.night.fog, THEMES.night.fogNear, THEMES.night.fogFar);
     camera = new THREE.PerspectiveCamera(46, w / h, .1, 300);
-    /* 机位照白天新设计的 Demo：把「铁塔 → 汇流柜/PCS → 电池堆 → 厂房」从左到右收进画面 */
-    camera.position.set(17, 11, 27);
+    /* 机位照白天新设计的 Demo：铁塔 → 汇流柜/PCS → 电池堆 → 厂房，从左到右收进画面。
+       但 Demo 是在他自己更宽的屏幕上定的，照搬到网页的扁画布上，最右侧厂房会出画
+       （实测右墙落在 x=1284，画面只有 1250）。所以做两件事：
+       ① 目标点右移到 3.5：整体左移，厂房右墙回到 x≈1143，给右边收起的面板拉手留出边距；
+       ② 按宽高比补距离：构图按 2.25:1 的横向视野算，画布比这窄就沿视线退后 */
+    const camTgt = new THREE.Vector3(3.5, 2, 1);
+    const camDir = new THREE.Vector3(15, 9, 26);
+    const camLen = camDir.length() * Math.max(1, 2.25 / Math.max(1.2, w / h));
+    camera.position.copy(camTgt).add(camDir.setLength(camLen));
+    camHome = { pos: camera.position.clone(), tgt: camTgt.clone() };
 
     renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
@@ -1410,8 +1421,11 @@ window.GaoteScene3D = (function () {
       return rot.auto;
     },
     resetView: function () {
-      camera.position.set(17, 11, 27);
-      if (controls) { controls.target.set(2, 2, 1); controls.update(); }
+      if (camHome && camera && controls) {
+        camera.position.copy(camHome.pos);
+        controls.target.copy(camHome.tgt);
+        controls.update();
+      }
     },
     setTheme: function (t) { applyTheme(t); },
     getTheme: function () { return theme; },
