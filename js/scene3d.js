@@ -611,6 +611,8 @@ window.Scene3D = (function () {
     requestAnimationFrame(animate);
     const dt = Math.min(clock.getDelta(), 0.05);
     const t = clock.getElapsedTime();
+    /* 宿主被隐藏（切到光伏站 / 站点目录）时不渲染，别在后台空烧 GPU */
+    if (!renderer.domElement.offsetWidth || !renderer.domElement.offsetHeight) return;
 
     if (intro < 1) {
       intro = Math.min(1, intro + dt / 1.6);

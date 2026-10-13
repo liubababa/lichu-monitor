@@ -1245,6 +1245,8 @@ window.GaoteScene3D = (function () {
     raf = requestAnimationFrame(loop);
     const dt = clock.last ? (t - clock.last) / 1000 : 0;
     clock.last = t;
+    /* 画布被隐藏（切到别的站 / 站点目录）时不渲染，别在后台空烧 GPU */
+    if (!renderer.domElement.offsetWidth || !renderer.domElement.offsetHeight) return;
     if (rot.auto && controls) controls.autoRotate && (controls.autoRotateSpeed = rot.speed * 6);
     if (controls) controls.update();
     stepFlow(dt);

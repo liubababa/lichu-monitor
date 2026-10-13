@@ -546,7 +546,7 @@ window.SolarScene = (function () {
   }
 
   /* ---------------- 屋顶光伏阵列 ---------------- */
-  function buildArray(glassMat, edgeMat) {
+  function buildArray(glassMat) {
     const T = THREE_();
     const arrGroup = new T.Group();
     arrGroup.userData.key = 'array';              /* 点阵列可弹明细卡 */
@@ -555,45 +555,49 @@ window.SolarScene = (function () {
       { color: 0x55666e, envMapIntensity: .8 });
     const legMat = regThemeMat(std(0x8b9aa0, { roughness: .5, metalness: .6, envMapIntensity: .5 }),
       { color: 0x46565d, envMapIntensity: .7 });
-    const modGeo = new T.BoxGeometry(MW, MT, MD);
-    const modMats = [edgeMat, edgeMat, glassMat, edgeMat, edgeMat, edgeMat];
-    const railGeo = new T.BoxGeometry(rowW + .5, .06, .12);
     const legXs = [-(rowW / 2 - .5), -rowW / 6, rowW / 6, rowW / 2 - .5];
     const yMod = rowPlaneY(0);
     const yRailF = rowPlaneY(RAIL_Z) - RAIL_DROP, yRailR = rowPlaneY(-RAIL_Z) - RAIL_DROP;
     const hLegF = yRailF - .03 - roofY, hLegR = yRailR - .03 - roofY;
     const legGeoF = new T.BoxGeometry(.09, hLegF, .09), legGeoR = new T.BoxGeometry(.09, hLegR, .09);
+    /* 组件 / 导轨 / 竖撑全部合批成 InstancedMesh：
+       原来是 176 个 Mesh，组件还按 6 个材质分组（480 次绘制），阴影再画一遍——
+       光阵列就要上千次 draw call，弱一点的机器直接卡成幻灯片 */
+    const modInst = new T.InstancedMesh(new T.BoxGeometry(MW, MT, MD), glassMat, rowZs.length * COLS);
+    const railInst = new T.InstancedMesh(new T.BoxGeometry(rowW + .5, .06, .12), railMat, rowZs.length * 2);
+    const legInstF = new T.InstancedMesh(legGeoF, legMat, rowZs.length * legXs.length);
+    const legInstR = new T.InstancedMesh(legGeoR, legMat, rowZs.length * legXs.length);
+    modInst.castShadow = modInst.receiveShadow = true;
+    railInst.castShadow = railInst.receiveShadow = true;
+    legInstF.castShadow = legInstR.castShadow = true;
+    const mtx = new T.Matrix4();
+    let mi = 0, ri = 0, li = 0;
     rowZs.forEach(function (rz) {
-      const row = new T.Group();
-      row.position.z = rz;
       for (let c = 0; c < COLS; c++) {
-        const m = new T.Mesh(modGeo, modMats);
-        m.position.set(-rowW / 2 + MW / 2 + c * (MW + .06), yMod, 0);
-        m.rotation.x = TILT;
-        m.castShadow = m.receiveShadow = true;
-        row.add(m);
+        mtx.makeRotationX(TILT);
+        mtx.setPosition(-rowW / 2 + MW / 2 + c * (MW + .06), yMod, rz);
+        modInst.setMatrixAt(mi++, mtx);
       }
       /* 两根通长导轨（顶面贴组件底面） */
       [[RAIL_Z, yRailF], [-RAIL_Z, yRailR]].forEach(function (r) {
-        const rail = new T.Mesh(railGeo, railMat);
-        rail.position.set(0, r[1], r[0]);
-        rail.rotation.x = TILT;
-        rail.castShadow = rail.receiveShadow = true;
-        row.add(rail);
+        mtx.makeRotationX(TILT);
+        mtx.setPosition(0, r[1], rz + r[0]);
+        railInst.setMatrixAt(ri++, mtx);
       });
       /* 竖撑：前后各 4 根，顶到导轨底面 */
       legXs.forEach(function (x) {
-        const lf = new T.Mesh(legGeoF, legMat);
-        lf.position.set(x, roofY + hLegF / 2, RAIL_Z);
-        lf.castShadow = true;
-        row.add(lf);
-        const lr = new T.Mesh(legGeoR, legMat);
-        lr.position.set(x, roofY + hLegR / 2, -RAIL_Z);
-        lr.castShadow = true;
-        row.add(lr);
+        mtx.makeTranslation(x, roofY + hLegF / 2, rz + RAIL_Z);
+        legInstF.setMatrixAt(li, mtx);
+        mtx.makeTranslation(x, roofY + hLegR / 2, rz - RAIL_Z);
+        legInstR.setMatrixAt(li, mtx);
+        li++;
       });
-      arrGroup.add(row);
     });
+    modInst.instanceMatrix.needsUpdate = true;
+    railInst.instanceMatrix.needsUpdate = true;
+    legInstF.instanceMatrix.needsUpdate = true;
+    legInstR.instanceMatrix.needsUpdate = true;
+    arrGroup.add(modInst, railInst, legInstF, legInstR);
     /* 检修走道（中间两排之间）+ 屋面线槽 */
     arrGroup.add(box(rowW + 1.2, .04, 1.5, regThemeMat(std(0xadb2a9, { roughness: .9, envMapIntensity: .14 }), { color: 0x26343b, envMapIntensity: .3 }), 0, roofY + .02, 0));
     const trayMat = regThemeMat(std(0x9aa5a6, { roughness: .45, metalness: .6, envMapIntensity: .5 }), { color: 0x3d4d55, envMapIntensity: .7 });
@@ -946,6 +950,10 @@ window.SolarScene = (function () {
     fillLight = new T.DirectionalLight(tp.lights.fill.color, tp.lights.fill.intensity);
     fillLight.position.set(-24, 14, -18);
     scene.add(fillLight);
+    /* 阴影贴图只渲一次：太阳位置和设备都不动，没必要每帧把全场景再画一遍进阴影图
+       （这是整帧里最贵的一趟，冻结之后相机怎么转都不影响阴影） */
+    renderer.shadowMap.autoUpdate = false;
+    renderer.shadowMap.needsUpdate = true;
 
     /* 场地 / 建筑 / 组件 / 设备 */
     buildSite();
@@ -957,9 +965,8 @@ window.SolarScene = (function () {
       emissive: new T.Color(0x061528), emissiveIntensity: .14, envMapIntensity: .35
     });
     panelMats.push(glassMat);
-    const edgeMat = new T.MeshStandardMaterial({ color: 0x8e9ba1, roughness: .45, metalness: .65, envMapIntensity: .45 });
-    buildArray(glassMat, edgeMat);
-    buildTower();                 /* 铁塔要先建：设备段的三跨导线要取它的挂点 */
+    buildArray(glassMat);
+    buildTower();
     buildEquipment();
     buildStorageCabinet();
 
@@ -1426,6 +1433,8 @@ window.SolarScene = (function () {
     const dt = clock.last ? Math.min(.08, (t - clock.last) / 1000) : 0;
     clock.last = t;
     if (!active) return;
+    /* 画布被隐藏（切到储能/光伏/收益页、或回到站点目录）时不渲染，别在后台空烧 GPU */
+    if (!renderer.domElement.offsetWidth || !renderer.domElement.offsetHeight) return;
     if (cloudGroup) {
       cloudGroup.children.forEach(function (cg) {
         cg.position.x += cg.userData.speed * dt * 6;
