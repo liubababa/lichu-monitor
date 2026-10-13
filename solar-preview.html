@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>洙边卫生院光伏 3D · 优化版预览</title>
+<link rel="stylesheet" href="css/style.css?v=20261013a">
+<style>
+  #solar3d{position:absolute;inset:0;overflow:hidden}
+  #pvBar{position:absolute;left:18px;top:18px;z-index:20;min-width:250px;
+    background:linear-gradient(160deg,rgba(7,22,24,.92),rgba(4,12,14,.9));
+    border:1px solid rgba(46,230,200,.45);border-left:3px solid var(--teal);
+    padding:12px 16px 13px;box-shadow:0 4px 18px rgba(0,0,0,.5)}
+  #pvBar h1{font-size:14px;font-weight:normal;color:var(--teal);letter-spacing:1px;margin-bottom:7px}
+  #pvBar p{font-size:11.5px;color:var(--dim);line-height:1.9}
+  #pvBar .wx{display:flex;gap:8px;margin-top:10px}
+  #pvBar .wx button{flex:1;padding:6px 0;font-size:12px;color:var(--text);
+    border:1px solid rgba(46,230,200,.35);background:rgba(46,230,200,.06);transition:.2s}
+  #pvBar .wx button.on{background:rgba(46,230,200,.22);border-color:var(--teal);color:#eafffa}
+  #pvToast{position:absolute;left:18px;bottom:18px;z-index:20;display:none;font-size:12.5px;color:#eafffa;
+    background:rgba(7,22,24,.92);border:1px solid rgba(46,230,200,.45);padding:10px 14px}
+  #pvToast b{color:var(--teal);font-weight:normal}
+</style>
+</head>
+<body>
+<div id="solar3d"></div>
+
+<div id="pvBar">
+  <h1>洙边卫生院 · 光伏 3D（优化版预览）</h1>
+  <p>左键拖拽旋转 · 滚轮缩放 · 右键平移<br>点击光伏阵列可触发设备点击事件</p>
+  <div class="wx">
+    <button data-wx="day" class="on">白天</button>
+    <button data-wx="night">夜晚</button>
+    <button data-wx="rain">雨天</button>
+  </div>
+</div>
+
+<div id="pvToast"></div>
+
+<script src="libs/three.min.js?v=20261013a"></script>
+<script src="libs/OrbitControls.js?v=20261013a"></script>
+<script src="libs/CSS2DRenderer.js?v=20261013a"></script>
+<script src="js/solar-scene3d-v2.js?v=20261013a"></script>
+<script>
+(function(){
+  var host = document.getElementById('solar3d');
+  SolarSceneV2.initSolarScene(host);
+
+  var bar = document.getElementById('pvBar');
+  [].forEach.call(bar.querySelectorAll('button[data-wx]'), function(b){
+    b.addEventListener('click', function(){
+      [].forEach.call(bar.querySelectorAll('button[data-wx]'), function(x){ x.classList.toggle('on', x === b); });
+      SolarSceneV2.setWeatherMode(b.getAttribute('data-wx'));
+    });
+  });
+
+  var toast = document.getElementById('pvToast'), t = null;
+  window.addEventListener('pvDeviceClick', function(e){
+    var d = e.detail || {}, info = d.info || {};
+    toast.innerHTML = '设备点击事件 <b>pvDeviceClick</b>：key = <b>' + d.key + '</b>'
+      + (info.name ? '（' + info.name + '）' : '');
+    toast.style.display = '';
+    clearTimeout(t);
+    t = setTimeout(function(){ toast.style.display = 'none'; }, 3000);
+  });
+})();
+</script>
+</body>
+</html>

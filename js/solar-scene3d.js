@@ -21,9 +21,15 @@
 window.SolarScene = (function () {
   'use strict';
 
-  let inited = false, root = null, scene, camera, renderer, composer = null, bloomPass = null, controls, labelR = null;
+  let inited = false, root = null, scene, camera, renderer, composer = null, bloomPass = null, vigPass = null, controls, labelR = null;
   let sun = null, moon = null, sunGlow = null, sunLight = null, hemi = null, fillLight = null, skyDome = null;
-  let cloudGroup = null, precipGroup = null, envRT = null;
+  let cloudGroup = null, envRT = null;
+  let particles = null, sweepMesh = null, slabEdge = null, siteGlow = null, beacon = null, beaconGlow = null;
+  let rainInst = null, rainMat = null;               /* 雨滴合批成一个 InstancedMesh（1 个 draw call） */
+  const RAIN_N = 420, rainX = [], rainY = [], rainZ = [], rainV = [];
+  let _rainM = null;                                 /* 雨滴矩阵复用的临时对象 */
+  const PARTICLE_N = 300;                            /* 氛围粒子数量 */
+  const cloudMats = [];                              /* 云朵材质（跟主题换色） */
   let panelMats = [], invLabelEl = null, arrLabelEl = null, gridLabelEl = null;
   let raf = null, W = 0, H = 0;
   const flows = [];                 // 电流光纹：{ map, tubeMat, kind, on, speed }
@@ -37,11 +43,43 @@ window.SolarScene = (function () {
 
   const THREE_ = () => window.THREE;
 
-  /* 天空穹顶配色：夜里（深色界面）偏靛蓝，白天（浅色界面）明亮，
-     地平线都是雾白色，远景靠雾融进天空 */
-  const SKY = {
-    night: { stops: [[0, '#12385f'], [.40, '#2f6b9e'], [.58, '#77a9c9'], [.74, '#bcd6e2'], [1, '#d2e2e8']], fog: 0xd2e2e8 },
-    day: { stops: [[0, '#2f74b8'], [.45, '#5fa6d8'], [.62, '#9ccbe4'], [.78, '#cfe2ec'], [1, '#dbe9f0']], fog: 0xd3e3ec }
+  /* 双主题参数表。
+     夜（站点默认主题）= 暗色数字孪生：深底穹顶 + 青调地平线 + 网格场坪 + 发光强调；
+     昼 = 浅色可读优先，只做协调（暖色强调、压低泛光防洗白）。
+     与主题相关的数值都收在这里，applyTheme() 一处套用 */
+  const THEMES = {
+    night: {
+      sky: [[0, '#04080c'], [.42, '#071219'], [.66, '#0d2530'], [.84, '#123743'], [1, '#17505f']],
+      fog: { color: 0x0b1c24, near: 105, far: 300 },
+      bloom: { strength: .55, radius: .7, threshold: .78 },
+      vignette: { strength: .3, tint: .06 },
+      lights: {
+        key: { color: 0xcfe8ff, base: .88, rad: .42 },
+        hemi: { sky: 0xbfe9ff, ground: 0x0a1518, base: .95 },
+        fill: { color: 0x2ee6c8, intensity: .38 }
+      },
+      edge: { color: 0x2ee6c8, opacity: .5 },
+      glow: { color: 0x2ee6c8, opacity: .08 },
+      sweep: .05,
+      cloud: 0x22343c,
+      particle: { color: 0x2ee6c8, opacity: .34 }
+    },
+    day: {
+      sky: [[0, '#2f74b8'], [.45, '#5fa6d8'], [.62, '#9ccbe4'], [.78, '#cfe2ec'], [1, '#dbe9f0']],
+      fog: { color: 0xd3e3ec, near: 120, far: 340 },
+      bloom: { strength: .12, radius: .6, threshold: .96 },
+      vignette: { strength: .12, tint: 0 },
+      lights: {
+        key: { color: 0xfff2d0, base: .62, rad: .22 },
+        hemi: { sky: 0xdff0ff, ground: 0x76815f, base: .3 },
+        fill: { color: 0xbfe0ff, intensity: .1 }
+      },
+      edge: { color: 0x0f9682, opacity: .35 },
+      glow: { color: 0x0f9682, opacity: .05 },
+      sweep: 0,
+      cloud: 0xffffff,
+      particle: { color: 0x0f9e86, opacity: .16 }
+    }
   };
   /* 电流光纹配色：直流（光伏侧）青 / 交流（并网侧）橙；白天浅底用深一档 */
   const FLOWC = {
@@ -51,8 +89,23 @@ window.SolarScene = (function () {
 
   /* ---------------- 基础工具 ---------------- */
   let groundMat = null, slabYardMat = null;
-  const themeMats = [];             // 跟主题换色/换贴图的材质
+  const themeMats = [];             // 跟主题换色 / 换自发光 / 换透明度 / 换贴图的材质
   function regThemeMat(mat, night, day) { themeMats.push({ mat: mat, night: night || {}, day: day || {} }); return mat; }
+  /* 套用一条主题材质；map 传函数时按主题重生成贴图（旧贴图释放） */
+  function applyThemeMat(r) {
+    const v = r[theme] || {}, m = r.mat;
+    if (v.color !== undefined && m.color) m.color.setHex(v.color);
+    if (v.emissive !== undefined && m.emissive) m.emissive.setHex(v.emissive);
+    if (v.emissiveIntensity !== undefined) m.emissiveIntensity = v.emissiveIntensity;
+    if (v.opacity !== undefined) m.opacity = v.opacity;
+    if (v.envMapIntensity !== undefined) m.envMapIntensity = v.envMapIntensity;
+    if (typeof v.map === 'function') {
+      const old = m.map;
+      m.map = v.map(theme);
+      if (old && old.dispose) old.dispose();
+      m.needsUpdate = true;
+    }
+  }
   function std(color, o) {
     const p = Object.assign({ roughness: .7, metalness: .2 }, o || {});
     return new THREE.MeshStandardMaterial({
@@ -164,15 +217,16 @@ window.SolarScene = (function () {
     }, 320, 160, 2);
   }
 
-  /* 卫生院外墙：白色墙板 + 分缝（两层小楼沿用莒南厂房的观感：白主墙 + 灰带 + 大窗）。
+  /* 卫生院外墙：昼=白色墙板 + 灰色分缝；夜=深灰蓝金属板 + 青缝线。
      窗、门单独做几何体，这样夜里窗户能发光、近景经得起看 */
-  function wallTexture() {
+  function wallTexture(t) {
+    const night = (t || theme) === 'night';
     return tex(function (g, w, h) {
-      g.fillStyle = '#dfe3e3'; g.fillRect(0, 0, w, h);
-      g.strokeStyle = 'rgba(120,138,140,.22)'; g.lineWidth = 2;
+      g.fillStyle = night ? '#1e2f38' : '#dfe3e3'; g.fillRect(0, 0, w, h);
+      g.strokeStyle = night ? 'rgba(46,230,200,.16)' : 'rgba(120,138,140,.22)'; g.lineWidth = 2;
       for (let i = 1; i < 12; i++) { const x = i * w / 12; g.beginPath(); g.moveTo(x, 0); g.lineTo(x, h); g.stroke(); }
-      g.fillStyle = 'rgba(120,138,140,.10)'; g.fillRect(0, 0, w, 10);
-      g.fillStyle = '#adb2a8'; g.fillRect(0, h - 26, w, 26);          /* 勒脚 */
+      g.fillStyle = night ? 'rgba(46,230,200,.05)' : 'rgba(120,138,140,.10)'; g.fillRect(0, 0, w, 10);
+      g.fillStyle = night ? '#0b1418' : '#adb2a8'; g.fillRect(0, h - 26, w, 26);          /* 勒脚 */
     }, 512, 256);
   }
   /* 门头院名牌（单独一块板贴在大门上方） */
@@ -192,10 +246,10 @@ window.SolarScene = (function () {
 
   /* 水泥地坪（按白天新设计的 Demo 改：原来是发光网格地台，现在铺成真水泥地）
      细砂眼 + 少量小色差 + 抹痕：远看近看都像水泥，不是一块平色板 */
-  function concreteTexture() {
-    const day = theme === 'day';
+  function concreteTexture(t) {
+    const day = (t || theme) === 'day';
     const tx = tex(function (g, w, h) {
-      g.fillStyle = day ? '#c2c5bd' : '#30383d'; g.fillRect(0, 0, w, h);
+      g.fillStyle = day ? '#c2c5bd' : '#1d2a31'; g.fillRect(0, 0, w, h);
       for (let i = 0; i < 9000; i++) {
         const darkk = Math.random() > .5;
         g.fillStyle = darkk
@@ -224,6 +278,65 @@ window.SolarScene = (function () {
     return tx;
   }
 
+  /* 场坪（数字孪生底座）：昼=浅色水泥 + 淡格线；夜=深色底盘 + 青色细格网。
+     贴图按 8×8 格画，铺到 96×58 的场坪上（repeat 后每格约 3m） */
+  function slabTexture(t) {
+    const night = (t || theme) === 'night';
+    const tx = tex(function (g, w, h) {
+      g.fillStyle = night ? '#1b2b33' : '#c4c7bf'; g.fillRect(0, 0, w, h);
+      for (let i = 0; i < 2600; i++) {
+        const darkk = Math.random() > .5;
+        g.fillStyle = darkk
+          ? (night ? 'rgba(0,0,0,' + (.03 + Math.random() * .07) + ')' : 'rgba(70,74,70,' + (.02 + Math.random() * .05) + ')')
+          : (night ? 'rgba(255,255,255,' + (.012 + Math.random() * .03) + ')' : 'rgba(255,255,255,' + (.02 + Math.random() * .05) + ')');
+        const s = Math.random() < .85 ? 1 : 2;
+        g.fillRect(Math.random() * w, Math.random() * h, s, s);
+      }
+      const cells = 8, cw = w / cells;
+      g.strokeStyle = night ? 'rgba(46,230,200,.13)' : 'rgba(30,90,95,.09)';
+      g.lineWidth = 1.2;
+      for (let i = 0; i <= cells; i++) {
+        const p = Math.round(i * cw) + .5;
+        g.beginPath(); g.moveTo(p, 0); g.lineTo(p, h); g.stroke();
+        g.beginPath(); g.moveTo(0, p); g.lineTo(w, p); g.stroke();
+      }
+      g.strokeStyle = night ? 'rgba(46,230,200,.22)' : 'rgba(30,90,95,.14)';
+      g.lineWidth = 2;
+      for (let i = 0; i <= cells; i += 4) {                        /* 每 4 格一条主格线 */
+        const p = Math.round(i * cw) + .5;
+        g.beginPath(); g.moveTo(p, 0); g.lineTo(p, h); g.stroke();
+        g.beginPath(); g.moveTo(0, p); g.lineTo(w, p); g.stroke();
+      }
+    }, 512, 512);
+    tx.wrapS = tx.wrapT = THREE.RepeatWrapping;
+    if (renderer && renderer.capabilities) tx.anisotropy = renderer.capabilities.getMaxAnisotropy();
+    return tx;
+  }
+
+  /* 径向光晕（加色用）：场坪上的光池、塔顶航标共用一张 */
+  function radialGlowTexture() {
+    return tex(function (g, w, h) {
+      const grd = g.createRadialGradient(w / 2, h / 2, 2, w / 2, h / 2, w / 2);
+      grd.addColorStop(0, 'rgba(255,255,255,.9)');
+      grd.addColorStop(.35, 'rgba(255,255,255,.32)');
+      grd.addColorStop(1, 'rgba(255,255,255,0)');
+      g.fillStyle = grd; g.fillRect(0, 0, w, h);
+    }, 128, 128);
+  }
+
+  /* 扫光带：横向一条柔和亮带（加色混合，淡到只当呼吸用） */
+  function sweepTexture() {
+    return tex(function (g, w, h) {
+      const grd = g.createLinearGradient(0, 0, w, 0);
+      grd.addColorStop(0, 'rgba(255,255,255,0)');
+      grd.addColorStop(.42, 'rgba(255,255,255,.05)');
+      grd.addColorStop(.5, 'rgba(255,255,255,.5)');
+      grd.addColorStop(.58, 'rgba(255,255,255,.05)');
+      grd.addColorStop(1, 'rgba(255,255,255,0)');
+      g.fillStyle = grd; g.fillRect(0, 0, w, h);
+    }, 128, 8);
+  }
+
   /* 电流光纹：一段"宽亮头 + 短拖尾"，沿线滚动时一眼看出在流动 */
   let flowTexProto = null;
   function flowTexture(repeat) {
@@ -234,10 +347,10 @@ window.SolarScene = (function () {
           const x = k * (w / 2);
           const lg = g.createLinearGradient(x, 0, x + w / 2, 0);
           lg.addColorStop(0, 'rgba(255,255,255,0)');
-          lg.addColorStop(.34, 'rgba(255,255,255,.30)');
-          lg.addColorStop(.56, 'rgba(255,255,255,.95)');
-          lg.addColorStop(.62, 'rgba(255,255,255,1)');
-          lg.addColorStop(.74, 'rgba(255,255,255,.26)');
+          lg.addColorStop(.22, 'rgba(255,255,255,.34)');
+          lg.addColorStop(.44, 'rgba(255,255,255,.9)');
+          lg.addColorStop(.55, 'rgba(255,255,255,1)');
+          lg.addColorStop(.72, 'rgba(255,255,255,.42)');
           lg.addColorStop(1, 'rgba(255,255,255,0)');
           g.fillStyle = lg; g.fillRect(x, 0, w / 2, h);
         }
@@ -247,7 +360,7 @@ window.SolarScene = (function () {
     const t = flowTexProto.clone();
     t.needsUpdate = true;
     t.wrapS = t.wrapT = THREE.RepeatWrapping;
-    t.repeat.set(Math.max(2, Math.round((repeat || 8) / 4.2)), 1);
+    t.repeat.set(Math.max(2, Math.round((repeat || 8) / 3)), 1);
     return t;
   }
 
@@ -268,10 +381,10 @@ window.SolarScene = (function () {
   const RAIL_Z = .40;                            /* 导轨在排内的前后位置 */
   const RAIL_DROP = .0525;                       /* 导轨中心比组件面低多少（导轨顶面贴组件底面） */
 
-  function skyTexture(p) {
+  function skyTexture(stops) {
     return tex(function (g, w, h) {
       const grd = g.createLinearGradient(0, 0, 0, h);
-      p.stops.forEach(function (s) { grd.addColorStop(s[0], s[1]); });
+      stops.forEach(function (s) { grd.addColorStop(s[0], s[1]); });
       g.fillStyle = grd; g.fillRect(0, 0, w, h);
     }, 16, 256);
   }
@@ -279,31 +392,59 @@ window.SolarScene = (function () {
   /* ---------------- 场地 ---------------- */
   function buildSite() {
     const T = THREE_();
-    /* 地坪：整片水泥地，铺到 700 见方，远边交给雾，任何角度都看不到地边 */
-    groundMat = new T.MeshStandardMaterial({ map: concreteTexture(), roughness: .96, metalness: .02 });
+    /* 地坪：整片地面铺到 700 见方，远边交给雾，任何角度都看不到地边 */
+    groundMat = regThemeMat(new T.MeshStandardMaterial({ map: concreteTexture(), roughness: .96, metalness: .02 }),
+      { envMapIntensity: .5 }, { envMapIntensity: .3 });
     groundMat.map.repeat.set(47, 47);
     const ground = new T.Mesh(new T.PlaneGeometry(700, 700), groundMat);
     ground.rotation.x = -Math.PI / 2;
     ground.receiveShadow = true;
     root.add(ground);
-    /* 场坪：和地面同材质的水泥台（原来是深色小台座 + 发光包边，四周露边像模型底座）；
-       放大到 96×58，边缘落在雾外，看不到"台边" */
-    slabYardMat = new T.MeshStandardMaterial({ map: concreteTexture(), roughness: .93, metalness: .02 });
-    slabYardMat.map.repeat.set(31, 16);
+    /* 场坪：数字孪生底座 —— 深色底盘 + 细格网（每格约 3m），四周一圈发光描边 */
+    slabYardMat = regThemeMat(new T.MeshStandardMaterial({ map: slabTexture(theme), roughness: .93, metalness: .02 }),
+      { envMapIntensity: .5 }, { envMapIntensity: .35 });
+    slabYardMat.map.repeat.set(4, 58 / 24);
     root.add(box(96, .18, 58, slabYardMat, 0, .09, 0));
+    /* 场坪描边：EdgesGeometry 细线，就是画面里"场地边界"的那圈光 */
+    slabEdge = new T.LineSegments(
+      new T.EdgesGeometry(new T.BoxGeometry(96, .18, 58)),
+      regThemeMat(new T.LineBasicMaterial({ color: 0x2ee6c8, transparent: true, opacity: .5, depthWrite: false }),
+        {}, { color: 0x0f9682, opacity: .35 }));
+    slabEdge.position.y = .09;
+    root.add(slabEdge);
+    /* 坪面光池：加色径向渐变，场坪中心亮、四周暗 */
+    siteGlow = new T.Mesh(new T.PlaneGeometry(150, 100),
+      regThemeMat(new T.MeshBasicMaterial({
+        map: radialGlowTexture(), color: 0x2ee6c8, transparent: true, opacity: .08,
+        blending: T.AdditiveBlending, depthWrite: false
+      }), {}, { color: 0x0f9682, opacity: .05 }));
+    siteGlow.rotation.x = -Math.PI / 2;
+    siteGlow.position.y = .2;
+    siteGlow.renderOrder = 2;
+    root.add(siteGlow);
+    /* 扫光带：一条极淡的加色光带缓慢横移（18s 一轮），给静态画面一点"数据在跑"的呼吸 */
+    sweepMesh = new T.Mesh(new T.PlaneGeometry(26, 74),
+      new T.MeshBasicMaterial({
+        map: sweepTexture(), color: 0x2ee6c8, transparent: true, opacity: 0,
+        blending: T.AdditiveBlending, depthWrite: false
+      }));
+    sweepMesh.rotation.x = -Math.PI / 2;
+    sweepMesh.position.y = .21;
+    sweepMesh.renderOrder = 3;
+    root.add(sweepMesh);
   }
 
-  /* ---------------- 卫生院建筑（两层小楼：白主墙 + 灰腰线 + 大窗，沿用莒南厂房那套语言） ---------------- */
+  /* ---------------- 卫生院建筑（两层小楼：昼=白主墙 + 灰腰线；夜=深灰蓝墙板 + 青缝线 + 暖白窗光） ---------------- */
   let winMat = null;
-  const WIN_GLOW = .5;                 /* 夜里窗内暖光的基准亮度（原来 .8 偏亮、过曝） */
   function buildBuilding() {
     const T = THREE_();
-    const wallMat = new T.MeshStandardMaterial({ map: wallTexture(), roughness: .78, metalness: .1, envMapIntensity: .16 });
-    const wallTop = std(0xbcc0b7, { roughness: .92, envMapIntensity: .14 });
-    const wallBottom = std(0x545c58, { roughness: .95, envMapIntensity: .12 });
-    const trimMat = std(0x8d9598, { roughness: .62, metalness: .3 });     /* 灰带 / 窗框 */
+    const wallMat = regThemeMat(new T.MeshStandardMaterial({ map: wallTexture(theme), roughness: .78, metalness: .1, envMapIntensity: .16 }),
+      { map: function (t) { return wallTexture(t); }, envMapIntensity: .3 });
+    const wallTop = regThemeMat(std(0xbcc0b7, { roughness: .92, envMapIntensity: .14 }), { color: 0x22333c, envMapIntensity: .26 });
+    const wallBottom = regThemeMat(std(0x545c58, { roughness: .95, envMapIntensity: .12 }), { color: 0x0d1519 });
+    const trimMat = regThemeMat(std(0x8d9598, { roughness: .62, metalness: .3 }), { color: 0x2c4048 });     /* 灰带 / 窗框 */
     const bandMat = std(0x232a2d, { roughness: .5, metalness: .35 });     /* 窗带底 */
-    root.add(box(W2 + .9, .3, D2 + .9, std(0xa9ada3, { roughness: .9, envMapIntensity: .14 }), 0, .15, 0));
+    root.add(box(W2 + .9, .3, D2 + .9, regThemeMat(std(0xa9ada3, { roughness: .9, envMapIntensity: .14 }), { color: 0x1b2830, envMapIntensity: .26 }), 0, .15, 0));
     /* 房身（两层一起） */
     const bld = new T.Mesh(new T.BoxGeometry(W2, H2, D2), [wallMat, wallMat, wallTop, wallBottom, wallMat, wallMat]);
     bld.position.set(0, H2 / 2 + .3, 0);
@@ -314,11 +455,18 @@ window.SolarScene = (function () {
     [-1, 1].forEach(function (sz) { root.add(box(W2 + .24, .16, .18, trimMat, 0, FLOOR_Y + .3, sz * (D2 / 2 + .05))); });
     [-1, 1].forEach(function (sx) { root.add(box(.18, .16, D2 + .24, trimMat, sx * (W2 / 2 + .05), FLOOR_Y + .3, 0)); });
     /* 女儿墙 */
-    const par = std(0xb3b8ad, { roughness: .85, envMapIntensity: .16 });
+    const par = regThemeMat(std(0xb3b8ad, { roughness: .85, envMapIntensity: .16 }), { color: 0x1f2f38, envMapIntensity: .26 });
     root.add(box(W2 + .6, .5, .3, par, 0, roofY + .25, -D2 / 2));
     root.add(box(W2 + .6, .5, .3, par, 0, roofY + .25, D2 / 2));
     root.add(box(.3, .5, D2, par, -W2 / 2, roofY + .25, 0));
     root.add(box(.3, .5, D2, par, W2 / 2, roofY + .25, 0));
+    /* 屋面发光轮廓线：沿女儿墙顶走一圈（坐在墙顶面上，不与墙穿模） */
+    const roofLineMat = regThemeMat(new T.MeshBasicMaterial({ color: 0x2ee6c8, transparent: true, opacity: .72 }),
+      {}, { color: 0x0f9682, opacity: .4 });
+    root.add(box(W2 + .66, .05, .05, roofLineMat, 0, roofY + .525, D2 / 2));
+    root.add(box(W2 + .66, .05, .05, roofLineMat, 0, roofY + .525, -D2 / 2));
+    root.add(box(.05, .05, D2 + .06, roofLineMat, W2 / 2, roofY + .525, 0));
+    root.add(box(.05, .05, D2 + .06, roofLineMat, -W2 / 2, roofY + .525, 0));
 
     /* 窗户贴图（改进版）：窗框 + 窗格 + 暖色室内。
        同一张贴图既当 map 也当 emissiveMap —— 发光时透出的是格子里的暖光，
@@ -341,11 +489,11 @@ window.SolarScene = (function () {
       g.fillRect(w / 2 - 2, 0, 4, h);
       for (let r = 1; r < 3; r++) g.fillRect(0, m + r * ch - 2, w, 4);
     }, 64, 96, 2);
-    winMat = new T.MeshStandardMaterial({
+    winMat = regThemeMat(new T.MeshStandardMaterial({
       map: winPaneTex, emissiveMap: winPaneTex,
       color: 0x20262a, roughness: .35, metalness: .2,
-      emissive: new T.Color(0xffe2bd), emissiveIntensity: WIN_GLOW
-    });
+      emissive: new T.Color(0xfff3e2), emissiveIntensity: .16
+    }), { color: 0x0e1a1f, emissive: 0xeef4f2, emissiveIntensity: .58 });
     /* 一整层的大窗带：深色窗带里嵌 n 扇玻璃，中间用竖挺分开 */
     const bandH = 1.75, bandD = .24, winY = FLOOR_Y + .3 + 1.5;
     function winBand(alongX, len, n, cx, cz, ww) {
@@ -373,26 +521,27 @@ window.SolarScene = (function () {
     });
     /* 正面大门：门套 + 双开门 + 雨棚 + 台阶 + 院名牌 */
     const dz = D2 / 2;
-    root.add(box(3.4, 2.9, .24, std(0xcfd6d2, { roughness: .7, envMapIntensity: .16 }), 0, 1.75, dz + .04));
-    const doorMat = std(0x31505c, { roughness: .45, metalness: .35, envMapIntensity: .4 });
+    root.add(box(3.4, 2.9, .24, regThemeMat(std(0xcfd6d2, { roughness: .7, envMapIntensity: .16 }), { color: 0x22333c, envMapIntensity: .3 }), 0, 1.75, dz + .04));
+    const doorMat = regThemeMat(std(0x31505c, { roughness: .45, metalness: .35, envMapIntensity: .4 }), { color: 0x14262e, envMapIntensity: .7 });
     root.add(box(1.42, 2.5, .1, doorMat, -.74, 1.55, dz + .14));
     root.add(box(1.42, 2.5, .1, doorMat, .74, 1.55, dz + .14));
-    root.add(box(.05, 2.5, .12, std(0xbfc9cb, { roughness: .4, metalness: .5 }), 0, 1.55, dz + .16));
-    root.add(box(2.2, .22, .1, std(0xbcd6dd, { roughness: .3, metalness: .3 }), 0, 2.62, dz + .16));   /* 门头玻璃 */
+    root.add(box(.05, 2.5, .12, regThemeMat(std(0xbfc9cb, { roughness: .4, metalness: .5 }), { color: 0x3a4d55 }), 0, 1.55, dz + .16));
+    root.add(box(2.2, .22, .1, regThemeMat(std(0xbcd6dd, { roughness: .3, metalness: .3 }), { color: 0x16333c, envMapIntensity: .8 }), 0, 2.62, dz + .16));   /* 门头玻璃 */
     const plate = new T.Mesh(new T.PlaneGeometry(3.6, .9),
       new T.MeshBasicMaterial({ map: namePlateTexture(), transparent: true }));
     plate.position.set(0, 3.9, dz + .16);
     root.add(plate);
-    const aw = std(0xc3c8c2, { roughness: .8, envMapIntensity: .16 });
+    const aw = regThemeMat(std(0xc3c8c2, { roughness: .8, envMapIntensity: .16 }), { color: 0x1c2a31, envMapIntensity: .26 });
+    const awPost = regThemeMat(std(0xadb2ab, { roughness: .8 }), { color: 0x18242a });
     root.add(box(5.4, .16, 2.0, aw, 0, H2 - .35, dz + 1.0));
-    root.add(box(.18, H2 - .5, .18, std(0xadb2ab, { roughness: .8 }), -2.5, (H2 - .5) / 2, dz + 1.85));
-    root.add(box(.18, H2 - .5, .18, std(0xadb2ab, { roughness: .8 }), 2.5, (H2 - .5) / 2, dz + 1.85));
-    root.add(box(5.0, .16, .5, std(0xaaafa6, { roughness: .9 }), 0, .38, dz + .75));
-    root.add(box(4.4, .16, .5, std(0xa4a9a0, { roughness: .9 }), 0, .22, dz + 1.2));
+    root.add(box(.18, H2 - .5, .18, awPost, -2.5, (H2 - .5) / 2, dz + 1.85));
+    root.add(box(.18, H2 - .5, .18, awPost, 2.5, (H2 - .5) / 2, dz + 1.85));
+    root.add(box(5.0, .16, .5, regThemeMat(std(0xaaafa6, { roughness: .9 }), { color: 0x1a252b }), 0, .38, dz + .75));
+    root.add(box(4.4, .16, .5, regThemeMat(std(0xa4a9a0, { roughness: .9 }), { color: 0x182329 }), 0, .22, dz + 1.2));
     /* 北墙两台空调外机 */
     [[-8.5, 3.1], [7.5, 3.1]].forEach(function (p) {
-      root.add(box(1.05, .78, .42, std(0xdfe4e2, { roughness: .6 }), p[0], p[1] + 2.4, -D2 / 2 - .24));
-      root.add(box(.62, .05, .3, std(0x9aa5a6, { roughness: .5, metalness: .4 }), p[0], p[1] + 2.1, -D2 / 2 - .24));
+      root.add(box(1.05, .78, .42, regThemeMat(std(0xdfe4e2, { roughness: .6 }), { color: 0x26343b }), p[0], p[1] + 2.4, -D2 / 2 - .24));
+      root.add(box(.62, .05, .3, regThemeMat(std(0x9aa5a6, { roughness: .5, metalness: .4 }), { color: 0x3d4d55 }), p[0], p[1] + 2.1, -D2 / 2 - .24));
     });
   }
 
@@ -402,8 +551,10 @@ window.SolarScene = (function () {
     const arrGroup = new T.Group();
     arrGroup.userData.key = 'array';              /* 点阵列可弹明细卡 */
     root.add(arrGroup);
-    const railMat = new T.MeshStandardMaterial({ color: 0x9fb0b6, roughness: .42, metalness: .72, envMapIntensity: .6 });
-    const legMat = std(0x8b9aa0, { roughness: .5, metalness: .6, envMapIntensity: .5 });
+    const railMat = regThemeMat(new T.MeshStandardMaterial({ color: 0x9fb0b6, roughness: .42, metalness: .72, envMapIntensity: .6 }),
+      { color: 0x55666e, envMapIntensity: .8 });
+    const legMat = regThemeMat(std(0x8b9aa0, { roughness: .5, metalness: .6, envMapIntensity: .5 }),
+      { color: 0x46565d, envMapIntensity: .7 });
     const modGeo = new T.BoxGeometry(MW, MT, MD);
     const modMats = [edgeMat, edgeMat, glassMat, edgeMat, edgeMat, edgeMat];
     const railGeo = new T.BoxGeometry(rowW + .5, .06, .12);
@@ -444,8 +595,8 @@ window.SolarScene = (function () {
       arrGroup.add(row);
     });
     /* 检修走道（中间两排之间）+ 屋面线槽 */
-    arrGroup.add(box(rowW + 1.2, .04, 1.5, std(0xadb2a9, { roughness: .9, envMapIntensity: .14 }), 0, roofY + .02, 0));
-    const trayMat = std(0x9aa5a6, { roughness: .45, metalness: .6, envMapIntensity: .5 });
+    arrGroup.add(box(rowW + 1.2, .04, 1.5, regThemeMat(std(0xadb2a9, { roughness: .9, envMapIntensity: .14 }), { color: 0x26343b, envMapIntensity: .3 }), 0, roofY + .02, 0));
+    const trayMat = regThemeMat(std(0x9aa5a6, { roughness: .45, metalness: .6, envMapIntensity: .5 }), { color: 0x3d4d55, envMapIntensity: .7 });
     arrGroup.add(box(rowW + 1.6, .05, .34, trayMat, 0, roofY + .30, 0));
     arrGroup.add(box(rowW + 1.6, .09, .05, trayMat, 0, roofY + .345, -.17));
     arrGroup.add(box(rowW + 1.6, .09, .05, trayMat, 0, roofY + .345, .17));
@@ -464,29 +615,31 @@ window.SolarScene = (function () {
   }
 
   /* ---------------- 储能柜（光储一体柜：柜体 + 顶部空调 + 侧面 SOC 光柱） ---------------- */
-  function cabFrontTexture() {
+  function cabFrontTexture(t) {
+    const night = (t || theme) === 'night';
     return tex(function (g, w, h) {
-      g.fillStyle = '#e9edee'; g.fillRect(0, 0, w, h);
-      g.strokeStyle = 'rgba(96,116,120,.45)'; g.lineWidth = 3; g.strokeRect(8, 8, w - 16, h - 16);
-      g.fillStyle = 'rgba(206,216,218,.95)'; g.fillRect(16, 16, w - 32, 54);            /* 顶部空调段 */
-      g.strokeStyle = 'rgba(96,116,120,.35)'; g.strokeRect(16, 16, w - 32, 54);
-      for (let i = 0; i < 5; i++) { g.fillStyle = 'rgba(96,116,120,.25)'; g.fillRect(26, 25 + i * 9, w - 52, 3); }
-      g.strokeStyle = 'rgba(70,96,100,.5)'; g.lineWidth = 4;
+      g.fillStyle = night ? '#16272f' : '#e9edee'; g.fillRect(0, 0, w, h);
+      g.strokeStyle = night ? 'rgba(46,230,200,.34)' : 'rgba(96,116,120,.45)'; g.lineWidth = 3; g.strokeRect(8, 8, w - 16, h - 16);
+      g.fillStyle = night ? 'rgba(30,54,62,.95)' : 'rgba(206,216,218,.95)'; g.fillRect(16, 16, w - 32, 54);            /* 顶部空调段 */
+      g.strokeStyle = night ? 'rgba(46,230,200,.24)' : 'rgba(96,116,120,.35)'; g.strokeRect(16, 16, w - 32, 54);
+      for (let i = 0; i < 5; i++) { g.fillStyle = night ? 'rgba(46,230,200,.13)' : 'rgba(96,116,120,.25)'; g.fillRect(26, 25 + i * 9, w - 52, 3); }
+      g.strokeStyle = night ? 'rgba(46,230,200,.45)' : 'rgba(70,96,100,.5)'; g.lineWidth = 4;
       g.beginPath(); g.moveTo(w / 2, 84); g.lineTo(w / 2, h - 20); g.stroke();          /* 门缝 */
-      g.lineWidth = 2; g.strokeStyle = 'rgba(96,116,120,.3)';
+      g.lineWidth = 2; g.strokeStyle = night ? 'rgba(46,230,200,.2)' : 'rgba(96,116,120,.3)';
       g.strokeRect(20, 90, w / 2 - 30, h - 122); g.strokeRect(w / 2 + 10, 90, w / 2 - 30, h - 122);
-      g.fillStyle = 'rgba(52,86,88,.55)'; g.fillRect(w / 2 - 20, h / 2 - 12, 6, 36); g.fillRect(w / 2 + 14, h / 2 - 12, 6, 36);
-      g.fillStyle = 'rgba(16,160,138,.5)'; g.fillRect(24, h - 36, 74, 11);              /* 铭牌 */
-      g.fillStyle = 'rgba(224,148,16,.6)'; g.fillRect(w - 98, h - 36, 74, 11);          /* 警示条 */
+      g.fillStyle = night ? 'rgba(46,230,200,.5)' : 'rgba(52,86,88,.55)'; g.fillRect(w / 2 - 20, h / 2 - 12, 6, 36); g.fillRect(w / 2 + 14, h / 2 - 12, 6, 36);
+      g.fillStyle = night ? 'rgba(46,230,200,.42)' : 'rgba(16,160,138,.5)'; g.fillRect(24, h - 36, 74, 11);              /* 铭牌 */
+      g.fillStyle = night ? 'rgba(255,176,32,.6)' : 'rgba(224,148,16,.6)'; g.fillRect(w - 98, h - 36, 74, 11);          /* 警示条 */
     }, 256, 320, 2);
   }
-  function cabSideTexture() {
+  function cabSideTexture(t) {
+    const night = (t || theme) === 'night';
     return tex(function (g, w, h) {
-      g.fillStyle = '#e2e7e8'; g.fillRect(0, 0, w, h);
-      g.strokeStyle = 'rgba(96,116,120,.22)'; g.lineWidth = 2;
+      g.fillStyle = night ? '#15242c' : '#e2e7e8'; g.fillRect(0, 0, w, h);
+      g.strokeStyle = night ? 'rgba(46,230,200,.18)' : 'rgba(96,116,120,.22)'; g.lineWidth = 2;
       for (let i = 1; i < 4; i++) { const x = i * w / 4; g.beginPath(); g.moveTo(x, 6); g.lineTo(x, h - 6); g.stroke(); }
-      g.strokeStyle = 'rgba(96,116,120,.3)'; g.strokeRect(6, 6, w - 12, h - 12);
-      for (let i = 0; i < 9; i++) { g.fillStyle = 'rgba(96,116,120,.28)'; g.fillRect(18, h - 72 + i * 7, w - 36, 3); }
+      g.strokeStyle = night ? 'rgba(46,230,200,.26)' : 'rgba(96,116,120,.3)'; g.strokeRect(6, 6, w - 12, h - 12);
+      for (let i = 0; i < 9; i++) { g.fillStyle = night ? 'rgba(46,230,200,.14)' : 'rgba(96,116,120,.28)'; g.fillRect(18, h - 72 + i * 7, w - 36, 3); }
     }, 256, 320, 2);
   }
   let cabLabelEl = null, cabSocBars = [], cabLed = null, cabGlow = null;
@@ -497,11 +650,13 @@ window.SolarScene = (function () {
     g.position.set(CAB_X, 0, CAB_Z);
     g.rotation.y = Math.PI / 2;                    /* 柜门朝东，正对楼与默认机位 */
     const W = CAB_W, H = CAB_H, D = CAB_D;
-    const steel = std(0xc6ccce, { roughness: .45, metalness: .55, envMapIntensity: .6 });
+    const steel = regThemeMat(std(0xc6ccce, { roughness: .45, metalness: .55, envMapIntensity: .6 }), { color: 0x46565d, envMapIntensity: .8 });
     const dark = std(0x22333a, { roughness: .5, metalness: .5, envMapIntensity: .5 });
-    const front = new T.MeshStandardMaterial({ map: cabFrontTexture(), roughness: .5, metalness: .35, envMapIntensity: .4 });
-    const side = new T.MeshStandardMaterial({ map: cabSideTexture(), roughness: .55, metalness: .35, envMapIntensity: .4 });
-    const topMat = std(0xd6dbdc, { roughness: .6, metalness: .3 });
+    const front = regThemeMat(new T.MeshStandardMaterial({ map: cabFrontTexture(theme), roughness: .5, metalness: .35, envMapIntensity: .4 }),
+      { map: function (t) { return cabFrontTexture(t); }, envMapIntensity: .6 });
+    const side = regThemeMat(new T.MeshStandardMaterial({ map: cabSideTexture(theme), roughness: .55, metalness: .35, envMapIntensity: .4 }),
+      { map: function (t) { return cabSideTexture(t); }, envMapIntensity: .6 });
+    const topMat = regThemeMat(std(0xd6dbdc, { roughness: .6, metalness: .3 }), { color: 0x2b3a42 });
     g.add(box(W + .24, .18, D + .24, dark, 0, .09, 0));                                /* 底座 */
     const body = new T.Mesh(new T.BoxGeometry(W, H, D), [side, side, topMat, side, front, side]);
     body.position.y = H / 2 + .18;
@@ -510,7 +665,7 @@ window.SolarScene = (function () {
     [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(function (c) {                        /* 四角立柱 */
       g.add(box(.1, H + .04, .1, steel, c[0] * (W / 2 - .02), H / 2 + .18, c[1] * (D / 2 - .02)));
     });
-    g.add(box(W * .74, .32, D * .78, std(0xdfe4e2, { roughness: .6 }), 0, H + .36, 0));  /* 顶部空调 */
+    g.add(box(W * .74, .32, D * .78, regThemeMat(std(0xdfe4e2, { roughness: .6 }), { color: 0x26343b }), 0, H + .36, 0));  /* 顶部空调 */
     for (let k = 0; k < 4; k++) g.add(box(W * .6, .04, .07, steel, 0, H + .52, -.22 + k * .15));
     /* 侧面 SOC 光柱：两侧各一条，从下往上长 */
     cabSocBars = [];
@@ -528,7 +683,8 @@ window.SolarScene = (function () {
     cabLed.position.set(W / 2 - .5, .18 + H * .86, D / 2 + .055);
     g.add(cabLed);
     cabGlow = new T.Mesh(new T.PlaneGeometry(W * 1.7, D * 1.9),
-      new T.MeshBasicMaterial({ color: 0x2ee6c8, transparent: true, opacity: .06, blending: T.AdditiveBlending, depthWrite: false }));
+      regThemeMat(new T.MeshBasicMaterial({ color: 0x2ee6c8, transparent: true, opacity: .06, blending: T.AdditiveBlending, depthWrite: false }),
+        { opacity: .11 }));
     cabGlow.rotation.x = -Math.PI / 2;
     cabGlow.position.y = .22;
     g.add(cabGlow);
@@ -643,6 +799,18 @@ window.SolarScene = (function () {
       gpts.push(new T.Vector3(0, hgt + .9 - Math.sin(Math.min(1, Math.abs(z) / 20) * Math.PI / 2) * .6, z));
     }
     g.add(new T.Line(new T.BufferGeometry().setFromPoints(gpts), condMat));
+    /* 塔顶航空障碍灯：红点 + 加色光晕，呼吸闪烁（给暗色画面一个活点） */
+    beacon = new T.Mesh(new T.SphereGeometry(.13, 10, 10),
+      new T.MeshBasicMaterial({ color: 0xff5a3c, transparent: true, opacity: .9, fog: false }));
+    beacon.position.set(0, hgt + 1.06, 0);
+    g.add(beacon);
+    beaconGlow = new T.Sprite(new T.SpriteMaterial({
+      map: radialGlowTexture(), color: 0xff5a3c, transparent: true, opacity: .5,
+      blending: T.AdditiveBlending, depthWrite: false, fog: false
+    }));
+    beaconGlow.position.copy(beacon.position);
+    beaconGlow.scale.set(2.6, 2.6, 1);
+    g.add(beaconGlow);
     /* 杆号牌 */
     const tagTex = tex(function (gg, w2, h2) {
       gg.fillStyle = '#1d2a2e'; gg.fillRect(0, 0, w2, h2);
@@ -662,28 +830,28 @@ window.SolarScene = (function () {
   }
   function buildEquipment() {
     const T = THREE_();
-    const steel = std(0xc6ccce, { roughness: .45, metalness: .55, envMapIntensity: .6 });
+    const steel = regThemeMat(std(0xc6ccce, { roughness: .45, metalness: .55, envMapIntensity: .6 }), { color: 0x46565d, envMapIntensity: .8 });
     const dark = std(0x22333a, { roughness: .5, metalness: .5, envMapIntensity: .5 });
-    const finMat = std(0xa7b1b3, { roughness: .4, metalness: .6, envMapIntensity: .5 });
+    const finMat = regThemeMat(std(0xa7b1b3, { roughness: .4, metalness: .6, envMapIntensity: .5 }), { color: 0x4a5b63, envMapIntensity: .7 });
     /* ---------- 逆变器（挂东墙，正面朝东） ---------- */
     const invG = new T.Group();
     invG.userData.key = 'inverter';               /* 点逆变器可弹明细卡 */
     invG.position.set(W2 / 2, 0, 1.2);
-    invG.add(box(.07, 1.66, 1.28, std(0x8f9a9c, { roughness: .5, metalness: .5 }), .035, 2.18, 0));
+    invG.add(box(.07, 1.66, 1.28, regThemeMat(std(0x8f9a9c, { roughness: .5, metalness: .5 }), { color: 0x2c3d45 }), .035, 2.18, 0));
     invG.add(box(.36, 1.5, 1.1, dark, .26, 2.18, 0));
-    invG.add(box(.04, 1.56, 1.16, std(0xb9c2c4, { roughness: .4, metalness: .5 }), .44, 2.18, 0));
+    invG.add(box(.04, 1.56, 1.16, regThemeMat(std(0xb9c2c4, { roughness: .4, metalness: .5 }), { color: 0x33454d, envMapIntensity: .7 }), .44, 2.18, 0));
     for (let i = 0; i < 5; i++) invG.add(box(.03, 1.24, .1, finMat, .12 + i * .09, 2.18, -.575));   /* 背面散热齿 */
     invG.add(box(.03, .52, .62, std(0x0a1418, { roughness: .3, metalness: .4 }), .465, 2.46, 0));  /* 显示屏 */
     invG.add(box(.03, .16, .22, std(0xd9b23a, { roughness: .5 }), .465, 1.95, -.34));             /* 隔离开关 */
-    invG.add(box(.02, .1, .4, std(0xd8dee0, { roughness: .6 }), .465, 1.8, .22));                 /* 铭牌 */
+    invG.add(box(.02, .1, .4, regThemeMat(std(0xd8dee0, { roughness: .6 }), { color: 0x8f9aa0 }), .465, 1.8, .22));                 /* 铭牌 */
     root.add(invG);
     invLabelEl = label('逆变器 · SG100CX-P2-CN<i>-- kW</i><em>待机</em>', 'tag3d-gt', W2 / 2 + 1.7, 3.85, 1.2);
     addCard('inverter', W2 / 2 + 1.7, 2.9, 1.2);
 
     /* ---------- 通信模块（立杆） ---------- */
     root.add(cyl(.07, .09, 3.4, steel, W2 / 2 + 2.2, 1.7, -2.6, 10));
-    root.add(box(.5, .56, .36, std(0xe8eef0, { roughness: .5, envMapIntensity: .5 }), W2 / 2 + 2.2, 3.05, -2.6));
-    root.add(box(.52, .05, .38, std(0xc2ccce, { roughness: .5, metalness: .5 }), W2 / 2 + 2.2, 3.34, -2.6));
+    root.add(box(.5, .56, .36, regThemeMat(std(0xe8eef0, { roughness: .5, envMapIntensity: .5 }), { color: 0x2b3a42, envMapIntensity: .6 }), W2 / 2 + 2.2, 3.05, -2.6));
+    root.add(box(.52, .05, .38, regThemeMat(std(0xc2ccce, { roughness: .5, metalness: .5 }), { color: 0x3a4b53 }), W2 / 2 + 2.2, 3.34, -2.6));
     root.add(cyl(.022, .022, .8, steel, W2 / 2 + 2.2, 3.76, -2.6, 6));
     label('通信模块 · EyeS4<em>数据回传阳光云</em>', 'tag3d-gt', W2 / 2 + 2.2, 4.45, -2.6);
 
@@ -692,13 +860,13 @@ window.SolarScene = (function () {
     const mg = new T.Group();
     mg.userData.key = 'grid';                     /* 点计量箱可弹明细卡 */
     mg.position.set(mx, 0, mz);
-    mg.add(box(1.3, .22, 1.6, std(0x9a9f96, { roughness: .9 }), 0, .11, 0));
-    mg.add(box(.5, 1.2, .9, std(0xd4d9d4, { roughness: .5, metalness: .3, envMapIntensity: .4 }), 0, .82, 0));
-    mg.add(box(.52, .1, .94, std(0xb2b8b4, { roughness: .5, metalness: .4 }), 0, 1.44, 0));
-    mg.add(box(.56, .86, .02, std(0xcfd6d2, { roughness: .45, metalness: .3 }), 0, .82, .46));           /* 箱门（朝南） */
+    mg.add(box(1.3, .22, 1.6, regThemeMat(std(0x9a9f96, { roughness: .9 }), { color: 0x2b3a42 }), 0, .11, 0));
+    mg.add(box(.5, 1.2, .9, regThemeMat(std(0xd4d9d4, { roughness: .5, metalness: .3, envMapIntensity: .4 }), { color: 0x33454d, envMapIntensity: .7 }), 0, .82, 0));
+    mg.add(box(.52, .1, .94, regThemeMat(std(0xb2b8b4, { roughness: .5, metalness: .4 }), { color: 0x2b3a42 }), 0, 1.44, 0));
+    mg.add(box(.56, .86, .02, regThemeMat(std(0xcfd6d2, { roughness: .45, metalness: .3 }), { color: 0x3a4b53 }), 0, .82, .46));           /* 箱门（朝南） */
     mg.add(box(.16, .1, .03, std(0x8f9a9c, { roughness: .5, metalness: .5 }), -.12, 1.0, .48));
     root.add(mg);
-    const poleMat = std(0xb9c2c4, { roughness: .6, metalness: .3 });
+    const poleMat = regThemeMat(std(0xb9c2c4, { roughness: .6, metalness: .3 }), { color: 0x46565d });
     const px = mx - .6;
     /* 只留近处一根电杆做引下；远段线路改由并网铁塔承担（见 buildTower） */
     const poles = [[px, 4.25, mz, 4.5]];
@@ -745,7 +913,7 @@ window.SolarScene = (function () {
       map: flowTexture(len), color: FLOWC.night.idle, transparent: true, opacity: .3,
       blending: THREE.AdditiveBlending, depthWrite: false
     });
-    root.add(new THREE.Mesh(new THREE.TubeGeometry(curve, seg, (radius || .05) * 2.2, 8, false), tubeMat));
+    root.add(new THREE.Mesh(new THREE.TubeGeometry(curve, seg, (radius || .05) * 2.4, 8, false), tubeMat));
     flows.push({ map: tubeMat.map, tubeMat: tubeMat, kind: kind, on: false, speed: 0, dir: 1, tint: 0 });
   }
 
@@ -756,12 +924,12 @@ window.SolarScene = (function () {
     theme = document.documentElement.getAttribute('data-theme') === 'day' ? 'day' : 'night';
 
     /* 天空：渐变穹顶（背景交给穹顶，雾色取地平线色） */
-    const skyP = SKY[theme] || SKY.night;
+    const tp = THEMES[theme] || THEMES.night;
     skyDome = new T.Mesh(new T.SphereGeometry(210, 28, 18),
-      new T.MeshBasicMaterial({ map: skyTexture(skyP), side: T.BackSide, depthWrite: false, fog: false }));
+      new T.MeshBasicMaterial({ map: skyTexture(tp.sky), side: T.BackSide, depthWrite: false, fog: false }));
     skyDome.renderOrder = -1;
     scene.add(skyDome);
-    scene.fog = new T.Fog(skyP.fog, 120, 340);
+    scene.fog = new T.Fog(tp.fog.color, tp.fog.near, tp.fog.far);
 
     camera = new T.PerspectiveCamera(46, 1, .1, 900);
     /* 构图：把「并网铁塔 → 储能柜 → 两层小楼（屋顶光伏）」从左到右完整收进画面 */
@@ -797,9 +965,9 @@ window.SolarScene = (function () {
     root = new T.Group();
     scene.add(root);
 
-    hemi = new T.HemisphereLight(0xdff0ff, 0x76815f, .62);
+    hemi = new T.HemisphereLight(tp.lights.hemi.sky, tp.lights.hemi.ground, tp.lights.hemi.base);
     scene.add(hemi);
-    sunLight = new T.DirectionalLight(0xfff2d0, 1.15);
+    sunLight = new T.DirectionalLight(tp.lights.key.color, tp.lights.key.base);
     sunLight.position.set(34, 40, 22);
     sunLight.castShadow = true;
     sunLight.shadow.mapSize.set(2048, 2048);
@@ -807,7 +975,7 @@ window.SolarScene = (function () {
     sc.left = -58; sc.right = 58; sc.top = 58; sc.bottom = -58; sc.near = 1; sc.far = 220;
     sunLight.shadow.bias = -0.0009;
     scene.add(sunLight);
-    fillLight = new T.DirectionalLight(0xbfe0ff, .22);
+    fillLight = new T.DirectionalLight(tp.lights.fill.color, tp.lights.fill.intensity);
     fillLight.position.set(-24, 14, -18);
     scene.add(fillLight);
 
@@ -837,9 +1005,9 @@ window.SolarScene = (function () {
       new T.Vector3(W2 / 2 + .34, roofY - .55, .9),
       new T.Vector3(W2 / 2 + .42, 3.35, 1.1),
       new T.Vector3(W2 / 2 + .42, 2.98, 1.2)
-    ], 'dc', .055);
+    ], 'dc', .069);
     /* 过墙套管（电缆从套管中间穿出女儿墙，避免穿模） */
-    root.add(box(.7, .2, .2, std(0x9aa5a6, { roughness: .5, metalness: .5 }), W2 / 2 + .28, roofY + .42, .55));
+    root.add(box(.7, .2, .2, regThemeMat(std(0x9aa5a6, { roughness: .5, metalness: .5 }), { color: 0x3d4d55 }), W2 / 2 + .28, roofY + .42, .55));
     /* 交流侧：逆变器底部 → 沿东墙 / 南墙 → 并网计量箱 */
     addFlow([
       new T.Vector3(W2 / 2 + .42, 1.4, 1.2),
@@ -849,13 +1017,13 @@ window.SolarScene = (function () {
       new T.Vector3(-13.6, 1.05, D2 / 2 + .2),
       new T.Vector3(-14.6, 1.05, 7.0),
       new T.Vector3(-14.6, 1.1, 6.0)
-    ], 'ac', .06);
+    ], 'ac', .075);
     /* 交流支线：计量箱 → 储能柜（充电流进柜、放电流出柜） */
     addFlow([
       new T.Vector3(-14.4, .95, 5.9),
       new T.Vector3(-15.6, .85, 4.2),
       new T.Vector3(-16.7, .72, 2.0)
-    ], 'stor', .05);
+    ], 'stor', .063);
     /* 交流支线：计量箱 → 电杆 → 沿三跨导线 → 并网铁塔（往电网卖电 / 从电网取电） */
     addFlow([
       new T.Vector3(-15.05, 1.35, 5.95),
@@ -863,7 +1031,7 @@ window.SolarScene = (function () {
       new T.Vector3(-15.4, 4.1, 6.0),
       new T.Vector3(-22, 5.6, 7.6),
       new T.Vector3(-30, 6.4, 7.0)
-    ], 'grid', .045);
+    ], 'grid', .068);
 
     /* ---------- 天气：太阳 / 月亮 / 云 / 降水 ---------- */
     sun = new T.Mesh(new T.SphereGeometry(3.2, 20, 20), new T.MeshBasicMaterial({ color: 0xffe9a8, fog: false }));
@@ -886,13 +1054,14 @@ window.SolarScene = (function () {
     root.add(moon);
 
     cloudGroup = new T.Group();
-    const cloudMat = new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: .0 });
+    const cloudMat = new T.MeshBasicMaterial({ color: tp.cloud, transparent: true, opacity: .0 });
     for (let i = 0; i < 9; i++) {
       const cg = new T.Group();
       for (let k = 0; k < 4; k++) {
         const s = new T.Mesh(new T.SphereGeometry(2.6 + Math.random() * 2.2, 10, 10), cloudMat.clone());
         s.position.set(k * 3.1 - 4.4, Math.random() * 1.2, Math.random() * 2.4 - 1.2);
         s.material.opacity = .7 + Math.random() * .25;
+        cloudMats.push(s.material);
         cg.add(s);
       }
       cg.position.set((Math.random() - .5) * 140, 42 + Math.random() * 16, (Math.random() - .5) * 120);
@@ -901,20 +1070,45 @@ window.SolarScene = (function () {
     }
     root.add(cloudGroup);
 
-    precipGroup = new T.Group();
-    const rainMat = new T.MeshBasicMaterial({ color: 0x9fd8ff, transparent: true, opacity: .55 });
-    for (let i = 0; i < 420; i++) {
-      const p = new T.Mesh(new T.CylinderGeometry(.022, .022, .9, 4), rainMat);
-      p.position.set((Math.random() - .5) * 80, Math.random() * 30 + 2, (Math.random() - .5) * 70);
-      precipGroup.add(p);
+    /* 降水：420 滴合批成一个 InstancedMesh（原来是 420 个独立 Mesh） */
+    rainMat = new T.MeshBasicMaterial({ color: 0x9fd8ff, transparent: true, opacity: .5 });
+    rainInst = new T.InstancedMesh(new T.CylinderGeometry(.022, .022, .9, 4), rainMat, RAIN_N);
+    rainInst.visible = false;
+    rainInst.frustumCulled = false;                /* 位置每帧改，包围盒不跟着走 */
+    const rm = new T.Matrix4();
+    for (let i = 0; i < RAIN_N; i++) {
+      rainX[i] = (Math.random() - .5) * 80;
+      rainY[i] = Math.random() * 30 + 2;
+      rainZ[i] = (Math.random() - .5) * 70;
+      rainV[i] = 2.4 + Math.random() * 2;          /* 与原来每滴的落速区间一致 */
+      rm.makeTranslation(rainX[i], rainY[i], rainZ[i]);
+      rainInst.setMatrixAt(i, rm);
     }
-    root.add(precipGroup);
+    rainInst.instanceMatrix.setUsage(T.DynamicDrawUsage);
+    root.add(rainInst);
+
+    /* 氛围粒子：缓慢上升的青色光点（1 个 draw call），暗色画面里的"数据感" */
+    const parr = new Float32Array(PARTICLE_N * 3);
+    for (let i = 0; i < PARTICLE_N; i++) {
+      parr[i * 3] = (Math.random() - .5) * 120;
+      parr[i * 3 + 1] = Math.random() * 26 + .5;
+      parr[i * 3 + 2] = (Math.random() - .5) * 80;
+    }
+    const pgeo = new T.BufferGeometry();
+    pgeo.setAttribute('position', new T.BufferAttribute(parr, 3));
+    particles = new T.Points(pgeo, regThemeMat(new T.PointsMaterial({
+      color: 0x2ee6c8, size: .25, transparent: true, opacity: .34,
+      blending: T.AdditiveBlending, depthWrite: false, sizeAttenuation: true
+    }), {}, { color: 0x0f9e86, opacity: .16 }));
+    particles.frustumCulled = false;
+    root.add(particles);
 
     /* ---------- 场景浮标 ---------- */
     arrLabelEl = label('屋顶光伏阵列<i>-- kW</i><em>装机 110.16 kWp</em>', 'tag3d-gt', 0, roofY + 3.6, 0);
     label('洙边卫生院<i>屋顶分布式光伏</i>', 'tag3d-gt', 0, H2 + 1.8, D2 / 2 + 6.2);
 
-    /* 后期处理：MSAA + 轻微泛光（只让日光、电流光纹这类高亮点发光） */
+    /* 后期处理：MSAA + 泛光（只让日光、电流光纹这类高亮点发光）+ 暗角冷调
+       暗角 pass 是"高级感"的关键一步：压住四角、让画面中心聚焦到设备上 */
     if (typeof T.EffectComposer === 'function' && T.RenderPass && T.UnrealBloomPass) {
       try {
         const w = host.clientWidth || 800, h = host.clientHeight || 480;
@@ -924,8 +1118,31 @@ window.SolarScene = (function () {
         composer = new T.EffectComposer(renderer, msaa || undefined);
         if (msaa) composer.setPixelRatio(renderer.getPixelRatio());
         composer.addPass(new T.RenderPass(scene, camera));
-        bloomPass = new T.UnrealBloomPass(new T.Vector2(w, h), .3, .8, .95);
+        bloomPass = new T.UnrealBloomPass(new T.Vector2(w, h),
+          tp.bloom.strength, tp.bloom.radius, tp.bloom.threshold);
         composer.addPass(bloomPass);
+        if (typeof T.ShaderPass === 'function') {
+          vigPass = new T.ShaderPass({
+            uniforms: {
+              tDiffuse: { value: null },
+              strength: { value: tp.vignette.strength },
+              tint: { value: tp.vignette.tint }
+            },
+            vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+            fragmentShader: [
+              'uniform sampler2D tDiffuse; uniform float strength; uniform float tint; varying vec2 vUv;',
+              'void main(){',
+              '  vec4 c = texture2D(tDiffuse, vUv);',
+              '  vec2 d = vUv - .5;',
+              '  float r = length(d) * 1.42;',
+              '  c.rgb *= clamp(1.0 - strength * pow(max(r - .26, 0.0), 2.1), 0.0, 1.0);',
+              '  c.b *= 1.0 + tint; c.r *= 1.0 - tint * .5;',
+              '  gl_FragColor = c;',
+              '}'
+            ].join('\n')
+          });
+          composer.addPass(vigPass);
+        }
       } catch (e) { composer = null; }
     }
 
@@ -952,20 +1169,19 @@ window.SolarScene = (function () {
     } catch (e) { scene.environment = null; }
   }
 
-  /* ---------------- 主题（页面白天 / 夜晚） ---------------- */
-  /* 光伏场景恒用"白天"观感：监控画面要看得清设备；
-     页面主题只换天空色温 / 光照强度 / 电流光纹配色 */
+  /* ---------------- 主题（页面白天 / 夜晚） ----------------
+     场景跟着页面主题走：夜=暗色数字孪生（深底 + 青调 + 发光强调），昼=浅色可读 */
   function applyTheme() {
     theme = document.documentElement.getAttribute('data-theme') === 'day' ? 'day' : 'night';
-    const p = SKY[theme] || SKY.night;
+    const p = THEMES[theme] || THEMES.night;
     if (skyDome) {
       const old = skyDome.material.map;
-      skyDome.material.map = skyTexture(p);
+      skyDome.material.map = skyTexture(p.sky);
       skyDome.material.needsUpdate = true;
       if (old) old.dispose();
       refreshEnv();
     }
-    /* 水泥地坪跟着主题换色温（夜里深灰 / 白天浅灰），贴图重画一遍 */
+    /* 地面 / 场坪贴图重画（夜：深底 + 青格网；昼：浅色水泥 + 淡格线） */
     if (groundMat) {
       const old = groundMat.map;
       groundMat.map = concreteTexture();
@@ -975,55 +1191,67 @@ window.SolarScene = (function () {
     }
     if (slabYardMat) {
       const old = slabYardMat.map;
-      slabYardMat.map = concreteTexture();
-      slabYardMat.map.repeat.set(31, 16);
+      slabYardMat.map = slabTexture(theme);
+      slabYardMat.map.repeat.set(4, 58 / 24);
       slabYardMat.needsUpdate = true;
       if (old) old.dispose();
     }
-    themeMats.forEach(function (r) {
-      const v = r[theme] || {};
-      if (v.color !== undefined && r.mat.color) r.mat.color.setHex(v.color);
-      if (v.emissive !== undefined && r.mat.emissive) r.mat.emissive.setHex(v.emissive);
-      if (v.emissiveIntensity !== undefined) r.mat.emissiveIntensity = v.emissiveIntensity;
-      r.mat.needsUpdate = true;
-    });
-    if (scene && scene.fog) scene.fog.color.setHex(p.fog);
-    /* 窗户：白天压到 0.16（浅底上不再是一片白洞），夜里 0.5 的暖光 */
-    if (winMat) {
-      winMat.emissiveIntensity = theme === 'day' ? .16 : WIN_GLOW;
-      winMat.emissive.setHex(theme === 'day' ? 0xfff3e2 : 0xffe2bd);
+    themeMats.forEach(applyThemeMat);
+    if (sweepMesh) sweepMesh.material.opacity = p.sweep;
+    cloudMats.forEach(function (m) { m.color.setHex(p.cloud); });
+    if (scene && scene.fog) {
+      scene.fog.color.setHex(p.fog.color);
+      scene.fog.near = p.fog.near;
+      scene.fog.far = p.fog.far;
+    }
+    if (bloomPass) {
+      bloomPass.strength = p.bloom.strength;
+      bloomPass.radius = p.bloom.radius;
+      bloomPass.threshold = p.bloom.threshold;
+    }
+    if (vigPass) {
+      vigPass.uniforms.strength.value = p.vignette.strength;
+      vigPass.uniforms.tint.value = p.vignette.tint;
     }
     refreshSkyLight();
   }
 
   /* ---------------- 天气 / 功率 ---------------- */
   function refreshSkyLight() {
+    const p = THEMES[theme] || THEMES.night;
     const cloud = Math.max(0, Math.min(100, Number(cur.cloud) || 0));
     const rad = Math.max(0, Number(cur.radiation) || 0);
-    const day = !!cur.isDay;                      /* 真实昼夜：只决定太阳在不在 */
+    const day = !!cur.isDay;                      /* 真实昼夜：只决定太阳 / 月亮在不在 */
     const dim = 1 - cloud / 100 * .38;
-    const dayT = theme === 'day';
-    /* 白天主题的界面底色是浅色，光照总量压低一档，否则墙地会白成一片；
-       改水泥地坪后总光量控制在 1.1 附近（再高浅色水泥就过曝成纯白） */
-    if (sunLight) sunLight.intensity = ((dayT ? .74 : .88) + (rad > 0 ? Math.min(1, rad / 950) * (dayT ? .28 : .38) : .1)) * dim;
-    if (hemi) hemi.intensity = (dayT ? .38 : .5) * dim;
-    if (fillLight) fillLight.intensity = dayT ? .12 : .18;
+    if (sunLight) {
+      sunLight.color.setHex(p.lights.key.color);
+      sunLight.intensity = (p.lights.key.base + (rad > 0 ? Math.min(1, rad / 950) * p.lights.key.rad : .1)) * dim;
+    }
+    if (hemi) {
+      hemi.color.setHex(p.lights.hemi.sky);
+      hemi.groundColor.setHex(p.lights.hemi.ground);
+      hemi.intensity = p.lights.hemi.base * dim;
+    }
+    if (fillLight) {
+      fillLight.color.setHex(p.lights.fill.color);
+      fillLight.intensity = p.lights.fill.intensity;
+    }
     if (sun) sun.visible = day;
     if (sunGlow) {
       sunGlow.visible = day;
-      sunGlow.material.opacity = .55 * (1 - cloud / 160);
+      sunGlow.material.opacity = (theme === 'day' ? .55 : .4) * (1 - cloud / 160);
     }
-    if (moon) moon.visible = false;
+    if (moon) moon.visible = !day;
     const cf = cloud / 100;
     if (cloudGroup) {
       cloudGroup.children.forEach(function (cg) {
         cg.visible = cf > .08;
-        cg.children.forEach(function (s) { s.material.opacity = 0.35 + cf * 0.6; });
+        cg.children.forEach(function (s) { s.material.opacity = (theme === 'day' ? .35 : .22) + cf * (theme === 'day' ? .6 : .45); });
       });
     }
-    if (precipGroup) {
-      precipGroup.visible = Number(cur.precip) > 0;
-      precipGroup.children.forEach(function (p) { p.material.opacity = cf > .5 ? .6 : .45; });
+    if (rainInst) {
+      rainInst.visible = Number(cur.precip) > 0;
+      rainMat.opacity = cf > .5 ? .6 : .45;
     }
   }
 
@@ -1179,7 +1407,7 @@ window.SolarScene = (function () {
     if (!flows.length || !dt) return;
     for (let i = 0; i < flows.length; i++) {
       const fl = flows[i];
-      fl.tubeMat.opacity = fl.on ? .95 : .3;
+      fl.tubeMat.opacity = fl.on ? .95 : .22;
       if (!fl.on) continue;
       fl.map.offset.x -= (fl.dir || 1) * fl.speed * dt * .35;
       if (fl.tint) fl.tubeMat.color.setHex(fl.tint);
@@ -1234,11 +1462,33 @@ window.SolarScene = (function () {
         if (cg.position.x > 78) cg.position.x = -78;
       });
     }
-    if (precipGroup && precipGroup.visible) {
-      precipGroup.children.forEach(function (p) {
-        p.position.y -= (2.4 + (p.position.y % 2)) * dt * 3.6;
-        if (p.position.y < 0) p.position.y = 30;
-      });
+    if (rainInst && rainInst.visible) {
+      if (!_rainM) _rainM = new THREE.Matrix4();
+      for (let i = 0; i < RAIN_N; i++) {
+        rainY[i] -= rainV[i] * dt * 3.6;
+        if (rainY[i] < 0) rainY[i] = 30;
+        _rainM.makeTranslation(rainX[i], rainY[i], rainZ[i]);
+        rainInst.setMatrixAt(i, _rainM);
+      }
+      rainInst.instanceMatrix.needsUpdate = true;
+    }
+    /* 扫光带横移（18s 一轮）+ 塔顶航标呼吸 + 氛围粒子缓慢上升 */
+    if (sweepMesh && sweepMesh.material.opacity > 0) {
+      sweepMesh.position.x = -58 + ((t / 1000) % 18) / 18 * 116;
+    }
+    if (beacon) {
+      const bk = .35 + .65 * Math.abs(Math.sin(t * .0016));
+      beacon.material.opacity = bk;
+      if (beaconGlow) beaconGlow.material.opacity = .16 + .44 * bk;
+    }
+    if (particles && particles.visible) {
+      const pa = particles.geometry.attributes.position;
+      for (let i = 0; i < pa.count; i++) {
+        let y = pa.getY(i) + dt * .5;
+        if (y > 28) y = .4;
+        pa.setY(i, y);
+      }
+      pa.needsUpdate = true;
     }
     stepFlow(dt);
     scaleLabels();                       /* 浮标跟着相机距离缩放 */
