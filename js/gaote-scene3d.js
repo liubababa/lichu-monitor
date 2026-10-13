@@ -1332,6 +1332,31 @@ window.GaoteScene3D = (function () {
     if (facWinMat) facWinMat.emissiveIntensity = facWinBase;
   }
 
+  /* 机位：不写死坐标，按当前画布宽高比二分出"刚好装下全场"的距离。
+     宽屏（用户显示器那种）就贴近，画面填满；窄屏自动退后，最右侧厂房不会出画。
+     允许用到画面的 88% / 86%（横向 / 纵向），右边再留出收起的面板拉手 */
+  const FIT_X = .88, FIT_Y = .86;
+  const fitCam = typeof THREE !== 'undefined' ? new THREE.PerspectiveCamera(46, 1, .1, 300) : null;
+  function fitDistance(tgt, dir, pts, aspect) {
+    if (!fitCam) return 31.3;
+    let lo = 10, hi = 95, best = hi;
+    for (let i = 0; i < 26; i++) {
+      const mid = (lo + hi) / 2;
+      fitCam.position.copy(tgt).add(dir.clone().multiplyScalar(mid));
+      fitCam.lookAt(tgt);
+      fitCam.aspect = aspect;
+      fitCam.updateMatrixWorld(true);
+      fitCam.updateProjectionMatrix();
+      let ok = true;
+      for (let k = 0; k < pts.length; k++) {
+        const v = pts[k].clone().project(fitCam);
+        if (Math.abs(v.x) > FIT_X || Math.abs(v.y) > FIT_Y) { ok = false; break; }
+      }
+      if (ok) { best = mid; hi = mid; } else { lo = mid; }
+    }
+    return best;
+  }
+
   function init(el) {
     if (inited) return;
     host = el;
@@ -1340,14 +1365,22 @@ window.GaoteScene3D = (function () {
     scene.fog = new THREE.Fog(THEMES.night.fog, THEMES.night.fogNear, THEMES.night.fogFar);
     camera = new THREE.PerspectiveCamera(46, w / h, .1, 300);
     /* 机位照白天新设计的 Demo：铁塔 → 汇流柜/PCS → 电池堆 → 厂房，从左到右收进画面。
-       但 Demo 是在他自己更宽的屏幕上定的，照搬到网页的扁画布上，最右侧厂房会出画
-       （实测右墙落在 x=1284，画面只有 1250）。所以做两件事：
-       ① 目标点右移到 3.5：整体左移，厂房右墙回到 x≈1143，给右边收起的面板拉手留出边距；
-       ② 按宽高比补距离：构图按 2.25:1 的横向视野算，画布比这窄就沿视线退后 */
+       Demo 是在作者更宽的屏幕上定的，机位照搬会因画布比例不同而"要么裁厂房、要么留白太多"，
+       所以只固定目标点与视线方向，距离按当前画布算（fitDistance） */
     const camTgt = new THREE.Vector3(3.5, 2, 1);
-    const camDir = new THREE.Vector3(15, 9, 26);
-    const camLen = camDir.length() * Math.max(1, 2.25 / Math.max(1.2, w / h));
-    camera.position.copy(camTgt).add(camDir.setLength(camLen));
+    const camDir = new THREE.Vector3(15, 9, 26).normalize();
+    /* 装下这些点，全场就都在画里：厂房外角、附房、储能柜、汇流柜、塔脚与塔尖 */
+    const fitPts = [
+      new THREE.Vector3(23.3, 0, 4.8), new THREE.Vector3(23.3, 8.2, 4.8),
+      new THREE.Vector3(23.3, 8.2, -3.2), new THREE.Vector3(10.3, 8.2, -3.2),
+      new THREE.Vector3(10.3, 0, 4.8), new THREE.Vector3(7.7, 2.0, 4.8),
+      new THREE.Vector3(-3.9, 0, -.8), new THREE.Vector3(3.9, 2.8, .8),
+      new THREE.Vector3(-10.9, 0, 3.7), new THREE.Vector3(-10.9, 2.4, 2.3),
+      new THREE.Vector3(-17, 0, -2.8), new THREE.Vector3(-17, 8.2, -2.8),
+      new THREE.Vector3(-9.4, 8.2, -2.8), new THREE.Vector3(-13.2, 9.4, -2.8)
+    ];
+    const camLen = fitDistance(camTgt, camDir, fitPts, w / h);
+    camera.position.copy(camTgt).add(camDir.multiplyScalar(camLen));
     camHome = { pos: camera.position.clone(), tgt: camTgt.clone() };
 
     renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });

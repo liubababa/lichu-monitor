@@ -74,6 +74,8 @@ window.PortalUI = (function () {
     const p = byId('portal');
     if (p) p.classList.add('hidden');
     if (window.SolarUI) SolarUI.open();
+    /* 进站把三维视角归位：上次转过/缩放过，再进来看到的就不是默认那一版构图 */
+    if (window.SolarScene && SolarScene.resetView) SolarScene.resetView();
   }
 
   /* ---------------- 目录页 ---------------- */
@@ -229,6 +231,12 @@ window.PortalUI = (function () {
     const dev = byId('deviceView');
     if (dev) dev.classList.add('hidden');
     if (window.MqttUI && MqttUI.openTab) MqttUI.openTab('monitor');
+    /* 进站把三维视角归位：这个场景对象是复用的，上次在这里转过 / 缩放过，
+       再进来看到的就不是默认构图（用户："进去的时候相机要再调整一下"） */
+    if (window.S3D) {
+      const sc = S3D();
+      if (sc && sc.resetView) sc.resetView();
+    }
   }
   function openDevices() {
     const p = byId('portal'); if (p) p.classList.add('hidden');

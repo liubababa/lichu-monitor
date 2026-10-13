@@ -120,6 +120,7 @@
     const gaote = window.MqttUI && MqttUI.protocol && MqttUI.protocol() === 'gaote';
     return (gaote && window.GaoteScene3D) ? window.GaoteScene3D : window.Scene3D;
   }
+  window.S3D = S3D;      /* 进站时要按同一套规则找当前场景去重置视角（portal.js 用） */
 
   /* ---------- 数据渲染 ---------- */
   function renderKpis(d) {
