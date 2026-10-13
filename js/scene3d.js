@@ -171,7 +171,13 @@ window.Scene3D = (function () {
   /* ---------------- 通用构件 ---------------- */
   function platformMesh(w, d) {
     const g = new THREE.Group();
-    const m = box(w, 0.7, d, std(0x0d1719, { roughness: .9, metalness: .1 }), 0, 0.35, 0);
+    const pm = std(0x0d1719, { roughness: .9, metalness: .1 });
+    /* 台座面往深度里推一点：四周那圈青色描边是 EdgesGeometry、正好落在台座棱上，
+       与台面共面，远看会深度打架（一闪一闪） */
+    pm.polygonOffset = true;
+    pm.polygonOffsetFactor = 1;
+    pm.polygonOffsetUnits = 1;
+    const m = box(w, 0.7, d, pm, 0, 0.35, 0);
     g.add(m);
     const e = new THREE.LineSegments(
       new THREE.EdgesGeometry(m.geometry),
@@ -185,7 +191,7 @@ window.Scene3D = (function () {
         blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false
       })
     );
-    glow.rotation.x = -Math.PI / 2; glow.position.y = 0.03; g.add(glow);
+    glow.rotation.x = -Math.PI / 2; glow.position.y = 0.05; g.add(glow);
     g.userData.ringR = Math.max(w, d) * 0.52;
     return g;
   }
