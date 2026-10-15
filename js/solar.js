@@ -186,16 +186,22 @@ window.SolarUI = (function () {
     const tKwh = kwh(sum.total_yield);
     const cap = num(sum.capacity);
     const hours = (dKwh !== null && cap) ? dKwh / cap : num(sum.daily_hours);
-    const price = tariff();
-    const income = dKwh === null ? null : dKwh * price;
     const co2 = tKwh === null ? null : tKwh * CO2_PER_KWH / 1000;          // 吨
     const coal = tKwh === null ? null : tKwh * COAL_PER_KWH / 1000;       // 吨
     const trees = co2 === null ? null : Math.round(co2 * 1000 * TREE_PER_KG);
+    /* 收益分两块，各自标口径、不相加（避免重复计）：
+       ① 日升云结算口径的今日收益（含储能 + 光伏，照搬厂家数字）
+       ② 关口表今日馈电（卖给电网）按上网电价折算的估算 */
+    const revToday = (stor && stor.revenue) ? num(stor.revenue.day) : null;
+    const price = tariff();
+    const feedToday = (stor && stor.grid) ? num(stor.grid.feed_today_kwh) : null;
+    const sellToday = feedToday === null ? null : feedToday * price;
 
     box.innerHTML =
       card('实时功率', fmt(pKw, 2), 'kW', cap ? ('装机 ' + fmt(cap, 2) + ' kWp') : '', 'hi')
       + card('当日发电', fmt(dKwh, 1), '度', hours !== null ? ('等效 ' + fmt(hours, 2) + ' 小时') : '')
-      + card('当日收益（估算）', fmt(income, 2), '元', '上网电价 <i id="slPrice" title="点击修改电价">' + fmt(price, 2) + '</i> 元/度')
+      + card('今日收益', fmt(revToday, 2), '元', '日升云结算 · 储能 + 光伏')
+      + card('今日卖电（馈电上网）', fmt(sellToday, 2), '元', '关口表 ' + fmt(feedToday, 1) + ' 度 × <i id="slPrice" title="点击修改上网电价">' + fmt(price, 2) + '</i> 元/度 · 估算')
       + card('累计发电', fmt(tKwh, 0), '度', sum.plant && sum.plant.install_date ? ('并网 ' + String(sum.plant.install_date).slice(0, 10)) : '')
       + card('装机容量', fmt(cap, 2), 'kWp', sum.plant ? (sum.plant.type || '分布式光伏') : '')
       + card('CO₂减排', fmt(co2, 2), '吨', trees !== null ? ('等效植树 ' + trees + ' 棵') : '');
@@ -205,7 +211,7 @@ window.SolarUI = (function () {
 
   function editTariff() {
     const cur = String(tariff());
-    const v = prompt('上网电价（元/度）：\n用于「当日收益（估算）」——按当日发电量折算，仅作参考；\n实际结算以日升云的收益口径为准。', cur);
+    const v = prompt('上网电价（元/度）：\n用于「今日卖电 / 今日买电」按关口表电量折算（估算，仅作参考）；\n储能 + 光伏的结算收益以日升云后台为准，不参与折算。', cur);
     if (v === null) return;
     const n = Number(v);
     if (!isFinite(n) || n <= 0) { alert('请输入大于 0 的数字'); return; }
@@ -486,12 +492,16 @@ window.SolarUI = (function () {
       + gvTile('储能度电收益', fmt(rev.per_kwh, 2), '元/度', '日升云')
       + '</div>';
 
-    /* 上网与购电：本站储能会往电网卖电，这几格才是"卖电"的账 */
+    /* 上网与购电：本站储能会往电网卖电，这几格才是"卖电"的账。
+       电量照搬关口表；"折算成钱"的那两格按上网电价估算，单独标注估算、不与厂家结算相加（避免重复计） */
     const g = (stor && stor.grid) || {};
+    const feedToday = num(g.feed_today_kwh), drawToday = num(g.draw_today_kwh);
     const gridTiles = '<div class="gv3-flow">'
       + gvTile('今日馈电（卖电）', fmt(g.feed_today_kwh, 1), '度', '关口表 · 送出')
+      + gvTile('今日卖电收入', fmt(feedToday === null ? null : feedToday * price, 2), '元', '馈电 × ' + fmt(price, 2) + ' 元/度 · 估算')
       + gvTile('累计馈电（卖电）', fmt(g.feed_total_kwh, 0), '度', '关口表')
       + gvTile('今日取电（买电）', fmt(g.draw_today_kwh, 1), '度', '关口表 · 受入')
+      + gvTile('今日买电支出', fmt(drawToday === null ? null : drawToday * price, 2), '元', '取电 × ' + fmt(price, 2) + ' 元/度 · 估算')
       + gvTile('累计取电（买电）', fmt(g.draw_total_kwh, 0), '度', '关口表')
       + gvTile('今日储能充 / 放', fmt(td.charge_kwh, 1) + ' / ' + fmt(td.discharge_kwh, 1), '度', '日升云')
       + gvTile('今日光伏发电', fmt(pvToday, 1), '度', '阳光云')

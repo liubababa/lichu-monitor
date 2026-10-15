@@ -252,8 +252,11 @@ function dailySummary(days) {
     const rows = readPoints(from, to);
     let chg = null, dis = null, ichg = 0, idis = 0, prev = null;
     rows.forEach(function (r) {
-      if (isFinite(r.chg)) chg = (chg === null) ? r.chg : Math.max(chg, r.chg);
-      if (isFinite(r.dis)) dis = (dis === null) ? r.dis : Math.max(dis, r.dis);
+      /* 设备的"当日累计"跨零点不一定清零（实测：今天最早的样本还是昨天末尾的 507/459，
+         到白天某个时刻才回落到 499/0），所以不能简单取当天最大值——
+         按"最后一次回落之后的最大值"取当天累计，回落前的那段是昨天的残留 */
+      if (isFinite(r.chg)) chg = (chg !== null && r.chg < chg) ? r.chg : ((chg === null) ? r.chg : Math.max(chg, r.chg));
+      if (isFinite(r.dis)) dis = (dis !== null && r.dis < dis) ? r.dis : ((dis === null) ? r.dis : Math.max(dis, r.dis));
       if (prev && isFinite(r.p)) {
         const dt = (r.t - prev.t) / 1000;
         if (dt > 0 && dt < 3600) {

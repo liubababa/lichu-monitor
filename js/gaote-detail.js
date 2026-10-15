@@ -52,6 +52,17 @@ window.GaoteDetail = (function () {
   function dailyRows() {
     return (dailyCache.list || []).filter(function (d) { return d.samples > 0; });
   }
+  /* 昨天的收益：同样按电价折算；服务端按天数据回来之前先显示 -- */
+  function yesterdayRevenue() {
+    const rows = dailyRows();
+    for (let i = 0; i < rows.length; i++) {
+      if (rows[i].today) {
+        const y = rows[i - 1];
+        return y ? +dayRevenue(y).toFixed(2) : null;
+      }
+    }
+    return null;
+  }
   /* 日收益估算：放电按尖/峰均价、充电按谷/深谷均价（与下方"收益信息"口径一致）
      电量优先取设备当日累计值，缺失时用服务端按功率积分的兜底值 */
   function dayRevenue(d) {
@@ -307,10 +318,10 @@ window.GaoteDetail = (function () {
       ? '收益信息（按配置电价与累计电量估算，电表分时电量未上报）'
       : '收益信息（按当前电价折算）'));
     const mg = el('div', 'dt-money');
-    [['累计收益', profit], ['放电收入', income], ['充电总支出', expense], ['昨日收益', null]].forEach(function ([k, v]) {
+    [['累计收益', profit], ['放电收入', income], ['充电总支出', expense], ['昨日收益', yesterdayRevenue()]].forEach(function ([k, v]) {
       const r = el('div', 'dt-kv');
       r.appendChild(el('span', '', k));
-      r.appendChild(el('b', '', v === null ? '待后端' : f(v, 2) + ' 元'));
+      r.appendChild(el('b', '', v === null ? '--' : f(v, 2) + ' 元'));
       mg.appendChild(r);
     });
     pMoney.appendChild(mg);
