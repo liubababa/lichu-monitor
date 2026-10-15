@@ -641,8 +641,8 @@ window.SolarUI = (function () {
     setTimeout(function () { if (window.SolarScene) SolarScene.resize(); }, 120);
   }
 
-  /* ---------------- 四个标签页：三维监控 / 储能 / 光伏 / 收益 ----------------
-     三维监控用右侧滑出面板；另外三页是整页；光伏页里的卡片是从 #slBlocks 移过去的 */
+  /* ---------------- 四个标签页：电站监控 / 储能 / 光伏 / 详细信息 ----------------
+     电站监控用右侧滑出面板；另外三页是整页；光伏页里的卡片是从 #slBlocks 移过去的 */
   let tab = 'monitor';
   const PAGES = { storage: 'slStorView', solar: 'slSolarView', revenue: 'slRevView' };
   function mountTab(which) {

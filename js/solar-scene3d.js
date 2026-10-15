@@ -1526,7 +1526,7 @@ window.SolarScene = (function () {
     const dt = clock.last ? Math.min(.08, (t - clock.last) / 1000) : 0;
     clock.last = t;
     if (!active) return;
-    /* 画布被隐藏（切到储能/光伏/收益页、或回到站点目录）时不渲染，别在后台空烧 GPU */
+    /* 画布被隐藏（切到储能/光伏/详细信息页、或回到站点目录）时不渲染，别在后台空烧 GPU */
     if (!renderer.domElement.offsetWidth || !renderer.domElement.offsetHeight) return;
     if (cloudGroup) {
       cloudGroup.children.forEach(function (cg) {
