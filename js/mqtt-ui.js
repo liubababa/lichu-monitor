@@ -327,6 +327,33 @@ window.MqttUI = (function () {
     if (close) close.addEventListener('click', function () { toggleDevPanel(false); });
   }
 
+  /* 连接网关：面板「连接」按钮与"打开自动连接"共用一份逻辑。
+     auto=true 时不弹提示（自动连不需要刷屏），状态照常显示在顶栏胶囊上 */
+  function doConnect(auto) {
+    persist(false);
+    if (!CFG.url) { if (!auto) toast('请填写网关地址（ws:// 或 wss://）'); return; }
+    setConn('connecting');
+    STATE.autoClosePending = true;      // 连上后自动收起面板
+    if (CFG.protocol === 'gaote') {
+      if (typeof GaoteService === 'undefined') { if (!auto) toast('GaoteService 未加载'); setConn('error', '模块未加载'); return; }
+      GaoteService.connect({
+        url: GaoteService.normUrl(CFG.url, CFG.port),
+        username: CFG.username, password: CFG.password,
+        productSN: CFG.psn || 'kp23bhcpmt91n2v8', deviceSN: CFG.sn
+      });
+      if (window.GaoteView) GaoteView.open();
+      if (!auto) toast(CFG.username ? '正在连接网关（高特协议）…' : '正在连接网关（高特协议 · 只读：未填账号，下发不生效）…');
+      return;
+    }
+    if (typeof MqttService === 'undefined') { if (!auto) toast('MqttService 未加载'); return; }
+    if (!CFG.sn && !auto) toast('提示：未填写设备 SN，上报/下发 Topic 将不完整');
+    MqttService.connect({
+      url: MqttService.normUrl(CFG.url, CFG.port),
+      username: CFG.username, password: CFG.password, sn: CFG.sn
+    });
+    if (!auto) toast(CFG.username ? '正在连接网关…' : '正在连接网关（只读：未填账号，下发不生效）…');
+  }
+
   function bindPanel() {
     byId('dsChip').addEventListener('click', () => { toggleDevPanel(false); togglePanel(true); });
     byId('mqClose').addEventListener('click', () => togglePanel(false));
@@ -334,30 +361,7 @@ window.MqttUI = (function () {
     const proto = byId('mqProtocol');
     if (proto) proto.addEventListener('change', function () { CFG.protocol = proto.value; persist(false); syncProtocolUI(); });
 
-    byId('mqConnect').addEventListener('click', function () {
-      persist(false);
-      if (!CFG.url) { toast('请填写网关地址（ws:// 或 wss://）'); return; }
-      setConn('connecting');
-      STATE.autoClosePending = true;      // 连上后自动收起面板
-      if (CFG.protocol === 'gaote') {
-        if (typeof GaoteService === 'undefined') { toast('GaoteService 未加载'); setConn('error', '模块未加载'); return; }
-        GaoteService.connect({
-          url: GaoteService.normUrl(CFG.url, CFG.port),
-          username: CFG.username, password: CFG.password,
-          productSN: CFG.psn || 'kp23bhcpmt91n2v8', deviceSN: CFG.sn
-        });
-        if (window.GaoteView) GaoteView.open();
-        toast(CFG.username ? '正在连接网关（高特协议）…' : '正在连接网关（高特协议 · 只读：未填账号，下发不生效）…');
-        return;
-      }
-      if (typeof MqttService === 'undefined') { toast('MqttService 未加载'); return; }
-      if (!CFG.sn) toast('提示：未填写设备 SN，上报/下发 Topic 将不完整');
-      MqttService.connect({
-        url: MqttService.normUrl(CFG.url, CFG.port),
-        username: CFG.username, password: CFG.password, sn: CFG.sn
-      });
-      toast(CFG.username ? '正在连接网关…' : '正在连接网关（只读：未填账号，下发不生效）…');
-    });
+    byId('mqConnect').addEventListener('click', function () { doConnect(false); });
 
     byId('mqDisconnect').addEventListener('click', function () {
       if (typeof GaoteService !== 'undefined' && GaoteService.isConnected()) GaoteService.disconnect();
@@ -870,6 +874,11 @@ window.MqttUI = (function () {
     logRow('•', '-', CFG.protocol === 'gaote'
       ? '高特 CCU 接入就绪：主题 /{ProductSN}/{DeviceSN}/rtg|history|cmd/…（协议 SJ2025B3781ESCCU-MQTT）'
       : '晶农EMS 北向协议接入就绪：' + (APP_CONFIG.vendor ? APP_CONFIG.vendor.company + ' · ' + APP_CONFIG.vendor.product : ''));
+
+    /* 打开就自动连：连接参数（网关地址 / 协议 / ProductSN / 设备 SN）写在 js/data.js 的默认配置里，
+       不用每次手填；未填账号 = 网关匿名只读（能看数据、不能下发），监控页够用。
+       想停用自动连接：把 data.js 里的 mqtt.url 留空即可 */
+    if (CFG.url) setTimeout(function () { doConnect(true); }, 600);
   }
 
   return { init, openTab, setConn, logRow, protocol: () => CFG.protocol, selectStation };

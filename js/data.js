@@ -41,9 +41,21 @@ window.APP_CONFIG = {
     protocol:'晶农EMS MQTT 北向通讯协议（2026-03-04）'
   },
 
-  /* MQTT 接入参数默认值；页面「数据源」面板配置后持久化到 localStorage（键：dianzhan.mqtt.cfg）
-     接入地址不写进代码（避免随仓库泄露），部署时通过页面上填写或按需在本地覆盖 */
-  mqtt: { url: '', port: '', username: '', password: '', sn: '', stationName: '' }
+  /* MQTT 接入参数默认值（莒南储能站 · 高特 CCU）：打开页面就自动连，不用每次手填。
+     这里只放"非敏感"的连接参数——账号密码刻意不写进代码：
+     仓库和线上 JS 都是公开可读的，写死等于把密码公开；
+     网关本身允许匿名连接 = 只读（能看数据、不能下发），监控页够用。
+     需要下发控制时，在「数据源」面板里填一次账号，浏览器会记住（键 dianzhan.mqtt.cfg） */
+  mqtt: {
+    url: 'wss://mqtt.ykdesign.top/mqtt',
+    port: '',
+    protocol: 'gaote',
+    psn: 'kp23bhcpmt91n2v8',
+    sn: 'R250907J0038',
+    stationName: '力储未来储能电站',
+    username: '',
+    password: ''
+  }
 };
 
 window.DataService = (function () {
