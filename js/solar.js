@@ -48,7 +48,10 @@ window.SolarUI = (function () {
   }
   function tariff() {
     const v = Number(localStorage.getItem(LS_TARIFF));
-    return (isFinite(v) && v > 0) ? v : 0.40;     // 默认按余电上网电价估（山东燃煤基准约 0.39 元/度）
+    /* 默认 0.261 元/度：山东 2026 年新能源机制电价竞价结果里的光伏价格（鲁发改价格〔2026〕149 号）。
+       注意：0.3949 的燃煤基准价那套从 2025-6-1 起已被机制电价/市场化取代，不再按它算；
+       实际按本站拿到的机制电价或结算单为准，页面上点价格即可改（存本地） */
+    return (isFinite(v) && v > 0) ? v : 0.261;
   }
   function isDay() { return document.documentElement.getAttribute('data-theme') === 'day'; }
 
@@ -217,6 +220,7 @@ window.SolarUI = (function () {
     if (!isFinite(n) || n <= 0) { alert('请输入大于 0 的数字'); return; }
     localStorage.setItem(LS_TARIFF, String(n));
     renderKpis();
+    renderRevenuePage();      /* 详细信息页里那两格钱也按新电价重算 */
   }
 
   function renderTrend() {
@@ -498,10 +502,10 @@ window.SolarUI = (function () {
     const feedToday = num(g.feed_today_kwh), drawToday = num(g.draw_today_kwh);
     const gridTiles = '<div class="gv3-flow">'
       + gvTile('今日馈电（卖电）', fmt(g.feed_today_kwh, 1), '度', '关口表 · 送出')
-      + gvTile('今日卖电收入', fmt(feedToday === null ? null : feedToday * price, 2), '元', '馈电 × ' + fmt(price, 2) + ' 元/度 · 估算')
+      + gvTile('今日卖电收入', fmt(feedToday === null ? null : feedToday * price, 2), '元', '馈电 × <i class="sl-price" title="点击修改上网电价">' + fmt(price, 2) + '</i> 元/度 · 估算')
       + gvTile('累计馈电（卖电）', fmt(g.feed_total_kwh, 0), '度', '关口表')
       + gvTile('今日取电（买电）', fmt(g.draw_today_kwh, 1), '度', '关口表 · 受入')
-      + gvTile('今日买电支出', fmt(drawToday === null ? null : drawToday * price, 2), '元', '取电 × ' + fmt(price, 2) + ' 元/度 · 估算')
+      + gvTile('今日买电支出', fmt(drawToday === null ? null : drawToday * price, 2), '元', '取电 × <i class="sl-price" title="点击修改上网电价">' + fmt(price, 2) + '</i> 元/度 · 估算')
       + gvTile('累计取电（买电）', fmt(g.draw_total_kwh, 0), '度', '关口表')
       + gvTile('今日储能充 / 放', fmt(td.charge_kwh, 1) + ' / ' + fmt(td.discharge_kwh, 1), '度', '日升云')
       + gvTile('今日光伏发电', fmt(pvToday, 1), '度', '阳光云')
@@ -537,6 +541,9 @@ window.SolarUI = (function () {
       + sec('sp6', '近 7 日充放电量与效率',
         (powTrend && powTrend.length ? powTrend.length + ' 天 + 今天 · 日升云' : '--'), '<div class="dt-chart" id="slPowChart"></div>')
       + '</div></div>';
+
+    /* 电价就地可改：点卖电/买电那两格里的价格数字，改完存本地、页面立即重算 */
+    [].forEach.call(box.querySelectorAll('.sl-price'), function (el) { el.addEventListener('click', editTariff); });
 
     revChart = ensureChart(revChart, 'slRevChart');
     if (revChart) {

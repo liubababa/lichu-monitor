@@ -222,6 +222,9 @@ button{font-family:inherit;cursor:pointer;background:none;border:none;color:inhe
   font-family:var(--num);font-size:14px;color:#eafffa;font-weight:normal}
 .ring-wrap b i{font-style:normal;font-size:9px;color:var(--dim);margin-left:1px}
 
+/* 光伏页 / 详细信息页里"可点击修改"的上网电价：给个虚线底、鼠标变手 */
+.sl-price,#slPrice{cursor:pointer;border-bottom:1px dashed currentColor;font-style:normal}
+
 /* ---------- 3D 悬浮标签 / 详情卡片 ---------- */
 /* 注意：外层 wrapper 的 transform 由 CSS2DRenderer 控制，偏移写在 .tag3d / .card3d 上 */
 .tag3d{
