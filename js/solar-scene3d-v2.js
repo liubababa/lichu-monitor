@@ -208,7 +208,6 @@ function buildPVEquipment(){
     const pvInst = new THREE.InstancedMesh(pvGeo, pvMat, 80);
     pvInst.castShadow=true; pvInst.receiveShadow=true;
     const matrix = new THREE.Matrix4();
-    const pvPositions = [];
     let idx=0;
     //排布光伏阵列
     for(let row=0;row<8;row++){
@@ -216,7 +215,6 @@ function buildPVEquipment(){
             matrix.makeRotationX(-Math.PI*0.12);
             matrix.setPosition(-12 + col*2.4, 6.2, -12 + row*1.8);
             pvInst.setMatrixAt(idx++, matrix);
-            pvPositions.push({row,col});
         }
     }
     pvInst.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -262,7 +260,6 @@ function buildBackMountain(){
 // 天气切换：day / night / rain
 function setWeatherMode(mode){
     weatherMode = mode;
-    const lampList = [];
     solarGroup.traverse(obj=>{
         if(obj.userData.isLamp){
             if(mode==='night' || mode==='rain'){

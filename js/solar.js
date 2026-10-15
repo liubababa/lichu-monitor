@@ -190,7 +190,6 @@ window.SolarUI = (function () {
     const cap = num(sum.capacity);
     const hours = (dKwh !== null && cap) ? dKwh / cap : num(sum.daily_hours);
     const co2 = tKwh === null ? null : tKwh * CO2_PER_KWH / 1000;          // 吨
-    const coal = tKwh === null ? null : tKwh * COAL_PER_KWH / 1000;       // 吨
     const trees = co2 === null ? null : Math.round(co2 * 1000 * TREE_PER_KG);
     /* 收益分两块，各自标口径、不相加（避免重复计）：
        ① 日升云结算口径的今日收益（含储能 + 光伏，照搬厂家数字）

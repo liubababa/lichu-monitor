@@ -297,7 +297,7 @@ window.GaoteDetail = (function () {
     const pTou = el('section', 'dt-panel');
     pTou.appendChild(el('div', 'dt-ptitle', '累计电量（分时）'));
     const touBox = el('div', 'dt-tou');
-    [['充电量', chgTou, income * 0 + money(chgTou)], ['放电量', disTou, money(disTou)]].forEach(function ([t, obj, m]) {
+    [['充电量', chgTou, money(chgTou)], ['放电量', disTou, money(disTou)]].forEach(function ([t, obj, m]) {
       const b = el('div', 'dt-tou-col');
       b.appendChild(el('b', '', t));
       [['尖', 'tip'], ['峰', 'peak'], ['平', 'flat'], ['谷', 'valley'], ['深谷', 'deep']].forEach(function ([n, k]) {

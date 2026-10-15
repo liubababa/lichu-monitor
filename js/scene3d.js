@@ -282,7 +282,8 @@ window.Scene3D = (function () {
     g.add(box(2.4, 0.4, 2.4, std(0x8a989c), 4.5, baseY + Hh + 0.72, 1));                    // 屋顶设备
 
     const ledMat = new THREE.MeshStandardMaterial({ color: 0x0a2019, emissive: TEAL, emissiveIntensity: 1.6, toneMapped: false });
-    const led = box(L, 0.09, 0.09, ledMat, 0, baseY + 0.12, Wd / 2 - 0.06);
+    /* 前脸 LED 灯带要贴在地板外沿（原来 z=3.94 落在地板体内，整条灯带埋在里面看不见） */
+    const led = box(L, 0.09, 0.09, ledMat, 0, baseY + 0.1, Wd / 2 + 0.02);
     g.add(led); ledMats.push(ledMat);
     const led2 = box(L, 0.07, 0.07, ledMat, 0, baseY + Hh + 0.2, Wd / 2 - 0.2);
     g.add(led2);
