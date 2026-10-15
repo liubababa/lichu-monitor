@@ -612,12 +612,13 @@ window.SolarScene = (function () {
     const dz = D2 / 2;
     root.add(box(3.4, 2.9, .24, regThemeMat(std(0xcfd6d2, { roughness: .7, envMapIntensity: .16 }), { color: 0x22333c, envMapIntensity: .3 }), 0, 1.75, dz + .04));
     const doorMat = regThemeMat(std(0x31505c, { roughness: .45, metalness: .35, envMapIntensity: .4 }), { color: 0x14262e, envMapIntensity: .7 });
-    /* 大门开着：两扇门绕合页向外敞开（约 66°），门洞里压暗、透出大厅的暖光 */
+    /* 大门开着：合页在门洞两侧外沿（±1.45），门扇往门洞里伸，自由边向外摆约 66°；
+       门洞里压暗、透出大厅的暖光 */
     [1, -1].forEach(function (s) {
       const pv = new T.Group();
-      pv.position.set(s * .03, 1.55, dz + .14);
-      pv.add(box(1.42, 2.5, .1, doorMat, s * .71, 0, 0));
-      pv.rotation.y = -s * 1.15;
+      pv.position.set(s * 1.45, 1.55, dz + .14);
+      pv.add(box(1.42, 2.5, .1, doorMat, -s * .71, 0, 0));
+      pv.rotation.y = s * 1.15;
       root.add(pv);
     });
     root.add(box(2.92, 2.56, .04, std(0x060d11, { roughness: 1 }), 0, 1.55, dz + .175));      /* 门洞（压暗，衬出开着的门） */
@@ -635,8 +636,9 @@ window.SolarScene = (function () {
     root.add(box(5.4, .16, 2.0, aw, 0, H2 - .35, dz + 1.0));
     root.add(box(.18, H2 - .5, .18, awPost, -2.5, (H2 - .5) / 2, dz + 1.85));
     root.add(box(.18, H2 - .5, .18, awPost, 2.5, (H2 - .5) / 2, dz + 1.85));
-    root.add(box(5.0, .16, .5, regThemeMat(std(0xaaafa6, { roughness: .9 }), { color: 0x1a252b }), 0, .38, dz + .75));
-    root.add(box(4.4, .16, .5, regThemeMat(std(0xa4a9a0, { roughness: .9 }), { color: 0x182329 }), 0, .22, dz + 1.2));
+    /* 台阶：从场地台面（0.18）升到门槛（0.30）——原来两级做到 0.46 高过门槛，
+       开着的门扇外摆时会插进台阶里（穿模），按真实标高做成一级 */
+    root.add(box(5.0, .12, .5, regThemeMat(std(0xaaafa6, { roughness: .9 }), { color: 0x1a252b }), 0, .24, dz + .75));
     /* 北墙两台空调外机 */
     [[-8.5, 3.1], [7.5, 3.1]].forEach(function (p) {
       root.add(box(1.05, .78, .42, regThemeMat(std(0xdfe4e2, { roughness: .6 }), { color: 0x26343b }), p[0], p[1] + 2.4, -D2 / 2 - .24));
