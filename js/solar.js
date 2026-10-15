@@ -201,7 +201,7 @@ window.SolarUI = (function () {
       card('实时功率', fmt(pKw, 2), 'kW', cap ? ('装机 ' + fmt(cap, 2) + ' kWp') : '', 'hi')
       + card('当日发电', fmt(dKwh, 1), '度', hours !== null ? ('等效 ' + fmt(hours, 2) + ' 小时') : '')
       + card('今日收益', fmt(revToday, 2), '元', '日升云结算 · 储能 + 光伏')
-      + card('今日卖电（馈电上网）', fmt(sellToday, 2), '元', '关口表 ' + fmt(feedToday, 1) + ' 度 × <i id="slPrice" title="点击修改上网电价">' + fmt(price, 2) + '</i> 元/度 · 估算')
+      + card('今日卖电（馈电上网）', fmt(sellToday, 2), '元', '关口表 ' + fmt(feedToday, 1) + ' 度 × <i id="slPrice" title="点击这里改上网电价">' + fmt(price, 2) + '</i> 元/度（点数字可改）· 估算')
       + card('累计发电', fmt(tKwh, 0), '度', sum.plant && sum.plant.install_date ? ('并网 ' + String(sum.plant.install_date).slice(0, 10)) : '')
       + card('装机容量', fmt(cap, 2), 'kWp', sum.plant ? (sum.plant.type || '分布式光伏') : '')
       + card('CO₂减排', fmt(co2, 2), '吨', trees !== null ? ('等效植树 ' + trees + ' 棵') : '');
