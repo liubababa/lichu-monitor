@@ -18,7 +18,7 @@ window.PortalUI = (function () {
      group 分组名 · name 站点名 · sn 设备号（空=未接入）· psn 产品号 · tag 类型标签 · note 备注 */
   const STATIONS = [
     {
-      group: '莒南站', name: '莒南储能站', sn: 'R250907J0038', psn: 'kp23bhcpmt91n2v8',
+      group: '旭日东明站', name: '旭日东明储能电站', sn: 'R250907J0038', psn: 'kp23bhcpmt91n2v8',
       tag: '储能 · 高特 CCU', note: '液冷储能 125kW / 261kWh'
     },
     {
@@ -65,12 +65,14 @@ window.PortalUI = (function () {
       });
     }
     try { localStorage.setItem(LS_KEY, JSON.stringify({ name: opt.name, sn: opt.sn, at: Date.now() })); } catch (_) {}
+    setCurStation(opt.name);
     closePortal();
   }
 
   /* 光伏站（阳光电源 iSolarCloud）：不连 MQTT，直接进光伏监控页 */
   function enterSolar(st) {
     try { localStorage.setItem(LS_KEY, JSON.stringify({ name: st.name, sn: '', at: Date.now() })); } catch (_) {}
+    setCurStation(st.name);
     const p = byId('portal');
     if (p) p.classList.add('hidden');
     if (window.SolarUI) SolarUI.open();
@@ -249,6 +251,20 @@ window.PortalUI = (function () {
     renderDevicePage();
   }
 
+  /* ---------------- 顶栏「当前电站」提示 ----------------
+     设备总览 / 详细信息 / 电芯健康 / 光伏页都不带站名，看的人不知道在看哪个站。
+     这里统一在顶栏挂一个常驻提示：进站时写入，刷新后沿用上次选择。 */
+  function setCurStation(name) {
+    try { localStorage.setItem('dianzhan.station.cur', name || ''); } catch (_) {}
+    paintStation(name);
+  }
+  function paintStation(name) {
+    let n = name;
+    if (n === undefined) { try { n = localStorage.getItem('dianzhan.station.cur') || ''; } catch (_) { n = ''; } }
+    const b = byId('topStation');
+    if (b) b.textContent = n || '未选择电站';
+  }
+
   /* ---------------- 初始化 ---------------- */
   function init() {
     if (!byId('portal')) return;
@@ -267,6 +283,9 @@ window.PortalUI = (function () {
       if (sel.sn) enter({ sn: sel.sn, name: sel.name });
     });
     openPortal();                       /* 打开网站先看目录 */
+    paintStation();                     /* 顶栏电站提示：沿用上次选择 */
+    /* 登录后第一个界面是屏保（优先于电站选择页）：目录先备好，屏保盖在上面，一唤醒就是目录 */
+    if (window.ScreenSaver && ScreenSaver.show) ScreenSaver.show();
     setInterval(function () { if (!byId('portal').classList.contains('hidden')) renderPortal(); }, 3000);
     setInterval(function () { if (!byId('deviceView').classList.contains('hidden')) renderDevicePage(); }, 2000);
   }

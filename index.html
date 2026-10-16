@@ -54,6 +54,8 @@ window.addEventListener('error', function (e) {
         <h1 id="siteName">力储未来能源综合管理系统</h1>
         <span>LICHU FUTURE INTEGRATED ENERGY MANAGEMENT SYSTEM</span>
       </div>
+      <!-- 常驻提示：不管在哪个页（设备总览 / 详细信息 / 电芯健康 / 光伏）都知道在看哪个电站 -->
+      <div class="station-chip top-chip">当前电站：<b id="topStation">--</b></div>
     </div>
 
     <nav class="tb-tabs" id="mainTabs">
@@ -69,7 +71,7 @@ window.addEventListener('error', function (e) {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19V5M4 19h16"/><path d="M8 16V9M12 16v-4M16 16v-7"/></svg>
         <span>详细信息</span><i>▾</i>
       </button>
-      <button class="tab" data-tab="strategy">
+      <button class="tab" data-tab="strategy" style="display:none">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v4h-4"/></svg>
         <span>充放电策略</span><i>▾</i>
       </button>
@@ -438,7 +440,7 @@ window.addEventListener('error', function (e) {
 <script src="js/gaote-strategy.js?v=20260917d"></script>
 <script src="js/overview.js?v=20260919b"></script>
 <script src="js/mqtt-ui.js?v=20261015a"></script>
-<script src="js/portal.js?v=20261013b"></script>
+<script src="js/portal.js?v=20261016i"></script>
 <script src="js/screensaver.js?v=20261012d"></script>
 <script src="js/solar.js?v=20261015h"></script>
 <script src="js/solar-scene3d.js?v=20261016h"></script>
