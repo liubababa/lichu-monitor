@@ -907,8 +907,9 @@ window.GaoteScene3D = (function () {
     const jbMat = std(0x4a5a5c, { roughness: .55, metalness: .45 });
     const jbInner = std(0x27312f, { roughness: .7, metalness: .3 });
     const jbZ = D / 2 - 1.0;                                   /* 左墙靠前一侧 */
-    g.add(box(.22, .82, 2.3, jbMat, -(W / 2 + .11), 1.3, jbZ));
-    g.add(box(.08, .66, 2.1, jbInner, -(W / 2 + .24), 1.3, jbZ));
+    g.add(box(.34, 1.05, 2.6, jbMat, -(W / 2 + .17), 1.45, jbZ));
+    g.add(box(.12, .86, 2.36, jbInner, -(W / 2 + .36), 1.45, jbZ));
+    g.add(box(.06, .1, 2.7, std(0xb8c3c4, { roughness: .5, metalness: .4 }), -(W / 2 + .2), 2.06, jbZ));  /* 箱顶小檐（夜里也认得出是个进线箱） */
 
     const wrap = document.createElement('div');
     const el = document.createElement('div');
@@ -1014,7 +1015,7 @@ window.GaoteScene3D = (function () {
     buildTower(root);
 
     /* PCS → 铁塔 出线（全站口径，流向按总功率） */
-    const toTower = [new THREE.Vector3(PCS_X - PCS_HW + .2, 1.0, PCS_Z),
+    const toTower = [new THREE.Vector3(PCS_X - PCS_HW + .2, .06, PCS_Z),
       new THREE.Vector3(-11.6, 2.6, 1.6), new THREE.Vector3(-12.6, 4.2, -.8),
       new THREE.Vector3(TWR_X, 5.9, TWR_Z)];
     addFlow(toTower, root, -1);
