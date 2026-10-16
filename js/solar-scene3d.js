@@ -1090,20 +1090,20 @@ window.SolarScene = (function () {
       new T.Vector3(-rowW / 2 - .4, roofY + .40, 0),
       new T.Vector3(-4, roofY + .42, 0),
       new T.Vector3(9.5, roofY + .42, .1),
-      new T.Vector3(W2 / 2 + .28, roofY + .42, .55),
-      new T.Vector3(W2 / 2 + .34, roofY - .55, .9),
-      new T.Vector3(W2 / 2 + .42, 3.35, 1.1),
-      new T.Vector3(W2 / 2 + .42, 2.98, 1.2)
+      new T.Vector3(W2 / 2 + .08, roofY + .42, .55),
+      new T.Vector3(W2 / 2 + .09, roofY - .55, .9),
+      new T.Vector3(W2 / 2 + .10, 3.35, 1.1),
+      new T.Vector3(W2 / 2 + .10, 2.98, 1.2)
     ], 'dc', .069);
     /* 过墙套管（电缆从套管中间穿出女儿墙，避免穿模） */
-    root.add(box(.7, .2, .2, regThemeMat(std(0x9aa5a6, { roughness: .5, metalness: .5 }), { color: 0x3d4d55 }), W2 / 2 + .28, roofY + .42, .55));
+    root.add(box(.7, .2, .2, regThemeMat(std(0x9aa5a6, { roughness: .5, metalness: .5 }), { color: 0x3d4d55 }), W2 / 2 + .06, roofY + .42, .55));
     /* 交流侧：逆变器 → 沿东墙上到檐口 → 沿南立面上沿走（大门上方，不穿门前）→ 西端下来进并网计量箱。
        原来贴南墙 1 米高横穿大门前，视觉上很碍事，改走檐口一线（y 6.6，避开雨棚顶 6.33 与女儿墙） */
     addFlow([
-      new T.Vector3(W2 / 2 + .5, 1.45, 1.2),                    /* 逆变器底部出线（接进柜底） */
-      new T.Vector3(W2 / 2 + .7, 2.7, 1.22),
-      new T.Vector3(W2 / 2 + .7, 6.4, 1.5),                     /* 沿东墙向上（贴墙外 0.26，不碰窗带） */
-      new T.Vector3(W2 / 2 + .62, 6.6, 5.4),
+      new T.Vector3(W2 / 2 + .3, 1.45, 1.2),                    /* 逆变器底部出线（接进柜底） */
+      new T.Vector3(W2 / 2 + .3, 2.7, 1.22),
+      new T.Vector3(W2 / 2 + .3, 6.4, 1.5),                     /* 沿东墙向上（贴墙外 0.3，不碰窗带） */
+      new T.Vector3(W2 / 2 + .3, 6.6, 5.4),
       new T.Vector3(W2 / 2 + .2, 6.6, D2 / 2 + .25),            /* 东南角转过来 */
       new T.Vector3(6.0, 6.6, D2 / 2 + .25),
       new T.Vector3(-6.0, 6.6, D2 / 2 + .25),
