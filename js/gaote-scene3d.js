@@ -1023,6 +1023,17 @@ window.GaoteScene3D = (function () {
     root.add(box(.95, .3, .95, std(0x39484c, { roughness: .85, metalness: .2 }), PCS_X - PCS_HW + .2, .15, PCS_Z));
     root.add(box(.72, .06, .72, std(0x55666a, { roughness: .7, metalness: .3 }), PCS_X - PCS_HW + .2, .32, PCS_Z));
 
+    /* 电网 → 厂房 直供电缆（工况①：电塔既供厂房、又给储能充电）。
+       现场接线是电网和储能并接在厂房进线上：这条与储能那条并排进同一个进线箱。
+       点序按"厂房 → 电缆井"排，这样沿用并网线的方向语义（进口时 dir=-1，正好朝厂房流） */
+    addFlow([
+      new THREE.Vector3(FAC_X - FAC_W / 2 - .16, 1.05, FAC_Z + FAC_D / 2 - 1.4),
+      new THREE.Vector3(FAC_X - FAC_W / 2 - 1.3, .46, FAC_Z + FAC_D / 2 - .5),
+      new THREE.Vector3(FAC_X - FAC_W / 2 - 3.6, .3, 5.05),
+      new THREE.Vector3(-5.5, .3, 4.98),
+      new THREE.Vector3(PCS_X - PCS_HW + .2, .22, PCS_Z + .38)
+    ], root, -1);
+
     buildFactory(root);
 
     scene.add(root);
