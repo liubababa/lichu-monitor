@@ -1111,7 +1111,14 @@ window.GaoteScene3D = (function () {
   function stackData(i) {
     const s = GaoteService.state || {};
     const find = function (dim, arr) {
-      const key = Object.keys(s).filter(k => k.split('|')[0] === dim && String(s[k]._meta.arr) === String(arr))[0];
+      /* 分堆号优先取 _meta.arr；没有这个字段时从键名解析（键形如 cluster|0|-1|0|，
+         第二段就是分堆号）——否则整套分堆数据会全读成 -- */
+      const key = Object.keys(s).filter(function (k) {
+        const p = k.split('|');
+        if (p[0] !== dim) return false;
+        const a = (s[k]._meta && s[k]._meta.arr !== undefined) ? s[k]._meta.arr : p[1];
+        return String(a) === String(arr);
+      })[0];
       return key ? s[key] : null;
     };
     const bval = function (b, k) {
@@ -1233,11 +1240,14 @@ window.GaoteScene3D = (function () {
       if (fl.stack >= 0 && fl.stack < MAXN) {
         const d = (fl.stack < stackN) ? stackData(fl.stack) : null;
         const cur = (d && d.cur !== null) ? Number(d.cur) : 0;
-        /* 堆 → 厂房：按本堆电流方向；汇流柜 → 堆：充电（电流为负）时由汇流柜流向电池 */
+        /* 每根电缆只在自己该导电时流动，不做双向：
+             · 堆 → 厂房 / 堆 → PCS：只在放电（电流为正）时流动
+             · 汇流柜 → 堆：只在充电（电流为负）时流动
+           原来写成 ±1 双向，充电时"堆 → 厂房"那根会反向亮起来（现场实测到的问题） */
         fl.dir = fl.pcs
-          ? (cur < -0.5 ? 1 : (cur > 0.5 ? -1 : 0))
-          : (cur > 0.5 ? 1 : (cur < -0.5 ? -1 : 0));
-        fl.flip = !!fl.pcs;
+          ? (cur < -0.5 ? 1 : 0)
+          : (cur > 0.5 ? 1 : 0);
+        fl.flip = !!fl.pcs;                      /* 颜色语义仍按充/放区分 */
         fl.speed = Math.min(4, Math.abs(cur) / 80);
       } else if (fl.stack === -1) {
         /* 并网线：按并网点电表的功率走（正 = 从电网取电，负 = 反向送电）。
