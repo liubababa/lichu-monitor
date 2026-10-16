@@ -451,7 +451,9 @@ window.SolarScene = (function () {
   const FLOOR_Y = 3.3;                           /* 二层楼面标高（相对勒脚顶） */
   const roofY = H2 + .3;                         /* 屋面标高（含 0.3 勒脚台） */
   /* 储能柜：光储一体柜，摆在楼西侧场坪上，柜门朝东（对着楼与默认机位） */
-  const CAB_X = -17.6, CAB_Z = .6, CAB_W = 2.7, CAB_H = 2.6, CAB_D = 1.7;
+  /* 站区布置：储能柜与计量箱从楼西侧（默认机位看不见）挪到楼西南开阔场坪，
+     和铁塔一线的地面电缆连起来，默认机位能看全「光伏→逆变器→计量箱→储能/电网」 */
+  const CAB_X = -18.6, CAB_Z = 9.6, CAB_W = 2.7, CAB_H = 2.6, CAB_D = 1.7;
   const COLS = 10;
   const MW = 2.28, MD = 1.13, MT = .045;         /* 组件：宽 × 深 × 厚 */
   const TILT = .49;                              /* 组件倾角 28°（+z 为南，朝太阳低下来） */
@@ -755,6 +757,8 @@ window.SolarScene = (function () {
     g.position.set(CAB_X, 0, CAB_Z);
     g.rotation.y = Math.PI / 2;                    /* 柜门朝东，正对楼与默认机位 */
     const W = CAB_W, H = CAB_H, D = CAB_D;
+    /* 混凝土基础台：柜体直接落在网格上看着"没生根" */
+    g.add(box(W + .42, .16, D + .42, regThemeMat(std(0x9aa3a6, { roughness: .92 }), { color: 0x2a3a40 }, { color: 0x3b4a4f }), 0, .08, 0));
     const steel = regThemeMat(std(0xc6ccce, { roughness: .45, metalness: .55, envMapIntensity: .6 }), { color: 0x46565d, envMapIntensity: .8 });
     const dark = std(0x22333a, { roughness: .5, metalness: .5, envMapIntensity: .5 });
     const front = regThemeMat(new T.MeshStandardMaterial({ map: cabFrontTexture(theme), roughness: .5, metalness: .35, envMapIntensity: .4 }),
@@ -950,7 +954,8 @@ window.SolarScene = (function () {
     label('通信模块 · EyeS4<em>数据回传阳光云</em>', 'tag3d-gt', W2 / 2 + 2.2, 4.45, -2.6);
 
     /* ---------- 并网点：计量箱 + 电杆 + 架空线 ---------- */
-    const mx = -W2 / 2 - 1.6, mz = D2 / 2 - 2.0;
+    /* 计量箱：楼西南角外的开阔场坪上（原来贴在楼西墙中段，被楼体挡住看不见） */
+    const mx = -W2 / 2 - 1.4, mz = D2 / 2 + 1.75;
     const mg = new T.Group();
     mg.userData.key = 'grid';                     /* 点计量箱可弹明细卡 */
     mg.position.set(mx, 0, mz);
@@ -1104,24 +1109,24 @@ window.SolarScene = (function () {
       new T.Vector3(-6.0, 6.6, D2 / 2 + .25),
       new T.Vector3(-W2 / 2 + .2, 6.6, D2 / 2 + .25),           /* 南立面上沿通长（大门在下方，不挡门） */
       new T.Vector3(-W2 / 2 - .5, 6.5, D2 / 2 - .35),           /* 西南角 */
-      new T.Vector3(-14.5, 5.4, 6.5),
-      new T.Vector3(-14.6, 1.9, 6.05),                          /* 落到计量箱 */
-      new T.Vector3(-14.6, 1.1, 6.0)
+      new T.Vector3(-W2 / 2 - .9, 4.6, D2 / 2 + .4),            /* 沿西端墙外侧下来 */
+      new T.Vector3(-W2 / 2 - 1.25, 1.9, D2 / 2 + 1.3),
+      new T.Vector3(-W2 / 2 - 1.4, 1.1, D2 / 2 + 1.72)          /* 落到计量箱 */
     ], 'ac', .075);
     /* 交流支线：计量箱 → 储能柜（充电流进柜、放电流出柜） */
     addFlow([
-      new T.Vector3(-14.4, .95, 5.9),
-      new T.Vector3(-15.6, .85, 4.2),
-      new T.Vector3(-16.7, .72, 2.0)
+      new T.Vector3(-14.0, .95, 7.75),
+      new T.Vector3(-16.4, .85, 8.7),
+      new T.Vector3(-18.6, .72, 9.6)
     ], 'stor', .063);
     /* 交流支线：计量箱底 → 地面电缆（沿电缆墩敷设）→ 铁塔基座终端箱（卖电 / 买电走这条） */
     addFlow([
-      new T.Vector3(-14.54, 1.28, 6.02),
-      new T.Vector3(-14.5, .78, 6.04),
-      new T.Vector3(-14.45, .36, 6.05),
-      new T.Vector3(-18.6, .36, 6.32),
-      new T.Vector3(-22.5, .36, 6.58),
-      new T.Vector3(-26.0, .36, 6.82),
+      new T.Vector3(-14.0, 1.28, 7.82),
+      new T.Vector3(-14.0, .78, 7.82),
+      new T.Vector3(-13.95, .36, 7.83),
+      new T.Vector3(-18.0, .36, 7.60),
+      new T.Vector3(-22.0, .36, 7.37),
+      new T.Vector3(-26.0, .36, 7.15),
       new T.Vector3(-28.6, .38, 7.0)
     ], 'grid', .068);
 
