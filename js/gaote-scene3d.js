@@ -1059,23 +1059,21 @@ window.GaoteScene3D = (function () {
         }
         fl.map.repeat.set(Math.max(2, Math.round(len / 4.2)), 1);   // 光纹密度跟着线长走
       };
-      /* ① 堆 → 厂房（放电）：柜正面右下引出，起步抬一下从柜前充电电缆上方跨过去；
-         西边的柜子先贴着汇流柜前面往东走（不穿汇流柜），到它东侧再转南进电缆沟，
-         沿沟向东后接进厂房左侧的办公附房（墙上带进线箱） */
-      const gz = 4.2 + i * .3;                         // 电缆沟里一列列排开（间距也放大）
+      /* ① 堆 → 厂房（放电）：柜正面右下引出 → 向南进电缆沟 → 沿沟向东 → 上厂房左墙进线箱
+         （PCS 柜与办公附房均已删除，两堆各走一道、互不打架） */
+      const gz = 4.2 + i * .45;                        // 电缆沟里各走一道，间距拉大，两堆不打架
       const wallX = FAC_X - FAC_W / 2;                 // 厂房左侧（西）外墙
-      const landZ = FAC_Z + FAC_D / 2 - 1.6 + i * .7;  // 左墙靠前一侧的进线点，两堆错开
+      const landZ = FAC_Z + FAC_D / 2 - 1.6 + i * .8;  // 左墙靠前一侧的进线点，两堆错开
       const turnX = Math.max(x + .45, PCS_X + PCS_HW + .6);
-      rebuild(sc.flow, [new THREE.Vector3(.45, .24, .9), new THREE.Vector3(.45, .78, 2.2),
-        new THREE.Vector3(turnX - x, .5, 2.25 + i * .06), new THREE.Vector3(turnX - x + .7, .34, 3.9),
-        new THREE.Vector3(turnX - x + 2.2, .32, gz), new THREE.Vector3(wallX - x - 2.8, .44, gz),
-        new THREE.Vector3(wallX - x - 1.0, .72, landZ + .7), new THREE.Vector3(wallX - x - .16, 1.1, landZ)]);
-      /* ② 汇流柜 → 堆（充电）：从汇流柜右下出线，向北折进柜前走廊（贴地、两堆一前一后），
-         走到本柜左前方进柜子进线箱；厂房电缆从它上方跨过，两条线不相交 */
-      const pz = 1.2 + i * .22;                        // 柜前走廊（内侧一列）
+      /* 一条线一口气走完：柜前出来 → 向南 → 沿电缆沟向东 → 折上左墙进线箱。
+         不再为"跨过充电电缆"上下起伏，两线在平地交叉即可（原来会被看成 S 形乱绕） */
+      rebuild(sc.flow, [new THREE.Vector3(.5, .26, 1.0), new THREE.Vector3(.5, .28, 3.5),
+        new THREE.Vector3(turnX - x, .28, 3.8), new THREE.Vector3(turnX - x + 1.8, .3, gz),
+        new THREE.Vector3(wallX - x - 2.6, .3, gz), new THREE.Vector3(wallX - x - 1.2, .5, landZ + .9),
+        new THREE.Vector3(wallX - x - .16, 1.1, landZ)]);
+      /* ② 电网 → 堆（充电）：从电缆井引过来，沿柜前走廊（两堆一前一后）进本柜进线箱 */
+      const pz = 1.05 + i * .5;                        // 柜前走廊：两堆各一道，前后分开走
       const cx = Math.min(-2.4, x - 1.2);              // 走廊往东走到本柜左前方为止，不走回头路
-      /* ② 汇流柜 → 堆（充电）：PCS 柜已删，充电回路的源改按业务逻辑接电网——
-         从电塔塔脚落地（入地段）引过来，沿柜前走廊往东进本柜进线箱 */
       rebuild(sc.pcs, [new THREE.Vector3(PCS_X - PCS_HW + .2 - x, .2, PCS_Z),
         new THREE.Vector3(-9.6 - x, .24, 2.4),
         new THREE.Vector3(-8.4 - x, .28, pz - .3),
