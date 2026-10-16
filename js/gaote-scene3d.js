@@ -1014,11 +1014,14 @@ window.GaoteScene3D = (function () {
     // buildPCS(root);
     buildTower(root);
 
-    /* PCS → 铁塔 出线（全站口径，流向按总功率） */
-    const toTower = [new THREE.Vector3(PCS_X - PCS_HW + .2, -.06, PCS_Z),
+    /* 全站出线 → 铁塔（流向按总功率）：起点落在电缆井上。原来让管末端斜插进地面，
+       视觉模型判为"穿模/悬空断头"，改成落在井口，三条线都汇集到这里 */
+    const toTower = [new THREE.Vector3(PCS_X - PCS_HW + .2, .2, PCS_Z),
       new THREE.Vector3(-11.6, 2.6, 1.6), new THREE.Vector3(-12.6, 4.2, -.8),
       new THREE.Vector3(TWR_X, 5.9, TWR_Z)];
     addFlow(toTower, root, -1);
+    root.add(box(.95, .3, .95, std(0x39484c, { roughness: .85, metalness: .2 }), PCS_X - PCS_HW + .2, .15, PCS_Z));
+    root.add(box(.72, .06, .72, std(0x55666a, { roughness: .7, metalness: .3 }), PCS_X - PCS_HW + .2, .32, PCS_Z));
 
     buildFactory(root);
 
@@ -1073,8 +1076,8 @@ window.GaoteScene3D = (function () {
       const cx = Math.min(-2.4, x - 1.2);              // 走廊往东走到本柜左前方为止，不走回头路
       /* ② 汇流柜 → 堆（充电）：PCS 柜已删，充电回路的源改按业务逻辑接电网——
          从电塔塔脚落地（入地段）引过来，沿柜前走廊往东进本柜进线箱 */
-      rebuild(sc.pcs, [new THREE.Vector3(TWR_X + .35 - x, -.06, TWR_Z + 1.3),
-        new THREE.Vector3(TWR_X + 2.0 - x, .26, .6),
+      rebuild(sc.pcs, [new THREE.Vector3(PCS_X - PCS_HW + .2 - x, .2, PCS_Z),
+        new THREE.Vector3(-9.6 - x, .24, 2.4),
         new THREE.Vector3(-8.4 - x, .28, pz - .3),
         new THREE.Vector3(cx - x, .28, pz), new THREE.Vector3(-.45, .28, pz), new THREE.Vector3(-.45, .24, .9)]);
     }
