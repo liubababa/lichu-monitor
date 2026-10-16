@@ -725,9 +725,9 @@ window.SolarScene = (function () {
   function cabFrontTexture(t) {
     const night = (t || theme) === 'night';
     return tex(function (g, w, h) {
-      g.fillStyle = night ? '#16272f' : '#e9edee'; g.fillRect(0, 0, w, h);
+      g.fillStyle = night ? '#dfe5e6' : '#e9edee'; g.fillRect(0, 0, w, h);
       g.strokeStyle = night ? 'rgba(46,230,200,.34)' : 'rgba(96,116,120,.45)'; g.lineWidth = 3; g.strokeRect(8, 8, w - 16, h - 16);
-      g.fillStyle = night ? 'rgba(30,54,62,.95)' : 'rgba(206,216,218,.95)'; g.fillRect(16, 16, w - 32, 54);            /* 顶部空调段 */
+      g.fillStyle = night ? 'rgba(198,208,210,.95)' : 'rgba(206,216,218,.95)'; g.fillRect(16, 16, w - 32, 54);            /* 顶部空调段 */
       g.strokeStyle = night ? 'rgba(46,230,200,.24)' : 'rgba(96,116,120,.35)'; g.strokeRect(16, 16, w - 32, 54);
       for (let i = 0; i < 5; i++) { g.fillStyle = night ? 'rgba(46,230,200,.13)' : 'rgba(96,116,120,.25)'; g.fillRect(26, 25 + i * 9, w - 52, 3); }
       g.strokeStyle = night ? 'rgba(46,230,200,.45)' : 'rgba(70,96,100,.5)'; g.lineWidth = 4;
@@ -1073,9 +1073,10 @@ window.SolarScene = (function () {
     buildBuilding();
     /* 玻璃板面：压掉天空反射（原来 envMapIntensity .9 + 高金属度，整片阵列被反光提亮成浅蓝），
        现在近黑深蓝，只有发电时才透出一点深蓝 */
+    /* 现场是黑色组件：底色压到近黑，靠纹理里的栅格高光表现玻璃面 */
     const glassMat = new T.MeshStandardMaterial({
-      map: panelTexture(), roughness: .3, metalness: .45,
-      emissive: new T.Color(0x061528), emissiveIntensity: .14, envMapIntensity: .35
+      map: panelTexture(), color: 0x33383c, roughness: .32, metalness: .5,
+      emissive: new T.Color(0x0a0d10), emissiveIntensity: .1, envMapIntensity: .38
     });
     panelMats.push(glassMat);
     buildArray(glassMat);

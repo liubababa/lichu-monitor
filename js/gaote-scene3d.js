@@ -40,9 +40,9 @@ window.GaoteScene3D = (function () {
       hemiSky: 0xbfe9ff, hemiGround: 0x0a1a1e, hemiInt: 1.05,
       sunColor: 0xffffff, sunInt: .85, fillColor: 0x2ee6c8, fillInt: .35, bloom: .62, bloomTh: .82,
       /* 状态色：充电(蓝) / 放电(青) / 待机(灰) */
-      stateChg: 0x8fd8ff, stateDis: 0x2ee6c8, stateIdle: 0x6f9a94,
+      stateChg: 0x8fd8ff, stateDis: 0x3df0a0, stateIdle: 0x6f9a94,
       /* 电流光纹：放电(青) / 充电(蓝) / 待机(暗)；夜里用加色混合发光 */
-      flowDis: 0x2ee6c8, flowChg: 0x8fd8ff, flowIdle: 0x16303a, flowBlend: 1,
+      flowDis: 0x3df0a0, flowChg: 0x8fd8ff, flowIdle: 0x16303a, flowBlend: 1,
       sky: null
     },
     day: {
@@ -51,10 +51,10 @@ window.GaoteScene3D = (function () {
          环境光给足（阴面才不会发黑成剪影），直射光适度 */
       hemiSky: 0xdfefff, hemiGround: 0xb9bdb6, hemiInt: .6,
       sunColor: 0xfff0da, sunInt: .55, fillColor: 0xbfe6ff, fillInt: .15, bloom: .1, bloomTh: .97,
-      /* 白天：充电橙 / 放电黄（浅底上暖色最醒目，与电流光纹同色系），待机灰 */
-      stateChg: 0xd97700, stateDis: 0xd7a400, stateIdle: 0x9aa9a9,
+      /* 白天：充电(蓝) / 放电(绿) / 待机(灰)——与光纹同色系 */
+      stateChg: 0x1f7fd0, stateDis: 0x159a63, stateIdle: 0x9aa9a9,
       /* 电流光纹：白天浅底用饱和暖色 + 普通混合，否则会被浅底冲淡 */
-      flowDis: 0xe8b000, flowChg: 0xe08600, flowIdle: 0x9aa9a9, flowBlend: 0,
+      flowDis: 0x159a63, flowChg: 0x1f7fd0, flowIdle: 0x9aa9a9, flowBlend: 0,
       /* 天空穹顶的竖直渐变：天顶蓝 → 地平线白雾（相机基本平视，
          所以蓝色要压到接近地平线才看得见，否则整片都是白的） */
       sky: { stops: [[0, '#4f9fd4'], [.36, '#7dbde3'], [.47, '#b6d9ee'], [.52, '#e6eff4'], [1, '#e6eff4']] }
@@ -181,10 +181,10 @@ window.GaoteScene3D = (function () {
      否则深色设备在亮背景里就是一团剪影 */
   const TEXPAL = {
     night: {
-      cabBg: '#0f2731', cabPanel: 'rgba(7,22,28,.95)', seam: 'rgba(46,230,200,.18)',
+      cabBg: '#dfe5e6', cabPanel: 'rgba(198,208,210,.95)', seam: 'rgba(96,116,120,.32)',
       seam2: 'rgba(46,230,200,.25)', slot: 'rgba(46,230,200,.20)', door: 'rgba(46,230,200,.34)',
       doorIn: 'rgba(46,230,200,.13)', hinge: 'rgba(46,230,200,.55)', plate: 'rgba(46,230,200,.30)',
-      warn: 'rgba(255,176,32,.42)', sideBg: '#0c1f27', sideSeam: 'rgba(46,230,200,.12)',
+      warn: 'rgba(224,148,16,.55)', sideBg: '#d6dddd', sideSeam: 'rgba(96,116,120,.26)',
       sideEdge: 'rgba(46,230,200,.16)', sideVent: 'rgba(46,230,200,.14)', pcsBg: '#10262e',
       pcsPanel: 'rgba(7,22,28,.95)', pcsVent: 'rgba(46,230,200,.16)', pcsFoot: 'rgba(46,230,200,.09)',
       pcsWarn: 'rgba(255,176,32,.35)', facBg: '#122831', facSeam: 'rgba(46,230,200,.10)',
@@ -1021,7 +1021,10 @@ window.GaoteScene3D = (function () {
       stackCables.push({ flow: addFlow(fpts, g, i), pcs: pcsFlow });
     }
 
-    buildPCS(root);
+    /* 按现场要求去掉"汇流 / PCS 柜"这个模型（PCS 在储能柜内部，现场没有单独柜体）：
+       不再建柜体，它自带的浮标与明细卡也一并省掉（都在 buildPCS 里），
+       电缆仍按原路由汇到原位置，不悬空 */
+    // buildPCS(root);
     buildTower(root);
 
     /* PCS → 铁塔 出线（全站口径，流向按总功率） */
@@ -1259,7 +1262,7 @@ window.GaoteScene3D = (function () {
       }
     }
 
-    setCard('pcs', '汇流 / PCS', [
+    if (cardEls.pcs) setCard('pcs', '汇流 / PCS', [
       ['PCS 总有功', f(emuP, 1, ' kW')], ['PCS 总无功', f(GaoteService.val('emu', 'PCSSumsReactivePower'), 1, ' kVar')],
       ['母线电压', f(GaoteService.val('emu', 'DCBusVol'), 1, ' V')],
       ['允许充电功率', f(GaoteService.val('emu', 'MaxAllowChargPower'), 0, ' kW')],
