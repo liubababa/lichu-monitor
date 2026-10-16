@@ -742,7 +742,7 @@ window.SolarScene = (function () {
   function cabSideTexture(t) {
     const night = (t || theme) === 'night';
     return tex(function (g, w, h) {
-      g.fillStyle = night ? '#15242c' : '#e2e7e8'; g.fillRect(0, 0, w, h);
+      g.fillStyle = night ? '#dfe5e6' : '#e2e7e8'; g.fillRect(0, 0, w, h);
       g.strokeStyle = night ? 'rgba(46,230,200,.18)' : 'rgba(96,116,120,.22)'; g.lineWidth = 2;
       for (let i = 1; i < 4; i++) { const x = i * w / 4; g.beginPath(); g.moveTo(x, 6); g.lineTo(x, h - 6); g.stroke(); }
       g.strokeStyle = night ? 'rgba(46,230,200,.26)' : 'rgba(96,116,120,.3)'; g.strokeRect(6, 6, w - 12, h - 12);
@@ -951,7 +951,7 @@ window.SolarScene = (function () {
     root.add(box(.5, .56, .36, regThemeMat(std(0xe8eef0, { roughness: .5, envMapIntensity: .5 }), { color: 0x2b3a42, envMapIntensity: .6 }), W2 / 2 + 2.2, 3.05, -2.6));
     root.add(box(.52, .05, .38, regThemeMat(std(0xc2ccce, { roughness: .5, metalness: .5 }), { color: 0x3a4b53 }), W2 / 2 + 2.2, 3.34, -2.6));
     root.add(cyl(.022, .022, .8, steel, W2 / 2 + 2.2, 3.76, -2.6, 6));
-    label('通信模块 · EyeS4<em>数据回传阳光云</em>', 'tag3d-gt', W2 / 2 + 2.2, 4.45, -2.6);
+    label('通信模块<em>数据回传阳光云</em>', 'tag3d-gt', W2 / 2 + 2.2, 5.35, -4.2);
 
     /* ---------- 并网点：计量箱 + 电杆 + 架空线 ---------- */
     /* 计量箱：楼西南角外的开阔场坪上（原来贴在楼西墙中段，被楼体挡住看不见） */
