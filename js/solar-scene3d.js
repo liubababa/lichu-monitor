@@ -824,6 +824,12 @@ window.SolarScene = (function () {
       return t < .6 ? base + (waist - base) * (t / .6) : waist + (top - waist) * ((t - .6) / .4);
     };
     const P = function (x, y, z) { return new T.Vector3(x * halfAt(y), y, z * halfAt(y)); };
+    /* 四个混凝土塔脚基础：原来四条腿直接落在场坪上，看着"没生根" */
+    const footMat = regThemeMat(std(0x9aa3a6, { roughness: .92 }), { color: 0x2a3a40 }, { color: 0x3b4a4f });
+    [[1.5, 1.5], [1.5, -1.5], [-1.5, 1.5], [-1.5, -1.5]].forEach(function (p) {
+      const ft = box(.72, .5, .72, footMat, p[0], .25, p[1]);
+      g.add(ft);
+    });
     const member = function (a, b, mat, r) {
       const len = a.distanceTo(b);
       if (len < .03) return;
@@ -933,7 +939,7 @@ window.SolarScene = (function () {
     invG.add(box(.03, .16, .22, std(0xd9b23a, { roughness: .5 }), .465, 1.95, -.34));             /* 隔离开关 */
     invG.add(box(.02, .1, .4, regThemeMat(std(0xd8dee0, { roughness: .6 }), { color: 0x8f9aa0 }), .465, 1.8, .22));                 /* 铭牌 */
     root.add(invG);
-    invLabelEl = label('逆变器 · SG100CX-P2-CN<i>-- kW</i><em>待机</em>', 'tag3d-gt', W2 / 2 + 1.7, 3.85, 1.2);
+    invLabelEl = label('逆变器<i>-- kW</i><em>待机</em>', 'tag3d-gt', W2 / 2 + 1.7, 3.85, 1.2);
     addCard('inverter', W2 / 2 + 1.7, 2.9, 1.2);
 
     /* ---------- 通信模块（立杆） ---------- */
@@ -1357,9 +1363,9 @@ window.SolarScene = (function () {
       fl.tubeMat.color.setHex(fl.on ? (fl.kind === 'dc' ? p.dc : p.ac) : p.idle);
     });
     updateEnergyFlows();
-    if (invLabelEl) invLabelEl.innerHTML = '逆变器 · SG100CX-P2-CN<i>' + cur.power.toFixed(2) + ' kW</i><em>' + (on ? '运行中' : '待机') + '</em>';
+    if (invLabelEl) invLabelEl.innerHTML = '逆变器<i>' + cur.power.toFixed(2) + ' kW</i><em>' + (on ? '运行中' : '待机') + '</em>';
     if (arrLabelEl) arrLabelEl.innerHTML = '屋顶光伏阵列<i>' + cur.power.toFixed(2) + ' kW</i><em>今日 '
-      + (cur.today === null ? '--' : cur.today.toFixed(1)) + ' 度 · 装机 ' + Number(cur.cap).toFixed(2) + ' kWp</em>';
+      + (cur.today === null ? '--' : cur.today.toFixed(1)) + ' 度</em>';
     /* 并网点标签由 updateEnergyFlows() 统一刷新（它知道储能与负载） */
     /* 明细卡内容同样跟着实时值走 */
     const todayTxt = cur.today === null ? '--' : cur.today.toFixed(1) + ' 度';
@@ -1488,13 +1494,18 @@ window.SolarScene = (function () {
 
   /* 光伏 / 储能 / 负载三者决定两条支线的方向与颜色：
      储能充放：充电流进柜（蓝）、放电流出柜（青绿）
-     关口：发得多就往外卖（橙，往电网去）、不够就从电网取（蓝） */
+     关口：发得多就往外卖（橙，往电网去）、不够就从电网取（蓝）
+     口径核对（2026-10 用日升云实时数据验过）：日升云的 power_kw 正=放电、负=充电；
+     现场数字也对得上——负载 10.2 = 电池放 9.2 + 电网来 0.7，只有"正=放电"成立 */
   function updateEnergyFlows() {
     const c = FLOWC[theme] || FLOWC.night;
     const pv = Number(cur.power) || 0;
     const st = Number(cur.storPower) || 0;
     const load = Number(cur.loadKw) || 0;
-    const surplus = pv + st - load;
+    /* 储能或负载没上报时不要凭空算关口方向（缺一项就会误报"馈电上网"），显示无交换 */
+    const known = cur.storPower !== null && cur.storPower !== undefined
+      && cur.loadKw !== null && cur.loadKw !== undefined;
+    const surplus = known ? (pv + st - load) : null;
     flows.forEach(function (fl) {
       if (fl.kind === 'stor') {
         fl.on = Math.abs(st) > .3;
@@ -1503,22 +1514,22 @@ window.SolarScene = (function () {
         fl.speed = .3 + Math.min(1, Math.abs(st) / 100) * 1.8;
         if (!fl.on) fl.tubeMat.color.setHex(c.idle);
       } else if (fl.kind === 'grid') {
-        fl.on = Math.abs(surplus) > .3;
-        fl.dir = surplus > 0 ? 1 : -1;
-        fl.tint = surplus > 0 ? 0xffb020 : 0x8fd8ff;
-        fl.speed = .3 + Math.min(1, Math.abs(surplus) / 100) * 1.8;
+        fl.on = surplus !== null && Math.abs(surplus) > .3;
+        fl.dir = (surplus !== null && surplus > 0) ? 1 : -1;
+        fl.tint = (surplus !== null && surplus > 0) ? 0xffb020 : 0x8fd8ff;
+        fl.speed = .3 + Math.min(1, Math.abs(surplus || 0) / 100) * 1.8;
         if (!fl.on) fl.tubeMat.color.setHex(c.idle);
       }
     });
     if (gridLabelEl) {
-      gridLabelEl.innerHTML = '并网点<i>' + (Math.abs(surplus) > .3
+      gridLabelEl.innerHTML = '并网点<i>' + (surplus === null ? '--' : (Math.abs(surplus) > .3
         ? (surplus > 0 ? '馈电上网 ' + surplus.toFixed(1) + ' kW' : '从电网取 ' + Math.abs(surplus).toFixed(1) + ' kW')
-        : '无交换') + '</i><em>计量箱 · 关口表</em>';
+        : '无交换')) + '</i><em>计量箱 · 关口表</em>';
     }
     if (twrLabelEl) {
-      twrLabelEl.innerHTML = '并网铁塔<i>10kV 上网线路</i><em>' + (Math.abs(surplus) > .3
+      twrLabelEl.innerHTML = '并网铁塔<i>10kV 上网线路</i><em>' + (surplus === null ? '--' : (Math.abs(surplus) > .3
         ? (surplus > 0 ? '送出 ' + surplus.toFixed(1) + ' kW' : '受电 ' + Math.abs(surplus).toFixed(1) + ' kW')
-        : '无交换') + '</em>';
+        : '无交换')) + '</em>';
     }
   }
 
