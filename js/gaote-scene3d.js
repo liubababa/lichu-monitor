@@ -1253,12 +1253,18 @@ window.GaoteScene3D = (function () {
         fl.flip = !!fl.pcs;                      /* 颜色语义仍按充/放区分 */
         fl.speed = Math.min(4, Math.abs(cur) / 80);
       } else if (fl.stack === -1) {
-        /* 并网线：按并网点电表的功率走（正 = 从电网取电，负 = 反向送电）。
-           原来用 PCS 功率，放电时会看着像往电网倒送，跟"放电送厂房"对不上 */
+        /* 并网线：优先按关口表功率（正 = 从电网取电）。表没上报时按工况兜底——
+           充电(①②) = 电塔往站内送电（朝站内流）；放电(③) = 关口基本不交换，不流动 */
         const gp = GaoteService.val('meter-lems-antireflux', 'meter_tot_p');
-        const gv = (gp === null || gp === undefined) ? 0 : Number(gp);
-        fl.dir = gv > 0.5 ? -1 : (gv < -0.5 ? 1 : 0);
-        fl.speed = Math.min(4, Math.abs(gv) / 80);
+        const hasGp = gp !== null && gp !== undefined && isFinite(Number(gp));
+        const gv = hasGp ? Number(gp) : 0;
+        if (hasGp) {
+          fl.dir = gv > 0.5 ? -1 : (gv < -0.5 ? 1 : 0);
+          fl.speed = Math.min(4, Math.abs(gv) / 80);
+        } else {
+          fl.dir = pNum < -0.5 ? -1 : 0;
+          fl.speed = Math.min(4, Math.abs(pNum) / 80);
+        }
       }
     }
 
@@ -1277,8 +1283,30 @@ window.GaoteScene3D = (function () {
     const gl = labelEls.grid;
     if (gl) gl.innerHTML = '<b>并网点</b><i>' + f(GaoteService.val('meter-lems-antireflux', 'meter_tot_p'), 1, ' kW') + '</i>';
 
-    /* 厂房负荷：放电时电从 PCS 送进厂房（光点流动），待机/充电时进线不流动 */
-    facOn = flow.dir > 0;
+    /* 供电工况（现场三种）：
+       ① 电网供电 + 储能充电：电塔既供厂房、又给储能充电（充电时默认这一种）
+       ② 电网只给储能充电：厂房无负荷，关口功率 ≈ 储能充电功率（差得小 = 只充电）
+       ③ 储能单独供厂房：储能放电、关口基本不交换
+       判据：储能功率符号 + 关口表功率（表没上报时，充电按①、放电按③，不臆造）
+       只有③才是"储能送厂房"；①②里厂房是电网在供，不能显示成"待机" */
+    const meterP = GaoteService.val('meter-lems-antireflux', 'meter_tot_p');
+    const mv = (meterP === null || meterP === undefined) ? null : Number(meterP);
+    const chgNow = pNum < -0.5, disNow = pNum > 0.5;
+    facOn = disNow;
+    let powerMode = '—', powerModeTxt = '待机', powerModeNote = '储能无充放，厂房由电网供电';
+    if (chgNow) {
+      const onlyChg = (mv !== null && Math.abs(Math.abs(mv) - Math.abs(pNum)) < Math.max(1.5, Math.abs(pNum) * .08));
+      if (onlyChg) {
+        powerMode = '②'; powerModeTxt = '电网只给储能充电';
+        powerModeNote = '厂房无负荷，关口功率≈储能充电功率';
+      } else {
+        powerMode = '①'; powerModeTxt = '电网供电 + 储能充电';
+        powerModeNote = (mv === null ? '电塔供厂房并给储能充电（关口表暂无数据）' : '电塔供厂房，同时给储能充电');
+      }
+    } else if (disNow) {
+      powerMode = '③'; powerModeTxt = '储能单独供厂房';
+      powerModeNote = '储能放电直供厂房，关口基本不交换';
+    }
     /* 厂房灯（呼吸灯的基准亮度在这里算，亮暗起伏在 loop 里做）：
        窗格暖光长亮，工厂受电（放电供电）时再亮一档；改进版整体压暗一档，避免过曝 */
     if (facWinMat) {
@@ -1290,14 +1318,15 @@ window.GaoteScene3D = (function () {
     }
     if (facLabelEl) {
       facLabelEl.innerHTML = '<b>厂房（工厂用电）</b><i>'
-        + (facOn ? ('受电 ' + f(emuP, 1, ' kW')) : '待机') + '</i>';
+        + (facOn ? ('受电 ' + f(emuP, 1, ' kW')) : '电网供电') + '</i><em>' + powerMode + ' ' + powerModeTxt + '</em>';
     }
-    setCard('factory', '厂房（工厂用电）', [
-      ['进线（受电）', facOn ? f(emuP, 1, ' kW') : '待机'],
+    if (cardEls.factory) setCard('factory', '厂房（工厂用电）', [
+      ['当前工况', powerMode + ' ' + powerModeTxt],
+      ['工况说明', powerModeNote],
+      ['厂房进线', facOn ? ('储能直供 ' + f(emuP, 1, ' kW')) : '由电网供电'],
       ['并网点功率', f(GaoteService.val('meter-lems-antireflux', 'meter_tot_p'), 1, ' kW')],
-      ['储能 SOC', f(emuSoc, 1, '%')],
-      ['工作站', '储能放电直供厂房负荷']
-    ], facOn ? '放电供电中' : '待机');
+      ['储能 SOC', f(emuSoc, 1, '%')]
+    ], facOn ? '储能直供中' : powerModeTxt);
     applyLabelVisibility();
   }
 
