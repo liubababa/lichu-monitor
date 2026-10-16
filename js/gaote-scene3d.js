@@ -709,7 +709,7 @@ window.GaoteScene3D = (function () {
     const top = .24;                                                                        // 基座顶面
     /* 办公附房贴在厂房左侧（-x）这一段 z 区间上：腰线、窗带都要让开这里，
        否则窗带与窗户会穿进附房、腰线会和附房屋顶板糊成"屋檐重叠" */
-    const annZ0 = OFF_Z - OFF_D / 2, lzEnd = annZ0 - .06;
+    const lzEnd = D / 2 + .11;                       /* 附房已删：左侧腰线/窗带通长到前角 */
 
     g.add(box(W + .7, top, D + .7, M.dark, 0, top / 2, 0));                                  // 基座
     /* 两层厂房（参考图：现代工业风 —— 白色主墙 + 灰色分段 + 竖向长条窗 + 平顶，
@@ -902,27 +902,13 @@ window.GaoteScene3D = (function () {
       g.add(elbow);
     });
 
-    /* 办公附房（左侧小楼）：平屋顶 + 屋顶机组 + 墙上电缆进线箱。
-       附房比厂房基座探出去一截，单独给它一条基座，否则底下悬空 */
-    g.add(box(OFF_W - .73, top, OFF_D + .5, M.dark, OFF_X - .615, top / 2, OFF_Z));
-    const off = new THREE.Mesh(new THREE.BoxGeometry(OFF_W, OFF_H, OFF_D), [M.bridge, M.bridge, M.cabTop, M.bridge, M.bridge, M.bridge]);
-    off.position.set(OFF_X, OFF_H / 2 + top, OFF_Z);
-    off.castShadow = off.receiveShadow = true;
-    g.add(off);
-    g.add(box(OFF_W + .35, .18, OFF_D + .35, M.bridge, OFF_X, top + OFF_H + .09, OFF_Z));      // 女儿墙
-    const ac = new THREE.Mesh(new THREE.CylinderGeometry(.36, .4, .7, 10), M.roofUnit);
-    ac.position.set(OFF_X - .7, top + OFF_H + .55, OFF_Z - .3);
-    ac.castShadow = true;
-    g.add(ac);
-    g.add(box(.95, .1, .95, M.bridge, OFF_X - .7, top + OFF_H + .95, OFF_Z - .3));
-
+    /* 办公附房已按现场要求删除（左侧不再有小楼）：两堆电池的电缆改为直接接到
+       厂房左侧外墙上的进线箱（见 layoutStacks 的走线） */
     const jbMat = std(0x4a5a5c, { roughness: .55, metalness: .45 });
     const jbInner = std(0x27312f, { roughness: .7, metalness: .3 });
-    /* 电缆进线箱：收窄并居中在附房正面，原来 2.8 宽会顶到厂房墙上 */
-    g.add(box(2.3, .82, .2, jbMat, OFF_X - .25, 1.3, OFF_Z + OFF_D / 2 + .1));
-    g.add(box(2.1, .66, .06, jbInner, OFF_X - .25, 1.3, OFF_Z + OFF_D / 2 + .22));
-
-    /* 厂房进线不单独画了：两堆电池的电缆各自从柜前走电缆沟到附房进线箱（见 layoutStacks） */
+    const jbZ = D / 2 - 1.0;                                   /* 左墙靠前一侧 */
+    g.add(box(.22, .82, 2.3, jbMat, -(W / 2 + .11), 1.3, jbZ));
+    g.add(box(.08, .66, 2.1, jbInner, -(W / 2 + .24), 1.3, jbZ));
 
     const wrap = document.createElement('div');
     const el = document.createElement('div');
@@ -1073,13 +1059,13 @@ window.GaoteScene3D = (function () {
          西边的柜子先贴着汇流柜前面往东走（不穿汇流柜），到它东侧再转南进电缆沟，
          沿沟向东后接进厂房左侧的办公附房（墙上带进线箱） */
       const gz = 4.2 + i * .3;                         // 电缆沟里一列列排开（间距也放大）
-      const annexX = FAC_X + OFF_X - .25 + (i % 2 ? .6 : -.6);  // 附房进线箱上的左/右接入点
-      const wallZ = FAC_Z + OFF_Z + OFF_D / 2;         // 附房正面墙
+      const wallX = FAC_X - FAC_W / 2;                 // 厂房左侧（西）外墙
+      const landZ = FAC_Z + FAC_D / 2 - 1.6 + i * .7;  // 左墙靠前一侧的进线点，两堆错开
       const turnX = Math.max(x + .45, PCS_X + PCS_HW + .6);
       rebuild(sc.flow, [new THREE.Vector3(.45, .24, .9), new THREE.Vector3(.45, .78, 2.2),
         new THREE.Vector3(turnX - x, .5, 2.25 + i * .06), new THREE.Vector3(turnX - x + .7, .34, 3.9),
-        new THREE.Vector3(turnX - x + 2.2, .32, gz), new THREE.Vector3(annexX - x - 2.6, .44, gz),
-        new THREE.Vector3(annexX - x + .5, .8, wallZ + 1.4), new THREE.Vector3(annexX - x, 1.1, wallZ - .05)]);
+        new THREE.Vector3(turnX - x + 2.2, .32, gz), new THREE.Vector3(wallX - x - 2.8, .44, gz),
+        new THREE.Vector3(wallX - x - 1.0, .72, landZ + .7), new THREE.Vector3(wallX - x - .16, 1.1, landZ)]);
       /* ② 汇流柜 → 堆（充电）：从汇流柜右下出线，向北折进柜前走廊（贴地、两堆一前一后），
          走到本柜左前方进柜子进线箱；厂房电缆从它上方跨过，两条线不相交 */
       const pz = 1.2 + i * .22;                        // 柜前走廊（内侧一列）
@@ -1318,7 +1304,8 @@ window.GaoteScene3D = (function () {
     }
     if (facLabelEl) {
       facLabelEl.innerHTML = '<b>厂房（工厂用电）</b><i>'
-        + (facOn ? ('受电 ' + f(emuP, 1, ' kW')) : '电网供电') + '</i><em>' + powerMode + ' ' + powerModeTxt + '</em>';
+        + (facOn ? ('受电 ' + f(emuP, 1, ' kW')) : '电网供电') + '</i>'
+        + (powerMode === '—' ? '' : '<em>' + powerMode + ' ' + powerModeTxt + '</em>');
     }
     if (cardEls.factory) setCard('factory', '厂房（工厂用电）', [
       ['当前工况', powerMode + ' ' + powerModeTxt],

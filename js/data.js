@@ -30,7 +30,7 @@
 
 window.APP_CONFIG = {
   siteName:   '力储未来能源综合管理系统', // 顶部标题
-  stationName:'力储未来储能电站',         // 电站名称（左上角显示）
+  stationName:'旭日东明储能电站',         // 电站名称（左上角显示）
   /* 数据接入：只支持设备 MQTT 实时上报（无本地模拟数据） */
   mode: 'mqtt',
 
@@ -52,7 +52,7 @@ window.APP_CONFIG = {
     protocol: 'gaote',
     psn: 'kp23bhcpmt91n2v8',
     sn: 'R250907J0038',
-    stationName: '力储未来储能电站',
+    stationName: '旭日东明储能电站',
     username: '',
     password: ''
   }

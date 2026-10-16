@@ -30,8 +30,13 @@ window.MqttUI = (function () {
   function loadCfg() {
     let saved = {};
     try { saved = JSON.parse(localStorage.getItem(LS_KEY) || '{}') || {}; } catch (_) { saved = {}; }
-    return Object.assign({ url: '', port: '', username: '', password: '', sn: '', stationName: '', deviceTag: 'EMS', protocol: 'gaote', psn: '' },
+    const cfg = Object.assign({ url: '', port: '', username: '', password: '', sn: '', stationName: '', deviceTag: 'EMS', protocol: 'gaote', psn: '' },
       (window.APP_CONFIG && APP_CONFIG.mqtt) || {}, saved);
+    /* 老版本把系统默认名或设备号存成了站名，会把新站名一直覆盖掉：这里迁移一次 */
+    if (!cfg.stationName || cfg.stationName === '力储未来储能电站' || cfg.stationName === cfg.sn) {
+      cfg.stationName = (window.APP_CONFIG && APP_CONFIG.stationName) || '旭日东明储能电站';
+    }
+    return cfg;
   }
   let CFG = loadCfg();
   let LS_OK = true;
@@ -186,9 +191,9 @@ window.MqttUI = (function () {
     CFG = Object.assign({}, CFG, readInputs());
     if (LS_OK) { try { localStorage.setItem(LS_KEY, JSON.stringify(CFG)); } catch (_) {} }
     if (CFG.stationName) { APP_CONFIG.stationName = CFG.stationName; }
-    else if (CFG.sn) { APP_CONFIG.stationName = CFG.sn; }
+    /* 配置里没填电站名时沿用默认站名：不要把设备号当站名（左上角会变成 R2509…） */
     byId('stationName').textContent = APP_CONFIG.stationName;
-    byId('sceneTitle').textContent = APP_CONFIG.stationName + '运行监测图';
+    byId('sceneTitle').textContent = APP_CONFIG.stationName + '监测平台';
     if (showToast) toast(LS_OK ? '配置已保存到浏览器（localStorage）' : '配置已生效（当前环境不允许 localStorage 持久化）');
   }
 
@@ -470,7 +475,7 @@ window.MqttUI = (function () {
     if (station) {
       APP_CONFIG.stationName = station;
       byId('stationName').textContent = station;
-      byId('sceneTitle').textContent = station + '运行监测图';
+      byId('sceneTitle').textContent = station + '监测平台';
       toast('电站名称已更新：' + station);
     }
   }

@@ -217,7 +217,7 @@
     document.title = APP_CONFIG.siteName;
     byId('siteName').textContent = APP_CONFIG.siteName;
     byId('stationName').textContent = APP_CONFIG.stationName;
-    byId('sceneTitle').textContent = APP_CONFIG.stationName + '运行监测图';
+    byId('sceneTitle').textContent = APP_CONFIG.stationName + '监测平台';
 
     try { Charts.init(); } catch (e) { console.error(e); }
     applyTheme(theme, false);            // 恢复上次选择的主题（页面 + 3D 场景）
