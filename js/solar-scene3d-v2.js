@@ -122,18 +122,23 @@ function buildHospitalScene(){
     wall3.position.set(0,1.2,30);
     wall3.castShadow=true; wall3.receiveShadow=true;
     solarGroup.add(wall3);
-    const wall4 = new THREE.Mesh(new THREE.BoxGeometry(0.3,2.4,40), wallMat);
-    wall4.position.set(30,1.2,-10);
-    wall4.castShadow=true; wall4.receiveShadow=true;
-    solarGroup.add(wall4);
+    // 东侧围墙：大门处留出门洞（原来是整条 40 米墙，门扇插在墙里、看不出是门）
+    const wall4a = new THREE.Mesh(new THREE.BoxGeometry(0.3,2.4,5), wallMat);
+    wall4a.position.set(30,1.2,-27.5);
+    wall4a.castShadow=true; wall4a.receiveShadow=true;
+    solarGroup.add(wall4a);
+    const wall4b = new THREE.Mesh(new THREE.BoxGeometry(0.3,2.4,21), wallMat);
+    wall4b.position.set(30,1.2,-0.5);
+    wall4b.castShadow=true; wall4b.receiveShadow=true;
+    solarGroup.add(wall4b);
 
-    //大门
+    //大门：两扇各 7 米，在 z=-18 处合上，正好落在门洞里
     const gateMat = new THREE.MeshStandardMaterial({color:0x444444});
-    const gateLeft = new THREE.Mesh(new THREE.BoxGeometry(0.2,2,6), gateMat);
-    gateLeft.position.set(30,1,-22);
+    const gateLeft = new THREE.Mesh(new THREE.BoxGeometry(0.2,2.1,7), gateMat);
+    gateLeft.position.set(30,1.05,-21.5);
     solarGroup.add(gateLeft);
-    const gateRight = new THREE.Mesh(new THREE.BoxGeometry(0.2,2,6), gateMat);
-    gateRight.position.set(30,1,-14);
+    const gateRight = new THREE.Mesh(new THREE.BoxGeometry(0.2,2.1,7), gateMat);
+    gateRight.position.set(30,1.05,-14.5);
     solarGroup.add(gateRight);
 
     //院内主楼
