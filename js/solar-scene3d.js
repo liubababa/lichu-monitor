@@ -2,7 +2,7 @@
  * 洙边卫生院站 · 光储一体三维场景
  *
  *   两层小楼（白主墙 + 灰腰线 + 大窗，夜里窗户发光）+ 屋顶光伏阵列
- *   （8 排 × 10 块组件级建模：玻璃 / 铝边框 / 导轨 / 竖撑 + 检修走道 + 屋面线槽）
+ *   （4 排 × 5 块组件级建模：玻璃 / 铝边框 / 导轨 / 竖撑 + 检修走道 + 屋面线槽）
  *   + 墙挂逆变器 + 通信模块 + 储能柜（光储一体柜：柜门、顶部空调、侧面 SOC 光柱）
  *   + 并网点（计量箱 / 电杆 / 瓷瓶 / 架空线）。
  *
@@ -33,6 +33,7 @@ window.SolarScene = (function () {
   /* 当前供电模式（updateEnergyFlows 判定，储能柜明细卡要用；两个函数之间用模块级变量传） */
   let pModeNow = '', pModeTxtNow = '';
   let raf = null, W = 0, H = 0;
+  let camHome = null;                                /* 默认机位（按画布宽高比算好后存下来，重置视角复用） */
   const flows = [];                 // 电流光纹：{ map, tubeMat, kind, on, speed }
   const labelObjs = [];             // 浮标对象（点开明细卡时统一藏起来）
   const labelPairs = [];            // { obj, el } 供按相机距离缩放浮标
@@ -261,12 +262,15 @@ window.SolarScene = (function () {
     return { x: w.pts[0][0], z: w.pts[0][1] };
   }
   function buildWalkers() {
-    /* 门前广场绕一圈（三个人错开相位）+ 门口往西侧设备区往返一个 */
-    const plaza = [[-4.0, 9.8], [8.6, 11.2], [10.6, 14.6], [1.0, 16.4], [-9.2, 14.6], [-11.0, 10.6]];
+    /* 门前广场绕一圈（三个人错开相位）+ 门口往西侧设备区往返一个。
+       院子跟着小楼一起收：原来这圈在 z≈10~16（原南墙在 8），新南墙在 4，
+       再摆那么远就成"院外荒地"了；同时避开台阶/雨棚柱（z≤5.85）、
+       计量箱（x -8.55~-7.25，z 4.95~6.55）与两条出线电缆 */
+    const plaza = [[-3.8, 6.5], [4.6, 6.7], [7.2, 8.8], [1.0, 10.6], [-5.8, 10.0], [-6.8, 7.6]];
     makeWalker(plaza, { phase: 0, speed: .72, loop: true });
     makeWalker(plaza, { phase: .34, speed: .88, loop: true });
     makeWalker(plaza, { phase: .68, speed: .8, loop: true });
-    makeWalker([[-1.6, 9.9], [-6.6, 10.4], [-11.6, 9.2], [-13.8, 7.6]], { phase: .1, speed: .68 });
+    makeWalker([[-1.6, 6.2], [-4.6, 6.6], [-8.0, 7.6], [-11.0, 8.6]], { phase: .1, speed: .68 });
   }
 
   /* ---------------- 贴图 ---------------- */
@@ -448,21 +452,27 @@ window.SolarScene = (function () {
   }
 
   /* ---------------- 场景尺寸常量 ---------------- */
-  const W2 = 26, H2 = 6.6, D2 = 16;              /* 卫生院：宽 × 高（两层小楼）× 深 */
-  const FLOOR_Y = 3.3;                           /* 二层楼面标高（相对勒脚顶） */
+  /* 体量按旭日东明那栋紧凑厂房块（约 13 × 8 × 6.2）对齐：原来是 26 × 16 × 6.6 的
+     宽扁厂房比例，一整片平屋顶把阵列摊得很散，跟现场那栋小楼对不上 */
+  const W2 = 13, H2 = 6.2, D2 = 8;               /* 卫生院：宽 × 高（两层小楼）× 深 */
+  const FLOOR_Y = H2 / 2;                        /* 二层楼面标高（相对勒脚顶） */
   const roofY = H2 + .3;                         /* 屋面标高（含 0.3 勒脚台） */
-  /* 储能柜：光储一体柜，摆在楼西侧场坪上，柜门朝东（对着楼与默认机位） */
-  /* 站区布置：储能柜与计量箱从楼西侧（默认机位看不见）挪到楼西南开阔场坪，
-     和铁塔一线的地面电缆连起来，默认机位能看全「光伏→逆变器→计量箱→储能/电网」 */
-  /* 站区布置：储能柜原在楼西南角最靠镜头处（看着"太靠前"），后移到场坪中后段；
-     同时避开"计量箱→铁塔"那条地面电缆（z≈7.6），不压线不穿模 */
-  const CAB_X = -19.0, CAB_Z = 5.6, CAB_W = 2.7, CAB_H = 2.6, CAB_D = 1.7;
-  const COLS = 10;
+  /* 储能柜：光储一体柜，按现场"贴着建筑摆"——立在新西墙外侧、逆变器南边，
+     柜门朝西（背靠墙、门朝院子开）。西墙上 z≈1.2 挂着逆变器（柜面出到 x=-6.94），
+     柜体中心放到墙外 1.6m（柜身 x -8.95~-7.25，跟逆变器留 0.31m 净距）；
+     柜体南端（4.05）齐南立面，跟计量箱（北沿 4.95）之间留 0.9m 走线 */
+  const CAB_X = -(W2 / 2 + 1.6), CAB_Z = 2.7, CAB_W = 2.7, CAB_H = 2.6, CAB_D = 1.7;
+  /* 并网计量箱：西南角外的场坪上（楼西墙外 1.4m、南墙外 1.75m）。提到模块级常量，
+     是因为储能支线（3 点）和关口地面线（7 点）都从它出线，避免箱子挪了线没跟着挪 */
+  const MTR_X = -(W2 / 2 + 1.4), MTR_Z = D2 / 2 + 1.75;
+  /* 屋顶阵列按新屋面重算：一排 5 块 = 11.64 宽（女儿墙内侧 ±6.35，两侧各余 0.53）；
+     4 排、行距 1.5（外排组件外沿 ±3.05，离女儿墙内侧 0.8），中间留检修走道 */
+  const COLS = 5;
   const MW = 2.28, MD = 1.13, MT = .045;         /* 组件：宽 × 深 × 厚 */
   const TILT = .49;                              /* 组件倾角 28°（+z 为南，朝太阳低下来） */
   const ROW_Y = .62;                             /* 组件面中心相对屋面的高度 */
   const rowW = COLS * MW + (COLS - 1) * .06;     /* 一排的总宽 */
-  const rowZs = [-5.55, -4.05, -2.55, -1.05, 1.05, 2.55, 4.05, 5.55];   /* 8 排，中间留检修走道 */
+  const rowZs = [-2.55, -1.05, 1.05, 2.55];      /* 4 排，中间留检修走道 */
   /* 排内局部坐标 → 组件面高度（相对屋面；南低北高） */
   function rowPlaneY(zl) { return roofY + ROW_Y - Math.tan(TILT) * zl; }
   const RAIL_Z = .40;                            /* 导轨在排内的前后位置 */
@@ -590,8 +600,10 @@ window.SolarScene = (function () {
       color: 0x20262a, roughness: .35, metalness: .2,
       emissive: new T.Color(0xfff3e2), emissiveIntensity: .16
     }), { color: 0x0e1a1f, emissive: 0xeef4f2, emissiveIntensity: .58 });
-    /* 一整层的大窗带：深色窗带里嵌 n 扇玻璃，中间用竖挺分开 */
-    const bandH = 1.75, bandD = .24, winY = FLOOR_Y + .3 + 1.5;
+    /* 一整层的大窗带：深色窗带里嵌 n 扇玻璃，中间用竖挺分开。
+       体量压到 13×8×6.2 后窗带往上提 20cm（下沿 4.225），门楣（顶 3.2）与院名牌
+       （3.27~4.17）之间那点空档才够用，窗带下沿不会压到名牌 */
+    const bandH = 1.75, bandD = .24, winY = FLOOR_Y + .3 + 1.7;
     function winBand(alongX, len, n, cx, cz, ww) {
       const inner = len - .7, wwv = ww || 1.6;
       if (alongX) root.add(box(len, bandH, bandD, bandMat, cx, winY, cz));
@@ -606,11 +618,13 @@ window.SolarScene = (function () {
         }
       }
     }
-    [-1, 1].forEach(function (sz) { winBand(true, W2 - .4, 5, 0, sz * (D2 / 2 + .04)); });      /* 南北两面各 5 扇 */
-    [-1, 1].forEach(function (sx) { winBand(false, D2 - .4, 3, sx * (W2 / 2 + .04), 0, 2.4); }); /* 东西两面各 3 扇 */
+    /* 南北两面各 4 扇 2.0m 大窗（旭日东明厂房就是这一排 4 扇的排法）；
+       东西两面各 2 扇——13m 宽变 8m 深后，原来 5 扇/3 扇会挤成一片 */
+    [-1, 1].forEach(function (sz) { winBand(true, W2 - .4, 4, 0, sz * (D2 / 2 + .04), 2.0); });
+    [-1, 1].forEach(function (sx) { winBand(false, D2 - .4, 2, sx * (W2 / 2 + .04), 0, 2.0); });
     /* 一层：侧面各两扇窗，正面留给大门 */
     [-1, 1].forEach(function (sx) {
-      [-3.2, 3.2].forEach(function (oz) {
+      [-2.0, 2.0].forEach(function (oz) {
         root.add(box(.24, 1.5, 2.0, bandMat, sx * (W2 / 2 + .04), 1.85, oz));
         root.add(box(.2, 1.1, 1.7, winMat, sx * (W2 / 2 + .07), 1.85, oz));
       });
@@ -646,10 +660,11 @@ window.SolarScene = (function () {
     /* 台阶：从场地台面（0.18）升到门槛（0.30）——原来两级做到 0.46 高过门槛，
        开着的门扇外摆时会插进台阶里（穿模），按真实标高做成一级 */
     root.add(box(5.0, .12, .5, regThemeMat(std(0xaaafa6, { roughness: .9 }), { color: 0x1a252b }), 0, .24, dz + .75));
-    /* 北墙两台空调外机 */
-    [[-8.5, 3.1], [7.5, 3.1]].forEach(function (p) {
-      root.add(box(1.05, .78, .42, regThemeMat(std(0xdfe4e2, { roughness: .6 }), { color: 0x26343b }), p[0], p[1] + 2.4, -D2 / 2 - .24));
-      root.add(box(.62, .05, .3, regThemeMat(std(0x9aa5a6, { roughness: .5, metalness: .4 }), { color: 0x3d4d55 }), p[0], p[1] + 2.1, -D2 / 2 - .24));
+    /* 北墙两台空调外机：原来挂在二层窗带上（新体量下会正好压住窗玻璃），
+       改挂一层墙面（1.96~2.74），在腰线（3.4）以下、窗带（4.225）以上都不碰 */
+    [[-4.2, 2.35], [4.2, 2.35]].forEach(function (p) {
+      root.add(box(1.05, .78, .42, regThemeMat(std(0xdfe4e2, { roughness: .6 }), { color: 0x26343b }), p[0], p[1], -D2 / 2 - .24));
+      root.add(box(.62, .05, .3, regThemeMat(std(0x9aa5a6, { roughness: .5, metalness: .4 }), { color: 0x3d4d55 }), p[0], p[1] - .42, -D2 / 2 - .24));
     });
   }
 
@@ -706,15 +721,16 @@ window.SolarScene = (function () {
     legInstF.instanceMatrix.needsUpdate = true;
     legInstR.instanceMatrix.needsUpdate = true;
     arrGroup.add(modInst, railInst, legInstF, legInstR);
-    /* 检修走道（中间两排之间）+ 屋面线槽 */
-    arrGroup.add(box(rowW + 1.2, .04, 1.5, regThemeMat(std(0xadb2a9, { roughness: .9, envMapIntensity: .14 }), { color: 0x26343b, envMapIntensity: .3 }), 0, roofY + .02, 0));
+    /* 检修走道（中间两排之间）+ 屋面线槽。走道/线槽比阵列略长一截，
+       长出量收到女儿墙内侧（±6.35）以内：原来 +1.2/+1.6 在窄屋面上会穿进女儿墙 */
+    arrGroup.add(box(rowW + .8, .04, 1.5, regThemeMat(std(0xadb2a9, { roughness: .9, envMapIntensity: .14 }), { color: 0x26343b, envMapIntensity: .3 }), 0, roofY + .02, 0));
     const trayMat = regThemeMat(std(0x9aa5a6, { roughness: .45, metalness: .6, envMapIntensity: .5 }), { color: 0x3d4d55, envMapIntensity: .7 });
-    arrGroup.add(box(rowW + 1.6, .05, .34, trayMat, 0, roofY + .30, 0));
-    arrGroup.add(box(rowW + 1.6, .09, .05, trayMat, 0, roofY + .345, -.17));
-    arrGroup.add(box(rowW + 1.6, .09, .05, trayMat, 0, roofY + .345, .17));
+    arrGroup.add(box(rowW + .6, .05, .34, trayMat, 0, roofY + .30, 0));
+    arrGroup.add(box(rowW + .6, .09, .05, trayMat, 0, roofY + .345, -.17));
+    arrGroup.add(box(rowW + .6, .09, .05, trayMat, 0, roofY + .345, .17));
     /* 组串电缆：沿屋面从走道引到 4 排阵列的前导轨底面（走板下方，不碰组件） */
     const cableMat = std(0x22343c, { roughness: .6, metalness: .3 });
-    [[-7, -2.55], [-2, -1.05], [3, 1.05], [8, 2.55]].forEach(function (d) {
+    [[-4.2, -2.55], [-1.4, -1.05], [1.4, 1.05], [4.2, 2.55]].forEach(function (d) {
       const zEnd = d[1] + RAIL_Z;
       const a = new T.Vector3(d[0], roofY + .16, 0);
       const b = new T.Vector3(d[0], rowPlaneY(RAIL_Z) - .085, zEnd);
@@ -760,7 +776,7 @@ window.SolarScene = (function () {
     const g = new T.Group();
     g.userData.key = 'storage';
     g.position.set(CAB_X, 0, CAB_Z);
-    g.rotation.y = Math.PI / 2;                    /* 柜门朝东，正对楼与默认机位 */
+    g.rotation.y = -Math.PI / 2;                   /* 柜门朝西：柜子按现场贴着建筑（背靠西墙），门朝院子/默认机位开 */
     const W = CAB_W, H = CAB_H, D = CAB_D;
     /* 混凝土基础台：柜体直接落在网格上看着"没生根" */
     g.add(box(W + .42, .16, D + .42, regThemeMat(std(0x9aa3a6, { roughness: .92 }), { color: 0x2a3a40 }, { color: 0x3b4a4f }), 0, .08, 0));
@@ -960,8 +976,9 @@ window.SolarScene = (function () {
     label('通信模块<em>数据回传阳光云</em>', 'tag3d-gt', -W2 / 2 - 2.2, 5.35, -4.2);
 
     /* ---------- 并网点：计量箱 + 电杆 + 架空线 ---------- */
-    /* 计量箱：楼西南角外的开阔场坪上（原来贴在楼西墙中段，被楼体挡住看不见） */
-    const mx = -W2 / 2 - 1.4, mz = D2 / 2 + 1.75;
+    /* 计量箱：楼西南角外的开阔场坪上（原来贴在楼西墙中段，被楼体挡住看不见）。
+       位置提到模块级常量 MTR_X / MTR_Z：储能支线与关口地面线都从它出线 */
+    const mx = MTR_X, mz = MTR_Z;
     const mg = new T.Group();
     mg.userData.key = 'grid';                     /* 点计量箱可弹明细卡 */
     mg.position.set(mx, 0, mz);
@@ -1008,6 +1025,68 @@ window.SolarScene = (function () {
     flows.push({ map: tubeMat.map, tubeMat: tubeMat, kind: kind, on: false, speed: 0, dir: 1, tint: 0 });
   }
 
+  /* ---------------- 默认机位（构图） ----------------
+     机位只固定"目标点 + 视线方向"（正南偏西 10°、抬高约 25° 俯视），距离用二分法算：
+     把「铁塔 → 计量箱 / 储能柜 → 小楼（屋顶阵列 + 浮标）」这些关键点全部收进画面
+     （落在中心 ±70% / ±68% 以内）。体量收成 13×8 的紧凑厂房块之后，原来 34/19/40
+     那个定死的机位离得太远、留白一大片；而宽高比一变，同样的机位又会裁掉铁塔——
+     距离必须跟着画布算（旭日东明那套用的就是这个办法，这里照搬）。
+     方位取"南偏西 10°"而不是原来的南偏东：储能柜按现场贴到了西墙外，
+     站在东南方向看，柜体北半边会被楼挡住（西墙也全被楼压住）；偏西 10° 之后
+     柜体整个落在楼盘前侧、西墙也能露出一截，同时楼立面在屏幕上的宽高比 1.99，
+     跟旭日东明厂房（2.06）基本一致 */
+  const FIT_X = .70, FIT_Y = .68;
+  let fitCam = null;
+  function fitDistance(tgt, dir, pts, aspect) {
+    if (!fitCam) {
+      if (typeof THREE === 'undefined' || !THREE.PerspectiveCamera) return 46;
+      fitCam = new THREE.PerspectiveCamera(46, 1, .1, 900);
+    }
+    let lo = 14, hi = 120, best = hi;
+    for (let i = 0; i < 26; i++) {
+      const mid = (lo + hi) / 2;
+      fitCam.position.copy(tgt).add(dir.clone().multiplyScalar(mid));
+      fitCam.lookAt(tgt);
+      fitCam.aspect = aspect;
+      fitCam.updateMatrixWorld(true);
+      fitCam.updateProjectionMatrix();
+      let ok = true;
+      for (let k = 0; k < pts.length; k++) {
+        const v = pts[k].clone().project(fitCam);
+        if (Math.abs(v.x) > FIT_X || Math.abs(v.y) > FIT_Y) { ok = false; break; }
+      }
+      if (ok) { best = mid; hi = mid; } else { lo = mid; }
+    }
+    return best;
+  }
+  /* 关键点取全场最外沿：小楼四角与女儿墙顶、屋上两个浮标、西墙外的逆变器 / 通信模块 /
+     储能柜 / 计量箱（含浮标）、铁塔塔脚到塔尖。这样"光伏 → 逆变器 → 储能 / 计量 → 电网"
+     这条线无论画布什么比例都不会被裁头去尾 */
+  function fitStory() {
+    const T = THREE_();
+    const tgt = new T.Vector3(-11.5, 2.6, 1.0);
+    const dir = new T.Vector3(-7, 19, 40).normalize();   /* 南偏西 10°、俯角 25° */
+    const pts = [
+      new T.Vector3(W2 / 2 + .3, 0, D2 / 2 + .3), new T.Vector3(W2 / 2 + .3, roofY + .5, D2 / 2 + .3),
+      new T.Vector3(-W2 / 2 - .3, roofY + .5, D2 / 2 + .3), new T.Vector3(-W2 / 2 - .3, 0, -D2 / 2 - .3),
+      new T.Vector3(W2 / 2 + .3, 0, -D2 / 2 - .3),
+      new T.Vector3(0, roofY + 3.6, 0),                       /* 屋顶阵列浮标 */
+      new T.Vector3(0, H2 + 1.6, D2 / 2 + 3.4),               /* 站名浮标 */
+      new T.Vector3(-W2 / 2 - 1.7, 3.85, 1.2),                /* 逆变器浮标 */
+      new T.Vector3(-W2 / 2 - 2.2, 5.35, -4.2),               /* 通信模块浮标 */
+      new T.Vector3(CAB_X - 1, 0, CAB_Z + CAB_W / 2),
+      new T.Vector3(CAB_X, CAB_H + 3.9, CAB_Z),               /* 储能柜浮标 */
+      new T.Vector3(MTR_X - .8, 0, MTR_Z + .8),
+      new T.Vector3(MTR_X - .2, 3.3, MTR_Z),                  /* 并网点浮标 */
+      new T.Vector3(TWR_X, 0, TWR_Z), new T.Vector3(TWR_X, TWR_H + 1.1, TWR_Z),
+      new T.Vector3(TWR_X, TWR_H - .6, TWR_Z)                 /* 铁塔浮标 */
+    ];
+    const host = document.getElementById('solar3d');
+    const aspect = (host && host.clientHeight) ? host.clientWidth / host.clientHeight : 1.9;
+    const len = fitDistance(tgt, dir, pts, aspect);
+    return { pos: tgt.clone().add(dir.clone().multiplyScalar(len)), tgt: tgt };
+  }
+
   /* ---------------- 主搭建 ---------------- */
   function build() {
     const T = THREE_();
@@ -1023,8 +1102,10 @@ window.SolarScene = (function () {
     scene.fog = new T.Fog(tp.fog.color, tp.fog.near, tp.fog.far);
 
     camera = new T.PerspectiveCamera(46, 1, .1, 900);
-    /* 构图：把「并网铁塔 → 储能柜 → 两层小楼（屋顶光伏）」从左到右完整收进画面 */
-    camera.position.set(34, 19, 40);
+    /* 构图：机位按当前画布算（见 fitStory），把「并网铁塔 → 储能柜 / 计量箱 →
+       两层小楼（屋顶光伏阵列）」从左到右完整收进画面，重置视角也回这个位 */
+    camHome = fitStory();
+    camera.position.copy(camHome.pos);
 
     renderer = new T.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
@@ -1048,7 +1129,7 @@ window.SolarScene = (function () {
       controls.enableDamping = true; controls.dampingFactor = .08;
       controls.minDistance = 14; controls.maxDistance = 110;
       controls.maxPolarAngle = 1.35;
-      controls.target.set(-6, 4, 1);
+      controls.target.copy(camHome.tgt);       /* 必须和机位用同一个目标点，否则 update() 会把镜头重新瞄偏 */
       controls.update();
     }
     bindPick();
@@ -1092,11 +1173,12 @@ window.SolarScene = (function () {
     buildWalkers();               /* 院内走动的人（抽象小人） */
 
     /* ---------- 能量流 ---------- */
-    /* 直流侧：屋面线槽 → 女儿墙套管 → 沿西墙下到逆变器顶（逆变器已从东墙挪到左侧） */
+    /* 直流侧：屋面线槽 → 女儿墙套管 → 沿西墙下到逆变器顶（逆变器已从东墙挪到左侧）。
+       屋面那两个中间点跟着新屋面收（原 4 / -9.5 是 26m 宽屋面的坐标，现在会悬到墙外） */
     addFlow([
       new T.Vector3(rowW / 2 + .4, roofY + .40, 0),
-      new T.Vector3(4, roofY + .42, 0),
-      new T.Vector3(-9.5, roofY + .42, .1),
+      new T.Vector3(3.2, roofY + .42, 0),
+      new T.Vector3(-3.2, roofY + .42, .1),
       new T.Vector3(-W2 / 2 - .08, roofY + .42, .55),
       new T.Vector3(-W2 / 2 - .09, roofY - .55, .9),
       new T.Vector3(-W2 / 2 - .10, 3.35, 1.1),
@@ -1109,26 +1191,30 @@ window.SolarScene = (function () {
     addFlow([
       new T.Vector3(-W2 / 2 - .3, 1.45, 1.2),                   /* 逆变器底部出线（接进柜底） */
       new T.Vector3(-W2 / 2 - .3, 2.7, 1.22),
-      new T.Vector3(-W2 / 2 - .3, 6.4, 1.5),                    /* 沿西墙向上（贴墙外 0.3，不碰窗带） */
-      new T.Vector3(-W2 / 2 - .35, 6.6, 5.7),                   /* 转到西南角 */
+      new T.Vector3(-W2 / 2 - .3, roofY - .5, 1.5),             /* 沿西墙向上（贴墙外 0.3，不碰窗带） */
+      new T.Vector3(-W2 / 2 - .35, roofY - .3, D2 / 2 + .3),    /* 转到西南角（原来写死 z=5.7，新进深下会飘到墙外） */
       new T.Vector3(-W2 / 2 - .9, 4.6, D2 / 2 + .4),            /* 沿西端墙外侧下来 */
       new T.Vector3(-W2 / 2 - 1.25, 1.9, D2 / 2 + 1.3),
       new T.Vector3(-W2 / 2 - 1.4, 1.1, D2 / 2 + 1.72)          /* 落到计量箱 */
     ], 'ac', .075);
-    /* 交流支线：计量箱 → 储能柜（充电流进柜、放电流出柜） */
+    /* 交流支线：计量箱 → 储能柜（充电流进柜、放电流出柜）。
+       储能柜挪到西墙外、计量箱北侧之后，这条从 2.7m 缩到 1.3m：箱体北侧出线，
+       越过 1m 净空直接进柜体南侧柜面 */
     addFlow([
-      new T.Vector3(-14.0, .95, 7.75),
-      new T.Vector3(-16.8, .85, 6.9),
-      new T.Vector3(-19.0, .72, 5.6)
+      new T.Vector3(MTR_X, .95, MTR_Z - .87),
+      new T.Vector3(MTR_X - .05, .78, MTR_Z - 1.35),
+      new T.Vector3(CAB_X, .70, CAB_Z + CAB_W / 2 - .35)
     ], 'stor', .063);
-    /* 交流支线：计量箱底 → 地面电缆（沿电缆墩敷设）→ 铁塔基座终端箱（卖电 / 买电走这条） */
+    /* 交流支线：计量箱底 → 地面电缆（沿电缆墩敷设）→ 铁塔基座终端箱（卖电 / 买电走这条）。
+       7 个点跟着计量箱的新位置平移：先沿箱体西侧落地，再沿电缆墩线（gx0/gz0 → gx1/gz1）
+       一路向西爬升到铁塔终端箱，中间三点按墩线等分取 */
     addFlow([
-      new T.Vector3(-14.0, 1.28, 7.82),
-      new T.Vector3(-14.0, .78, 7.82),
-      new T.Vector3(-13.95, .36, 7.83),
-      new T.Vector3(-18.0, .36, 7.60),
-      new T.Vector3(-22.0, .36, 7.37),
-      new T.Vector3(-26.0, .36, 7.15),
+      new T.Vector3(MTR_X - .38, 1.28, MTR_Z - .03),
+      new T.Vector3(MTR_X - .42, .78, MTR_Z + .02),
+      new T.Vector3(MTR_X - .45, .36, MTR_Z + .05),
+      new T.Vector3(-13.15, .36, 6.11),
+      new T.Vector3(-18.20, .36, 6.40),
+      new T.Vector3(-23.40, .36, 6.70),
       new T.Vector3(-28.6, .38, 7.0)
     ], 'grid', .068);
 
@@ -1188,7 +1274,7 @@ window.SolarScene = (function () {
 
     /* ---------- 场景浮标 ---------- */
     arrLabelEl = label('屋顶光伏阵列<i>-- kW</i><em>装机 110.16 kWp</em>', 'tag3d-gt', 0, roofY + 3.6, 0);
-    label('洙边卫生院<i>屋顶分布式光伏</i>', 'tag3d-gt', 0, H2 + 1.8, D2 / 2 + 6.2);
+    label('洙边卫生院<i>屋顶分布式光伏</i>', 'tag3d-gt', 0, H2 + 1.6, D2 / 2 + 3.4);
 
     /* 后期处理：MSAA + 泛光（只让日光、电流光纹这类高亮点发光）+ 暗角冷调
        暗角 pass 是"高级感"的关键一步：压住四角、让画面中心聚焦到设备上 */
@@ -1382,13 +1468,13 @@ window.SolarScene = (function () {
       ['今日发电', todayTxt],
       ['装机容量', Number(cur.cap).toFixed(2) + ' kWp'],
       ['等效利用小时', hoursTxt],
-      ['组件排布', '8 排 × 10 块 · 倾角 28°']
+      ['组件排布', rowZs.length + ' 排 × ' + COLS + ' 块 · 倾角 28°']
     ], on ? ('发电中 · 出力 ' + (ratio * 100).toFixed(0) + '%') : '当前无出力');
     setCard('inverter', '逆变器 · SG100CX-P2-CN', [
       ['有功功率', cur.power.toFixed(2) + ' kW'],
       ['运行状态', on ? '运行中（并网）' : '待机'],
       ['今日发电', todayTxt],
-      ['安装位置', '卫生院东墙外侧'],
+      ['安装位置', '卫生院西墙外侧'],
       ['接线', '屋顶组串 → 屋面线槽 → 逆变器']
     ], on ? '并网发电中' : '无输出');
     setCard('grid', '并网点 · 计量箱', [
@@ -1638,9 +1724,9 @@ window.SolarScene = (function () {
     if (controls) { controls.autoRotate = autoRot; controls.autoRotateSpeed = .8; }
   }
   function resetView() {
-    if (!camera || !controls) return;
-    camera.position.set(34, 19, 40);
-    controls.target.set(-6, 4, 1);
+    if (!camera || !controls || !camHome) return;
+    camera.position.copy(camHome.pos);
+    controls.target.copy(camHome.tgt);
     controls.update();
   }
 
