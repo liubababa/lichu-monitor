@@ -3,17 +3,17 @@
  *
  *   两层小楼（白主墙 + 灰腰线 + 大窗，夜里窗户发光）+ 屋顶光伏阵列
  *   （4 排 × 5 块组件级建模：玻璃 / 铝边框 / 导轨 / 竖撑 + 检修走道 + 屋面线槽）
- *   + 墙挂逆变器 + 通信模块 + 西墙进线箱（负载进楼处）
+ *   + 墙挂逆变器 + 通信模块 + 西墙配电箱（全场交流的汇合点）
  *   + 储能柜（光储一体柜：柜门、顶部空调、侧面 SOC 光柱）
  *   + 并网铁塔（格构塔；关口线路走地面电缆到塔基终端箱）。
  *
- *   电流光纹分五条链路，方向跟着真实运行状态走（和页面上的六种供电模式对得上）：
+ *   电流光纹分四条链路，方向跟着真实运行状态走（和页面上的六种供电模式对得上）：
  *     · 直流（青）  屋面组串 → 线槽 → 逆变器
- *     · 交流（橙）  逆变器 → 沿西墙 → 檐口 → 西南角 → 并网计量箱
- *     · 储能（青绿=放电 / 蓝=充电） 计量箱 ↔ 储能柜
- *     · 关口（橙=馈电上网 / 蓝=从电网取） 计量箱 → 地面电缆 → 铁塔基座终端箱
- *     · 负载（颜色 = 谁在供院：储能青绿 / 光伏橙 / 电网蓝） 计量箱 → 西墙进线箱 → 卫生院
- *   （计量箱是这四条交流线的汇合点：光伏 ↔ 箱、储能 ↔ 箱、电网 ↔ 箱、箱 → 负载）
+ *     · 交流（橙）  逆变器 → 沿西墙下来 → 西墙配电箱
+ *     · 储能（青绿=放电 / 蓝=充电） 配电箱 ↔ 储能柜
+ *     · 关口（橙=馈电上网 / 蓝=从电网取） 配电箱 → 地面电缆 → 铁塔基座终端箱
+ *   光伏逆变器、储能柜、关口三条都接在西墙配电箱上：它就是全场的交流汇合点，
+ *   供卫生院的那一路从这儿进楼（原来场坪上单独摆的那个计量箱已去掉，不再有第五个箱子）
  *
  *   天气（SolarScene.setWeather）驱动画面：
  *     云量 → 天空/光照亮度、云朵多少；降水 → 雨/雪粒子；
@@ -32,7 +32,7 @@ window.SolarScene = (function () {
   const RAIN_N = 420, rainX = [], rainY = [], rainZ = [], rainV = [];
   let _rainM = null;                                 /* 雨滴矩阵复用的临时对象 */
   const cloudMats = [];                              /* 云朵材质（跟主题换色） */
-  let panelMats = [], invLabelEl = null, arrLabelEl = null, gridLabelEl = null;
+  let panelMats = [], invLabelEl = null, arrLabelEl = null;
   /* 当前供电模式（updateEnergyFlows 判定，储能柜浮标 / 明细卡要用；两个函数之间用模块级变量传）。
      三个量缺一个就全为空串，显示 --（不编数据） */
   let pModeNow = '', pModeTxtNow = '', pModeNoteNow = '';
@@ -271,7 +271,7 @@ window.SolarScene = (function () {
     /* 门前广场绕一圈（三个人错开相位）+ 门口往西侧设备区往返一个。
        院子跟着小楼一起收：原来这圈在 z≈10~16（原南墙在 8），新南墙在 4，
        再摆那么远就成"院外荒地"了；同时避开台阶/雨棚柱（z≤5.85）、
-       计量箱（x -8.55~-7.25，z 4.95~6.55）与两条出线电缆 */
+       电缆（配电箱下来的储能支线与关口地面线） */
     const plaza = [[-3.8, 6.5], [4.6, 6.7], [7.2, 8.8], [1.0, 10.6], [-5.8, 10.0], [-6.8, 7.6]];
     makeWalker(plaza, { phase: 0, speed: .72, loop: true });
     makeWalker(plaza, { phase: .34, speed: .88, loop: true });
@@ -464,16 +464,21 @@ window.SolarScene = (function () {
   const FLOOR_Y = H2 / 2;                        /* 二层楼面标高（相对勒脚顶） */
   const roofY = H2 + .3;                         /* 屋面标高（含 0.3 勒脚台） */
   /* 储能柜：光储一体柜。原来按"贴着建筑"立在西墙外，但体量收小后它挤在楼左前角，
-     跟计量箱叠在同一处、画面里也看不出是独立设备；现在往西挪进场坪，
+     跟原来单摆的计量箱挤在同一处、画面里也看不出是独立设备；现在往西挪进场坪，
      站在楼与铁塔之间的空地上（墙外 6m，柜身 x -13.85~-11.15、z 1.85~3.55），
-     柜门朝南（正对院子和默认机位）。搬运后出线也跟着走：交流支线从计量箱往西拉一条 */
+     柜门朝南（正对院子和默认机位）。搬运后出线也跟着走：储能支线从西墙配电箱往西拉 */
   const CAB_X = -(W2 / 2 + 6), CAB_Z = 2.7, CAB_W = 2.7, CAB_H = 2.6, CAB_D = 1.7;
-  /* 并网计量箱：西南角外的场坪上（楼西墙外 1.4m、南墙外 1.75m）。提到模块级常量，
-     是因为储能支线（3 点）和关口地面线（7 点）都从它出线，避免箱子挪了线没跟着挪 */
-  const MTR_X = -(W2 / 2 + 1.4), MTR_Z = D2 / 2 + 1.75;
-  /* 西墙进线箱：负载线（计量箱 → 卫生院）从这儿进楼。卡在一层侧窗（z≈1.0~3.0）与
-     西南角（z=4）之间，进出线两端都用它算 */
-  const JB_Z = D2 / 2 - .5;
+  /* 西墙配电箱（PB）：全场交流的汇合点——光伏逆变器的交流出线、储能柜、关口地面线
+     都接在它上面，供卫生院的那一路也从它进楼。卡在一层侧窗（z≈1.0~3.0）与西南角
+     （z=4）之间；四条线的端点都从这个常量推，箱子动线不会留在原地 */
+  const PB_X = -(W2 / 2 + .17), PB_Z = D2 / 2 - .5, PB_W = .34, PB_H = 1.0, PB_D = .85;
+  /* 关口地面电缆的墩线：起点（配电箱西南侧落地那一点）→ 塔基。
+     中间向南弓 0.35m——实铺的电缆不会拉得像尺子一样直，带一点自然弧线；
+     墩子和电缆点都用同一条弧线算，线才不会离开墩子 */
+  const GRD_X0 = -7.6, GRD_Z0 = 4.35, GRD_BOW = .35;
+  function grdPoint(t) {
+    return [GRD_X0 + (-28.6 - GRD_X0) * t, GRD_Z0 + (TWR_Z - GRD_Z0) * t + Math.sin(Math.PI * t) * GRD_BOW];
+  }
   /* 屋顶阵列按新屋面重算：一排 5 块 = 11.64 宽（女儿墙内侧 ±6.35，两侧各余 0.53）；
      4 排、行距 1.5（外排组件外沿 ±3.05，离女儿墙内侧 0.8），中间留检修走道 */
   const COLS = 5;
@@ -836,7 +841,7 @@ window.SolarScene = (function () {
 
   /* ---------------- 并网铁塔（国网风格格构塔：收腰塔身 + 三层横担 + 绝缘子串）
      本站储能要往电网卖电，线路上立一座塔比排几根电杆更像回事。塔身沿 y 轴，
-     横担沿 z，整塔绕 y 转 90° 对准东西向。进线走地面电缆（计量箱 → 塔基电缆终端箱），
+     横担沿 z，整塔绕 y 转 90° 对准东西向。进线走地面电缆（西墙配电箱 → 塔基终端箱），
      塔上不架空中导线——按现场观感，天上不留电线。 ---------------- */
   const TWR_X = -31, TWR_Z = 7.0, TWR_H = 10.4;
   let twrLabelEl = null;
@@ -983,40 +988,30 @@ window.SolarScene = (function () {
     root.add(box(.5, .56, .36, regThemeMat(std(0xe8eef0, { roughness: .5, envMapIntensity: .5 }), { color: 0x2b3a42, envMapIntensity: .6 }), -W2 / 2 - 2.2, 3.05, -2.6));
     root.add(box(.52, .05, .38, regThemeMat(std(0xc2ccce, { roughness: .5, metalness: .5 }), { color: 0x3a4b53 }), -W2 / 2 - 2.2, 3.34, -2.6));
     root.add(cyl(.022, .022, .8, steel, -W2 / 2 - 2.2, 3.76, -2.6, 6));
-    label('通信模块<em>数据回传阳光云</em>', 'tag3d-gt', -W2 / 2 - 2.2, 5.35, -4.2);
+    /* 通信模块不加浮标（现场要求）：杆子本身留着，不再挂文字 */
 
-    /* ---------- 西墙进线箱（负载进楼处） ----------
-       六种供电模式里"供卫生院"那一路的终点：计量箱过来的负载线从这里进楼。
-       样式沿用计量箱那套（箱体 + 内嵌门 + 箱顶小檐），夜里也认得出是个箱子 */
-    const jbMat = regThemeMat(std(0xd4d9d4, { roughness: .5, metalness: .3, envMapIntensity: .4 }), { color: 0x33454d, envMapIntensity: .7 });
-    const jbIn = regThemeMat(std(0x8f9a9c, { roughness: .6, metalness: .4 }), { color: 0x22333a });
-    const jbLip = regThemeMat(std(0xb2b8b4, { roughness: .5, metalness: .4 }), { color: 0x2b3a42 });
-    root.add(box(.34, .8, .7, jbMat, -(W2 / 2 + .17), 1.0, JB_Z));
-    root.add(box(.12, .62, .56, jbIn, -(W2 / 2 + .36), 1.0, JB_Z));
-    root.add(box(.06, .08, .78, jbLip, -(W2 / 2 + .2), 1.44, JB_Z));
+    /* ---------- 西墙配电箱（PB）：全场交流的汇合点 ----------
+       光伏逆变器的交流出线、储能柜、关口地面线都接到这个箱子上；"供卫生院"那一路
+       也从它进楼（箱子就在医院自己的墙上）。样式：箱体 + 内嵌门 + 箱顶小檐 */
+    const pbMat = regThemeMat(std(0xd4d9d4, { roughness: .5, metalness: .3, envMapIntensity: .4 }), { color: 0x33454d, envMapIntensity: .7 });
+    const pbIn = regThemeMat(std(0x8f9a9c, { roughness: .6, metalness: .4 }), { color: 0x22333a });
+    const pbLip = regThemeMat(std(0xb2b8b4, { roughness: .5, metalness: .4 }), { color: 0x2b3a42 });
+    root.add(box(PB_W, PB_H, PB_D, pbMat, PB_X, 1.0, PB_Z));
+    root.add(box(.12, PB_H - .18, PB_D - .15, pbIn, -(W2 / 2 + .36), 1.0, PB_Z));
+    root.add(box(.06, .08, PB_D + .1, pbLip, -(W2 / 2 + .2), 1.0 + PB_H / 2 + .04, PB_Z));
 
-    /* ---------- 并网点：计量箱 + 电杆 + 架空线 ---------- */
-    /* 计量箱：楼西南角外的开阔场坪上（原来贴在楼西墙中段，被楼体挡住看不见）。
-       位置提到模块级常量 MTR_X / MTR_Z：储能支线与关口地面线都从它出线 */
-    const mx = MTR_X, mz = MTR_Z;
-    const mg = new T.Group();
-    mg.userData.key = 'grid';                     /* 点计量箱可弹明细卡 */
-    mg.position.set(mx, 0, mz);
-    mg.add(box(1.3, .22, 1.6, regThemeMat(std(0x9a9f96, { roughness: .9 }), { color: 0x2b3a42 }), 0, .11, 0));
-    mg.add(box(.5, 1.2, .9, regThemeMat(std(0xd4d9d4, { roughness: .5, metalness: .3, envMapIntensity: .4 }), { color: 0x33454d, envMapIntensity: .7 }), 0, .82, 0));
-    mg.add(box(.52, .1, .94, regThemeMat(std(0xb2b8b4, { roughness: .5, metalness: .4 }), { color: 0x2b3a42 }), 0, 1.44, 0));
-    mg.add(box(.56, .86, .02, regThemeMat(std(0xcfd6d2, { roughness: .45, metalness: .3 }), { color: 0x3a4b53 }), 0, .82, .46));           /* 箱门（朝南） */
-    mg.add(box(.16, .1, .03, std(0x8f9a9c, { roughness: .5, metalness: .5 }), -.12, 1.0, .48));
-    root.add(mg);
-    /* 并网电缆走地面：计量箱底 → 沿场坪（混凝土电缆墩托着）→ 铁塔基座的电缆终端箱。
+    /* 关口电缆走地面：配电箱底 → 沿场坪（混凝土电缆墩托着）→ 铁塔基座的电缆终端箱。
        原来这里是「电杆 + 三跨空中导线」，按现场观感改成地面敷设，空中不再有电线 */
     const G_CY = .36;                                             /* 电缆中心离场坪的高度 */
-    const gx0 = mx + .15, gz0 = mz + .05, gx1 = -28.6, gz1 = TWR_Z;
     const saddleMat = std(0x5a6a70, { roughness: .85, envMapIntensity: .2 });
-    for (let i = 1; i <= 8; i++) {                                /* 电缆墩：每 1.8m 左右一个 */
-      const t = i / 9;
-      root.add(box(.16, .12, .16, saddleMat, gx0 + (gx1 - gx0) * t, .24, gz0 + (gz1 - gz0) * t));
+    for (let i = 1; i <= 8; i++) {                                /* 电缆墩：沿弧线每 ~2.6m 一个 */
+      const p = grdPoint(i / 9);
+      root.add(box(.16, .12, .16, saddleMat, p[0], .24, p[1]));
     }
+    /* 储能支线也走地面，同样托三个墩（墩顶 0.22，电缆中心 0.28：管底正好压在墩上） */
+    [[-8.7, 3.04], [-9.7, 2.97], [-10.7, 2.91]].forEach(function (p) {
+      root.add(box(.14, .1, .14, saddleMat, p[0], .17, p[1]));
+    });
     /* 铁塔基座旁的电缆终端箱（地面电缆从这里进塔） */
     const tbox = new T.Group();
     tbox.position.set(-28.75, 0, TWR_Z);
@@ -1024,8 +1019,6 @@ window.SolarScene = (function () {
     tbox.add(box(.6, .72, .5, regThemeMat(std(0xb9c2c4, { roughness: .5, metalness: .35 }), { color: 0x33454d }), 0, .64, 0));
     tbox.add(box(.66, .06, .56, std(0x2b3a42, { roughness: .6, metalness: .4 }), 0, 1.03, 0));
     root.add(tbox);
-    gridLabelEl = label('并网点<i>无输出</i><em>计量箱 · 关口表</em>', 'tag3d-gt', mx - .2, 3.3, mz);
-    addCard('grid', mx - .2, 2.2, mz);
   }
 
   /* ---------------- 电流光纹 ---------------- */
@@ -1047,7 +1040,7 @@ window.SolarScene = (function () {
 
   /* ---------------- 默认机位（构图） ----------------
      机位只固定"目标点 + 视线方向"（正南偏西 10°、抬高约 25° 俯视），距离用二分法算：
-     把「铁塔 → 计量箱 / 储能柜 → 小楼（屋顶阵列 + 浮标）」这些关键点全部收进画面
+     把「铁塔 → 储能柜 → 小楼（屋顶阵列 + 浮标）」这些关键点全部收进画面
      （落在中心 ±70% / ±68% 以内）。体量收成 13×8 的紧凑厂房块之后，原来 34/19/40
      那个定死的机位离得太远、留白一大片；而宽高比一变，同样的机位又会裁掉铁塔——
      距离必须跟着画布算（旭日东明那套用的就是这个办法，这里照搬）。
@@ -1080,7 +1073,7 @@ window.SolarScene = (function () {
     return best;
   }
   /* 关键点取全场最外沿：小楼四角与女儿墙顶、屋上两个浮标、西墙外的逆变器 / 通信模块 /
-     储能柜 / 计量箱（含浮标）、铁塔塔脚到塔尖。这样"光伏 → 逆变器 → 储能 / 计量 → 电网"
+     储能柜（含浮标）、铁塔塔脚到塔尖。这样"光伏 → 逆变器 → 储能 / 计量 → 电网"
      这条线无论画布什么比例都不会被裁头去尾 */
   function fitStory() {
     const T = THREE_();
@@ -1091,13 +1084,9 @@ window.SolarScene = (function () {
       new T.Vector3(-W2 / 2 - .3, roofY + .5, D2 / 2 + .3), new T.Vector3(-W2 / 2 - .3, 0, -D2 / 2 - .3),
       new T.Vector3(W2 / 2 + .3, 0, -D2 / 2 - .3),
       new T.Vector3(0, roofY + 3.6, 0),                       /* 屋顶阵列浮标 */
-      new T.Vector3(0, H2 + 1.6, D2 / 2 + 3.4),               /* 站名浮标 */
       new T.Vector3(-W2 / 2 - 1.7, 3.85, 1.2),                /* 逆变器浮标 */
-      new T.Vector3(-W2 / 2 - 2.2, 5.35, -4.2),               /* 通信模块浮标 */
       new T.Vector3(CAB_X - 1, 0, CAB_Z + CAB_W / 2),
       new T.Vector3(CAB_X, CAB_H + 3.9, CAB_Z),               /* 储能柜浮标 */
-      new T.Vector3(MTR_X - .8, 0, MTR_Z + .8),
-      new T.Vector3(MTR_X - .2, 3.3, MTR_Z),                  /* 并网点浮标 */
       new T.Vector3(TWR_X, 0, TWR_Z), new T.Vector3(TWR_X, TWR_H + 1.1, TWR_Z),
       new T.Vector3(TWR_X, TWR_H - .6, TWR_Z)                 /* 铁塔浮标 */
     ];
@@ -1122,7 +1111,7 @@ window.SolarScene = (function () {
     scene.fog = new T.Fog(tp.fog.color, tp.fog.near, tp.fog.far);
 
     camera = new T.PerspectiveCamera(46, 1, .1, 900);
-    /* 构图：机位按当前画布算（见 fitStory），把「并网铁塔 → 储能柜 / 计量箱 →
+    /* 构图：机位按当前画布算（见 fitStory），把「并网铁塔 → 储能柜 →
        两层小楼（屋顶光伏阵列）」从左到右完整收进画面，重置视角也回这个位 */
     camHome = fitStory();
     camera.position.copy(camHome.pos);
@@ -1196,7 +1185,7 @@ window.SolarScene = (function () {
     /* 直流侧：屋面线槽 → 女儿墙套管 → 沿西墙下到逆变器顶（逆变器已从东墙挪到左侧）。
        屋面那两个中间点跟着新屋面收（原 4 / -9.5 是 26m 宽屋面的坐标，现在会悬到墙外） */
     addFlow([
-      new T.Vector3(rowW / 2 + .4, roofY + .40, 0),
+      new T.Vector3(rowW / 2 + .2, roofY + .40, 0),            /* 起点落在屋面线槽里（原来出槽口 0.1m，悬空） */
       new T.Vector3(3.2, roofY + .42, 0),
       new T.Vector3(-3.2, roofY + .42, .1),
       new T.Vector3(-W2 / 2 - .08, roofY + .42, .55),
@@ -1206,47 +1195,38 @@ window.SolarScene = (function () {
     ], 'dc', .069);
     /* 过墙套管（电缆从套管中间穿出女儿墙，避免穿模） */
     root.add(box(.7, .2, .2, regThemeMat(std(0x9aa5a6, { roughness: .5, metalness: .5 }), { color: 0x3d4d55 }), -W2 / 2 - .06, roofY + .42, .55));
-    /* 交流侧：逆变器（现在挂西墙）→ 沿西墙向上到檐口 → 西南角下来进并网计量箱。
-       原来要绕东墙 + 南立面一整段才到西端，逆变器挪到左侧后这段路反而最短 */
+    /* 交流侧：逆变器 → 沿西墙下来 → 西墙配电箱（全场交流的汇合点）。
+       汇合点从场坪搬上墙之后这条只剩柜底到箱子这一小段（约 2m）：竖着下来、
+       贴着墙往南进箱。原来"爬檐口再绕西端墙下来"那 8m 的绕行没了 */
     addFlow([
-      new T.Vector3(-W2 / 2 - .3, 1.45, 1.2),                   /* 逆变器底部出线（接进柜底） */
-      new T.Vector3(-W2 / 2 - .3, 2.7, 1.22),
-      new T.Vector3(-W2 / 2 - .3, roofY - .5, 1.5),             /* 沿西墙向上（贴墙外 0.3，不碰窗带） */
-      new T.Vector3(-W2 / 2 - .35, roofY - .3, D2 / 2 + .3),    /* 转到西南角（原来写死 z=5.7，新进深下会飘到墙外） */
-      new T.Vector3(-W2 / 2 - .9, 4.6, D2 / 2 + .4),            /* 沿西端墙外侧下来 */
-      new T.Vector3(-W2 / 2 - 1.25, 1.9, D2 / 2 + 1.3),
-      new T.Vector3(-W2 / 2 - 1.4, 1.1, D2 / 2 + 1.72)          /* 落到计量箱 */
+      new T.Vector3(-W2 / 2 - .3, 1.55, 1.2),                    /* 逆变器底部出线（起点藏在柜底） */
+      new T.Vector3(-W2 / 2 - .32, 1.02, 1.65),                  /* 落到柜底下方（y≈1.0，走一层侧窗下沿 1.1 以下） */
+      new T.Vector3(-W2 / 2 - .30, .98, 2.6),
+      new T.Vector3(-W2 / 2 - .24, 1.12, PB_Z - PB_D / 2 + .06)  /* 从配电箱北面进箱 */
     ], 'ac', .075);
-    /* 交流支线：计量箱 → 储能柜（充电流进柜、放电流出柜）。
-       储能柜挪到场坪上之后这条变长（约 5.5m）：从计量箱北面出线，落到场坪上
-       贴着地面往西北拉一段（y .28，管底离坪面 4cm，不悬空），再抬进柜体东侧柜面。
-       走位偏北：跟"计量箱→铁塔"那条地面线（z≈5.9）最近处留 0.55m，不并线不压线 */
+    /* 储能支线：西墙配电箱 → 储能柜（充电流进柜、放电流出柜）。
+       从配电箱底下出线（不从侧面斜吊出来）：贴着勒脚顶翻过去、落到场坪，
+       再往西拉约 4.5m 进柜体东侧柜面；落地段 y .28（管底离坪面 4cm，下面有电缆墩） */
     addFlow([
-      new T.Vector3(MTR_X - .1, .95, MTR_Z - .5),          /* 桩头从箱体北面出来 */
-      new T.Vector3(MTR_X - 1.2, .50, MTR_Z - 1.3),
-      new T.Vector3(MTR_X - 2.55, .28, MTR_Z - 2.6),       /* 落到场坪上，柜体东侧 */
-      new T.Vector3(CAB_X + .55, .50, CAB_Z - .1)          /* 进柜体东侧柜面（不是门面） */
+      new T.Vector3(-W2 / 2 - .2, .52, PB_Z - .32),              /* 箱底出线（起点在箱内） */
+      new T.Vector3(-W2 / 2 - .45, .37, 3.10),                   /* 越过勒脚（勒脚顶 .30，管底贴面） */
+      new T.Vector3(-7.5, .28, 3.02),                            /* 落到场坪 */
+      new T.Vector3(-9.9, .28, 2.95),                            /* 地面段（墩上） */
+      new T.Vector3(CAB_X + .55, .52, CAB_Z + .15)               /* 进柜体东侧柜面（不是门面） */
     ], 'stor', .063);
-    /* 交流支线：计量箱底 → 地面电缆（沿电缆墩敷设）→ 铁塔基座终端箱（卖电 / 买电走这条）。
-       7 个点跟着计量箱的新位置平移：先沿箱体西侧落地，再沿电缆墩线（gx0/gz0 → gx1/gz1）
-       一路向西爬升到铁塔终端箱，中间三点按墩线等分取 */
+    /* 关口支线：配电箱 → 地面电缆（沿电缆墩敷设）→ 铁塔基座终端箱（卖电 / 买电走这条）。
+       同样从箱底出线、翻过勒脚落地，再沿墩线（GRD_X0/GRD_Z0 → 塔基）一路向西，
+       中间三点按墩线等分取 */
     addFlow([
-      new T.Vector3(MTR_X - .38, 1.28, MTR_Z - .03),
-      new T.Vector3(MTR_X - .42, .78, MTR_Z + .02),
-      new T.Vector3(MTR_X - .45, .36, MTR_Z + .05),
-      new T.Vector3(-13.15, .36, 6.11),
-      new T.Vector3(-18.20, .36, 6.40),
-      new T.Vector3(-23.40, .36, 6.70),
-      new T.Vector3(-28.6, .38, 7.0)
+      new T.Vector3(-W2 / 2 - .2, .52, PB_Z + .32),              /* 箱底出线（起点在箱内） */
+      new T.Vector3(-W2 / 2 - .48, .37, PB_Z + .45),             /* 越过勒脚 */
+      new T.Vector3(-7.45, .28, 4.22),                           /* 落到场坪 */
+      new T.Vector3(GRD_X0, .36, GRD_Z0),                        /* 上墩线 */
+      new T.Vector3(grdPoint(.25)[0], .36, grdPoint(.25)[1]),    /* 沿弧线（和电缆墩同一条线） */
+      new T.Vector3(grdPoint(.5)[0], .36, grdPoint(.5)[1]),
+      new T.Vector3(grdPoint(.75)[0], .36, grdPoint(.75)[1]),
+      new T.Vector3(-28.6, .38, 7.0)                             /* 铁塔基座终端箱 */
     ], 'grid', .068);
-    /* 交流支线：计量箱 → 卫生院（负载）。六种供电模式里，电最后都是从这条进院的——
-       原来缺这条，⑤/⑥ 档里能量到计量箱就"没了"。线色跟着"谁在供院"走
-       （储能放电=青绿 / 光伏出力=橙 / 都没有=从电网取=蓝），跟浮标上的模式文字对得上 */
-    addFlow([
-      new T.Vector3(MTR_X + .4, 1.10, MTR_Z - .35),           /* 从计量箱东侧出线 */
-      new T.Vector3(MTR_X + .8, .80, MTR_Z - 1.25),
-      new T.Vector3(-W2 / 2 - .2, .95, JB_Z)                  /* 进西墙进线箱 */
-    ], 'load', .058);
 
     /* ---------- 天气：太阳 / 月亮 / 云 / 降水 ---------- */
     sun = new T.Mesh(new T.SphereGeometry(3.2, 20, 20), new T.MeshBasicMaterial({ color: 0xffe9a8, fog: false }));
@@ -1304,7 +1284,7 @@ window.SolarScene = (function () {
 
     /* ---------- 场景浮标 ---------- */
     arrLabelEl = label('屋顶光伏阵列<i>-- kW</i><em>装机 110.16 kWp</em>', 'tag3d-gt', 0, roofY + 3.6, 0);
-    label('洙边卫生院<i>屋顶分布式光伏</i>', 'tag3d-gt', 0, H2 + 1.6, D2 / 2 + 3.4);
+    /* 站名牌（"洙边卫生院"）不挂了：楼在那、阵列浮标已经点出这是哪一站 */
 
     /* 后期处理：MSAA + 泛光（只让日光、电流光纹这类高亮点发光）+ 暗角冷调
        暗角 pass 是"高级感"的关键一步：压住四角、让画面中心聚焦到设备上 */
@@ -1492,7 +1472,7 @@ window.SolarScene = (function () {
     if (invLabelEl) invLabelEl.innerHTML = '逆变器<i>' + cur.power.toFixed(2) + ' kW</i><em>' + (on ? '运行中' : '待机') + '</em>';
     if (arrLabelEl) arrLabelEl.innerHTML = '屋顶光伏阵列<i>' + cur.power.toFixed(2) + ' kW</i><em>今日 '
       + (cur.today === null ? '--' : cur.today.toFixed(1)) + ' 度</em>';
-    /* 并网点标签由 updateEnergyFlows() 统一刷新（它知道储能与负载） */
+    /* 关口功率 / 供电模式由 updateEnergyFlows() 统一刷新（它知道储能与负载） */
     /* 明细卡内容同样跟着实时值走 */
     const todayTxt = cur.today === null ? '--' : cur.today.toFixed(1) + ' 度';
     const hoursTxt = (cur.today === null || !cur.cap) ? '--' : (cur.today / cur.cap).toFixed(2) + ' h';
@@ -1510,13 +1490,7 @@ window.SolarScene = (function () {
       ['安装位置', '卫生院西墙外侧'],
       ['接线', '屋顶组串 → 屋面线槽 → 逆变器']
     ], on ? '并网发电中' : '无输出');
-    setCard('grid', '并网点 · 计量箱', [
-      ['状态', on ? '并网运行中' : '无输出'],
-      ['电站出力', cur.power.toFixed(2) + ' kW'],
-      ['今日发电', todayTxt],
-      ['并网方式', '低压并网 · 关口计量'],
-      ['计量', '计量箱 · 关口表']
-    ], on ? '实时并网' : '待机');
+    /* 并网点（计量箱）已去掉：关口功率 / 方向在铁塔浮标上看，供电模式看储能柜浮标和明细卡 */
   }
 
   /* 储能柜实时（日升云）：驱动柜体 SOC 光柱、指示灯、浮标卡片，以及充放电光纹 */
@@ -1655,13 +1629,6 @@ window.SolarScene = (function () {
         fl.tint = (surplus !== null && surplus > 0) ? 0xffb020 : 0x8fd8ff;
         fl.speed = .3 + Math.min(1, Math.abs(surplus || 0) / 100) * 1.8;
         if (!fl.on) fl.tubeMat.color.setHex(c.idle);
-      } else if (fl.kind === 'load') {
-        /* 负载线：有负载就流、永远流进楼；颜色=谁在供院（跟模式文字对齐） */
-        fl.on = known && load > .3;
-        fl.dir = 1;
-        fl.tint = dis ? 0x3df0a0 : (pvOn ? c.ac : 0x8fd8ff);
-        fl.speed = .3 + Math.min(1, load / 40) * 1.8;
-        if (!fl.on) fl.tubeMat.color.setHex(c.idle);
       }
     });
     /* 洙边的六种供电模式（现场口径：原来 ①~⑤ 之外的"储能满 + 光伏卖电"单列成 ⑥）。
@@ -1710,11 +1677,6 @@ window.SolarScene = (function () {
     }
     /* 传给储能柜浮标 / 明细卡（空串表示没数据，显示 --） */
     pModeNow = pMode; pModeTxtNow = pModeTxt; pModeNoteNow = pModeNote;
-    if (gridLabelEl) {
-      gridLabelEl.innerHTML = '并网点<i>' + (surplus === null ? '--' : (Math.abs(surplus) > .3
-        ? (surplus > 0 ? '馈电上网 ' + surplus.toFixed(1) + ' kW' : '从电网取 ' + Math.abs(surplus).toFixed(1) + ' kW')
-        : '无交换')) + '</i><em>' + (pMode ? (pMode + ' ' + pModeTxt) : '--') + '</em>';
-    }
     if (twrLabelEl) {
       twrLabelEl.innerHTML = '并网铁塔<i>10kV 上网线路</i><em>' + (surplus === null ? '--' : (Math.abs(surplus) > .3
         ? (surplus > 0 ? '送出 ' + surplus.toFixed(1) + ' kW' : '受电 ' + Math.abs(surplus).toFixed(1) + ' kW')
