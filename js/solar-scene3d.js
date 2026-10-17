@@ -30,6 +30,8 @@ window.SolarScene = (function () {
   let _rainM = null;                                 /* 雨滴矩阵复用的临时对象 */
   const cloudMats = [];                              /* 云朵材质（跟主题换色） */
   let panelMats = [], invLabelEl = null, arrLabelEl = null, gridLabelEl = null;
+  /* 当前供电模式（updateEnergyFlows 判定，储能柜明细卡要用；两个函数之间用模块级变量传） */
+  let pModeNow = '', pModeTxtNow = '';
   let raf = null, W = 0, H = 0;
   const flows = [];                 // 电流光纹：{ map, tubeMat, kind, on, speed }
   const labelObjs = [];             // 浮标对象（点开明细卡时统一藏起来）
@@ -1415,17 +1417,18 @@ window.SolarScene = (function () {
     const brand = (dv.bcu_brand ? dv.bcu_brand : 'SYL') + ' 电池 + ' + (dv.pcs_brand === 'EJ' ? '恩玖' : (dv.pcs_brand || 'PCS'));
     if (cabLabelEl) {
       cabLabelEl.innerHTML = '储能柜 · 光储一体<i>' + f1(cur.storPower) + ' kW</i><em>'
-        + (r.status_text || '--') + ' · SOC ' + Math.round(soc) + '%</em>';
+        + (pModeNow ? (pModeNow + ' ' + pModeTxtNow) : (r.status_text || '--')) + ' · SOC ' + Math.round(soc) + '%</em>';
     }
     setCard('storage', '储能柜 · 光储一体（' + brand + '）', [
+      ['当前供电模式', pModeNow ? (pModeNow + ' ' + pModeTxtNow) : '--'],
       ['SOC', Math.round(soc) + ' %'],
       ['实时功率', f1(cur.storPower) + ' kW（' + (r.status_text || '--') + '）'],
       ['今日充电', f1(td.charge_kwh) + ' 度'],
       ['今日放电', f1(td.discharge_kwh) + ' 度'],
       ['柜内配置', brand],
       ['采样时间', String(r.time || '--').slice(11, 19)]
-    ], Math.abs(Number(cur.storPower) || 0) > .3
-      ? (dis ? '放电中（往系统送电）' : '充电中（把电存起来）') : '待机');
+    ], pModeNow ? (pModeNow + ' ' + pModeTxtNow) : (Math.abs(Number(cur.storPower) || 0) > .3
+      ? (dis ? '放电中（往系统送电）' : '充电中（把电存起来）') : '待机'));
     /* 铁塔明细：本站卖电/买电都走这条线 */
     const g = st.grid || {};
     setCard('tower', '并网铁塔 · 10kV 上网线路', [
@@ -1540,6 +1543,7 @@ window.SolarScene = (function () {
         pMode = '⑤'; pModeTxt = '储能直供卫生院'; pModeNote = '储能放电直供卫生院，关口基本不交换';
       }
     }
+    pModeNow = pMode; pModeTxtNow = pModeTxt;      /* 传给储能柜明细卡用 */
     if (gridLabelEl) {
       gridLabelEl.innerHTML = '并网点<i>' + (surplus === null ? '--' : (Math.abs(surplus) > .3
         ? (surplus > 0 ? '馈电上网 ' + surplus.toFixed(1) + ' kW' : '从电网取 ' + Math.abs(surplus).toFixed(1) + ' kW')
