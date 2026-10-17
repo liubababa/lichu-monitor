@@ -307,10 +307,8 @@ window.SolarScene = (function () {
     const night = (t || theme) === 'night';
     return tex(function (g, w, h) {
       g.fillStyle = night ? '#1e2f38' : '#dfe3e3'; g.fillRect(0, 0, w, h);
-      /* 按旭日东明那套对齐：墙面不要再"瓷砖化"（原来 12 道竖缝，像贴了分格砖），
-         改成大面积平墙 + 极淡的板缝，下面配深色勒脚（原来浅灰，和厂房不符） */
-      g.strokeStyle = night ? 'rgba(46,230,200,.07)' : 'rgba(120,138,140,.10)'; g.lineWidth = 1;
-      for (let i = 1; i < 12; i++) { const x = i * w / 12; g.beginPath(); g.moveTo(x, 0); g.lineTo(x, h); g.stroke(); }
+      /* 按旭日东明那套对齐：墙面就是一块平墙（原来 12 道竖缝，视觉模型仍读成"分格挂板"），
+         彻底去掉分缝；下面配深色勒脚 */
       g.fillStyle = night ? 'rgba(46,230,200,.05)' : 'rgba(120,138,140,.10)'; g.fillRect(0, 0, w, 10);
       g.fillStyle = night ? '#0b1418' : '#4d5558'; g.fillRect(0, h - 26, w, 26);          /* 勒脚（深色） */
     }, 512, 256);
