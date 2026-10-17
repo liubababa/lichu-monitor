@@ -307,10 +307,9 @@ window.SolarScene = (function () {
     const night = (t || theme) === 'night';
     return tex(function (g, w, h) {
       g.fillStyle = night ? '#1e2f38' : '#dfe3e3'; g.fillRect(0, 0, w, h);
-      /* 按旭日东明那套对齐：墙面就是一块平墙（原来 12 道竖缝，视觉模型仍读成"分格挂板"），
-         彻底去掉分缝；下面配深色勒脚 */
+      /* 平墙不留分缝、也不留勒脚：贴图会横向平铺，画在贴图里的勒脚带每平铺一次
+         就多出一道竖缝（视觉模型两次都读成"分格挂板"）。勒脚改由基座几何体承担 */
       g.fillStyle = night ? 'rgba(46,230,200,.05)' : 'rgba(120,138,140,.10)'; g.fillRect(0, 0, w, 10);
-      g.fillStyle = night ? '#0b1418' : '#4d5558'; g.fillRect(0, h - 26, w, 26);          /* 勒脚（深色） */
     }, 512, 256);
   }
   /* 门头院名牌（单独一块板贴在大门上方） */
@@ -539,7 +538,7 @@ window.SolarScene = (function () {
     const wallBottom = regThemeMat(std(0x545c58, { roughness: .95, envMapIntensity: .12 }), { color: 0x0d1519 });
     const trimMat = regThemeMat(std(0x8d9598, { roughness: .62, metalness: .3 }), { color: 0x2c4048 });     /* 灰带 / 窗框 */
     const bandMat = std(0x232a2d, { roughness: .5, metalness: .35 });     /* 窗带底 */
-    root.add(box(W2 + .9, .3, D2 + .9, regThemeMat(std(0xa9ada3, { roughness: .9, envMapIntensity: .14 }), { color: 0x1b2830, envMapIntensity: .26 }), 0, .15, 0));
+    root.add(box(W2 + .9, .3, D2 + .9, regThemeMat(std(0x515b5e, { roughness: .9, envMapIntensity: .14 }), { color: 0x1b2830, envMapIntensity: .26 }), 0, .15, 0));
     /* 房身（两层一起） */
     const bld = new T.Mesh(new T.BoxGeometry(W2, H2, D2), [wallMat, wallMat, wallTop, wallBottom, wallMat, wallMat]);
     bld.position.set(0, H2 / 2 + .3, 0);
