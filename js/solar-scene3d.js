@@ -1527,10 +1527,25 @@ window.SolarScene = (function () {
         if (!fl.on) fl.tubeMat.color.setHex(c.idle);
       }
     });
+    /* 洙边的供电模式（现场口径，五个）：
+       ① 光伏 → 储能 → 卫生院 → 卖电网      ② 光伏 → 储能 → 卫生院
+       ③ 电网给储能充电（并供医院）           ④ 全部由电网供电        ⑤ 储能直供卫生院
+       判据：pv 光伏功率、st 储能功率（正=放电/负=充电）、load 负载、surplus 关口净额 */
+    let pMode = '④', pModeTxt = '全部由电网供电', pModeNote = '储能无充放，卫生院由电网供电';
+    if (surplus !== null) {
+      if (st < -0.5 && pv > 0.5) {
+        if (surplus > .3) { pMode = '①'; pModeTxt = '光伏→储能→卫生院→卖电网'; pModeNote = '光伏先给储能充，余量送卫生院，再多的卖到电网'; }
+        else { pMode = '②'; pModeTxt = '光伏→储能→卫生院'; pModeNote = '光伏先给储能充，再供卫生院，不往电网送'; }
+      } else if (st < -0.5) {
+        pMode = '③'; pModeTxt = '电网给储能充电（并供医院）'; pModeNote = '光伏没出力，储能由电网充，卫生院也由电网供';
+      } else if (st > 0.5) {
+        pMode = '⑤'; pModeTxt = '储能直供卫生院'; pModeNote = '储能放电直供卫生院，关口基本不交换';
+      }
+    }
     if (gridLabelEl) {
       gridLabelEl.innerHTML = '并网点<i>' + (surplus === null ? '--' : (Math.abs(surplus) > .3
         ? (surplus > 0 ? '馈电上网 ' + surplus.toFixed(1) + ' kW' : '从电网取 ' + Math.abs(surplus).toFixed(1) + ' kW')
-        : '无交换')) + '</i><em>计量箱 · 关口表</em>';
+        : '无交换')) + '</i><em>' + pMode + ' ' + pModeTxt + '</em>';
     }
     if (twrLabelEl) {
       twrLabelEl.innerHTML = '并网铁塔<i>10kV 上网线路</i><em>' + (surplus === null ? '--' : (Math.abs(surplus) > .3
