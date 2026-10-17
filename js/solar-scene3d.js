@@ -933,10 +933,11 @@ window.SolarScene = (function () {
     const steel = regThemeMat(std(0xc6ccce, { roughness: .45, metalness: .55, envMapIntensity: .6 }), { color: 0x46565d, envMapIntensity: .8 });
     const dark = std(0x22333a, { roughness: .5, metalness: .5, envMapIntensity: .5 });
     const finMat = regThemeMat(std(0xa7b1b3, { roughness: .4, metalness: .6, envMapIntensity: .5 }), { color: 0x4a5b63, envMapIntensity: .7 });
-    /* ---------- 逆变器（挂东墙，正面朝东） ---------- */
+    /* ---------- 逆变器（挂西墙，正面朝西；按现场要求从左到右看是"逆变器在左侧"） ---------- */
     const invG = new T.Group();
     invG.userData.key = 'inverter';               /* 点逆变器可弹明细卡 */
-    invG.position.set(W2 / 2, 0, 1.2);
+    invG.position.set(-W2 / 2, 0, 1.2);
+    invG.rotation.y = Math.PI;                    /* 柜体整体转向：仍朝墙外，不和西墙相嵌 */
     invG.add(box(.07, 1.66, 1.28, regThemeMat(std(0x8f9a9c, { roughness: .5, metalness: .5 }), { color: 0x2c3d45 }), .035, 2.18, 0));
     invG.add(box(.36, 1.5, 1.1, dark, .26, 2.18, 0));
     invG.add(box(.04, 1.56, 1.16, regThemeMat(std(0xb9c2c4, { roughness: .4, metalness: .5 }), { color: 0x33454d, envMapIntensity: .7 }), .44, 2.18, 0));
@@ -945,15 +946,15 @@ window.SolarScene = (function () {
     invG.add(box(.03, .16, .22, std(0xd9b23a, { roughness: .5 }), .465, 1.95, -.34));             /* 隔离开关 */
     invG.add(box(.02, .1, .4, regThemeMat(std(0xd8dee0, { roughness: .6 }), { color: 0x8f9aa0 }), .465, 1.8, .22));                 /* 铭牌 */
     root.add(invG);
-    invLabelEl = label('逆变器<i>-- kW</i><em>待机</em>', 'tag3d-gt', W2 / 2 + 1.7, 3.85, 1.2);
-    addCard('inverter', W2 / 2 + 1.7, 2.9, 1.2);
+    invLabelEl = label('逆变器<i>-- kW</i><em>待机</em>', 'tag3d-gt', -W2 / 2 - 1.7, 3.85, 1.2);
+    addCard('inverter', -W2 / 2 - 1.7, 2.9, 1.2);
 
-    /* ---------- 通信模块（立杆） ---------- */
-    root.add(cyl(.07, .09, 3.4, steel, W2 / 2 + 2.2, 1.7, -2.6, 10));
-    root.add(box(.5, .56, .36, regThemeMat(std(0xe8eef0, { roughness: .5, envMapIntensity: .5 }), { color: 0x2b3a42, envMapIntensity: .6 }), W2 / 2 + 2.2, 3.05, -2.6));
-    root.add(box(.52, .05, .38, regThemeMat(std(0xc2ccce, { roughness: .5, metalness: .5 }), { color: 0x3a4b53 }), W2 / 2 + 2.2, 3.34, -2.6));
-    root.add(cyl(.022, .022, .8, steel, W2 / 2 + 2.2, 3.76, -2.6, 6));
-    label('通信模块<em>数据回传阳光云</em>', 'tag3d-gt', W2 / 2 + 2.2, 5.35, -4.2);
+    /* ---------- 通信模块（立杆）——同样按现场要求移到左侧 ---------- */
+    root.add(cyl(.07, .09, 3.4, steel, -W2 / 2 - 2.2, 1.7, -2.6, 10));
+    root.add(box(.5, .56, .36, regThemeMat(std(0xe8eef0, { roughness: .5, envMapIntensity: .5 }), { color: 0x2b3a42, envMapIntensity: .6 }), -W2 / 2 - 2.2, 3.05, -2.6));
+    root.add(box(.52, .05, .38, regThemeMat(std(0xc2ccce, { roughness: .5, metalness: .5 }), { color: 0x3a4b53 }), -W2 / 2 - 2.2, 3.34, -2.6));
+    root.add(cyl(.022, .022, .8, steel, -W2 / 2 - 2.2, 3.76, -2.6, 6));
+    label('通信模块<em>数据回传阳光云</em>', 'tag3d-gt', -W2 / 2 - 2.2, 5.35, -4.2);
 
     /* ---------- 并网点：计量箱 + 电杆 + 架空线 ---------- */
     /* 计量箱：楼西南角外的开阔场坪上（原来贴在楼西墙中段，被楼体挡住看不见） */
@@ -1088,30 +1089,25 @@ window.SolarScene = (function () {
     buildWalkers();               /* 院内走动的人（抽象小人） */
 
     /* ---------- 能量流 ---------- */
-    /* 直流侧：屋面线槽 → 女儿墙套管 → 沿东墙下到逆变器顶 */
+    /* 直流侧：屋面线槽 → 女儿墙套管 → 沿西墙下到逆变器顶（逆变器已从东墙挪到左侧） */
     addFlow([
-      new T.Vector3(-rowW / 2 - .4, roofY + .40, 0),
-      new T.Vector3(-4, roofY + .42, 0),
-      new T.Vector3(9.5, roofY + .42, .1),
-      new T.Vector3(W2 / 2 + .08, roofY + .42, .55),
-      new T.Vector3(W2 / 2 + .09, roofY - .55, .9),
-      new T.Vector3(W2 / 2 + .10, 3.35, 1.1),
-      new T.Vector3(W2 / 2 + .10, 2.98, 1.2)
+      new T.Vector3(rowW / 2 + .4, roofY + .40, 0),
+      new T.Vector3(4, roofY + .42, 0),
+      new T.Vector3(-9.5, roofY + .42, .1),
+      new T.Vector3(-W2 / 2 - .08, roofY + .42, .55),
+      new T.Vector3(-W2 / 2 - .09, roofY - .55, .9),
+      new T.Vector3(-W2 / 2 - .10, 3.35, 1.1),
+      new T.Vector3(-W2 / 2 - .10, 2.98, 1.2)
     ], 'dc', .069);
     /* 过墙套管（电缆从套管中间穿出女儿墙，避免穿模） */
-    root.add(box(.7, .2, .2, regThemeMat(std(0x9aa5a6, { roughness: .5, metalness: .5 }), { color: 0x3d4d55 }), W2 / 2 + .06, roofY + .42, .55));
-    /* 交流侧：逆变器 → 沿东墙上到檐口 → 沿南立面上沿走（大门上方，不穿门前）→ 西端下来进并网计量箱。
-       原来贴南墙 1 米高横穿大门前，视觉上很碍事，改走檐口一线（y 6.6，避开雨棚顶 6.33 与女儿墙） */
+    root.add(box(.7, .2, .2, regThemeMat(std(0x9aa5a6, { roughness: .5, metalness: .5 }), { color: 0x3d4d55 }), -W2 / 2 - .06, roofY + .42, .55));
+    /* 交流侧：逆变器（现在挂西墙）→ 沿西墙向上到檐口 → 西南角下来进并网计量箱。
+       原来要绕东墙 + 南立面一整段才到西端，逆变器挪到左侧后这段路反而最短 */
     addFlow([
-      new T.Vector3(W2 / 2 + .3, 1.45, 1.2),                    /* 逆变器底部出线（接进柜底） */
-      new T.Vector3(W2 / 2 + .3, 2.7, 1.22),
-      new T.Vector3(W2 / 2 + .3, 6.4, 1.5),                     /* 沿东墙向上（贴墙外 0.3，不碰窗带） */
-      new T.Vector3(W2 / 2 + .3, 6.6, 5.4),
-      new T.Vector3(W2 / 2 + .2, 6.6, D2 / 2 + .25),            /* 东南角转过来 */
-      new T.Vector3(6.0, 6.6, D2 / 2 + .25),
-      new T.Vector3(-6.0, 6.6, D2 / 2 + .25),
-      new T.Vector3(-W2 / 2 + .2, 6.6, D2 / 2 + .25),           /* 南立面上沿通长（大门在下方，不挡门） */
-      new T.Vector3(-W2 / 2 - .5, 6.5, D2 / 2 - .35),           /* 西南角 */
+      new T.Vector3(-W2 / 2 - .3, 1.45, 1.2),                   /* 逆变器底部出线（接进柜底） */
+      new T.Vector3(-W2 / 2 - .3, 2.7, 1.22),
+      new T.Vector3(-W2 / 2 - .3, 6.4, 1.5),                    /* 沿西墙向上（贴墙外 0.3，不碰窗带） */
+      new T.Vector3(-W2 / 2 - .35, 6.6, 5.7),                   /* 转到西南角 */
       new T.Vector3(-W2 / 2 - .9, 4.6, D2 / 2 + .4),            /* 沿西端墙外侧下来 */
       new T.Vector3(-W2 / 2 - 1.25, 1.9, D2 / 2 + 1.3),
       new T.Vector3(-W2 / 2 - 1.4, 1.1, D2 / 2 + 1.72)          /* 落到计量箱 */
