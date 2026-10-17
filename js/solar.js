@@ -649,6 +649,8 @@ window.SolarUI = (function () {
     SolarScene.setPower(pKw, sum ? num(sum.capacity) : null, sum ? kwh(sum.daily_yield) : null);
     if (stor) SolarScene.setStorage(stor);       /* 储能柜：SOC 光柱、充放电光纹、卖电方向 */
     if (wx) SolarScene.setWeather(wx);
+    /* 同一份天气也给旭日东明（两地同源，各打各的场景效果；旭日东明不展示天气数据） */
+    if (wx && window.GaoteWeather) { try { GaoteWeather(wx); } catch (_) {} }
   }
 
   function ensureScene() {

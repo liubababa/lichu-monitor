@@ -1034,6 +1034,24 @@ window.GaoteScene3D = (function () {
       new THREE.Vector3(PCS_X - PCS_HW + .2, .22, PCS_Z + .38)
     ], root, -1);
 
+    /* ---------- 降水（与洙边同源天气；只做视觉效果，不展示任何数据） ----------
+       420 滴合批成一个 InstancedMesh：洙边当年雨写成 420 个独立网格，帧率掉到卡顿 */
+    rainMat = new THREE.MeshBasicMaterial({ color: 0x9fd8ff, transparent: true, opacity: .5 });
+    rainInst = new THREE.InstancedMesh(new THREE.CylinderGeometry(.022, .022, .9, 4), rainMat, RAIN_N);
+    rainInst.visible = false;
+    rainInst.frustumCulled = false;                /* 位置每帧改，包围盒不跟着走 */
+    const rmat = new THREE.Matrix4();
+    for (let i = 0; i < RAIN_N; i++) {
+      rainX[i] = (Math.random() - .5) * 74;
+      rainY[i] = Math.random() * 28 + 2;
+      rainZ[i] = (Math.random() - .5) * 62;
+      rainV[i] = 2.4 + Math.random() * 2;
+      rmat.makeTranslation(rainX[i], rainY[i], rainZ[i]);
+      rainInst.setMatrixAt(i, rmat);
+    }
+    rainInst.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    root.add(rainInst);
+
     buildFactory(root);
 
     scene.add(root);
@@ -1365,6 +1383,17 @@ window.GaoteScene3D = (function () {
     if (composer) composer.setSize(w, h);
   }
 
+  /* ---------------- 天气（与洙边同源：只切效果，不产生任何文字） ----------------
+     solar.js 拿到天气后同时调 GaoteWeather(wx)，两地同一份天气数据 */
+  const RAIN_N = 420, rainX = [], rainY = [], rainZ = [], rainV = [];
+  let rainInst = null, rainMat = null, precipNow = 0, _rainRM = null;
+  function setWeather(w) {
+    const pr = (w && w.precip !== undefined && w.precip !== null) ? Number(w.precip) : 0;
+    precipNow = isFinite(pr) ? pr : 0;
+    if (rainMat) rainMat.opacity = precipNow > 0 ? Math.min(.62, .34 + precipNow * .06) : .5;
+  }
+  if (typeof window !== 'undefined') window.GaoteWeather = setWeather;
+
   function loop(t) {
     raf = requestAnimationFrame(loop);
     const dt = clock.last ? (t - clock.last) / 1000 : 0;
@@ -1374,6 +1403,20 @@ window.GaoteScene3D = (function () {
     if (rot.auto && controls) controls.autoRotate && (controls.autoRotateSpeed = rot.speed * 6);
     if (controls) controls.update();
     stepFlow(dt);
+    /* 雨：合批实例每帧下落、落地回绕（无降水时整块隐藏，不花算力） */
+    if (rainInst) {
+      rainInst.visible = precipNow > 0;
+      if (rainInst.visible) {
+        const rm2 = _rainRM || (_rainRM = new THREE.Matrix4());
+        for (let i = 0; i < RAIN_N; i++) {
+          rainY[i] -= rainV[i] * dt * 9;
+          if (rainY[i] < 0) rainY[i] += 30;
+          rm2.makeTranslation(rainX[i], rainY[i], rainZ[i]);
+          rainInst.setMatrixAt(i, rm2);
+        }
+        rainInst.instanceMatrix.needsUpdate = true;
+      }
+    }
     scaleLabels();                       /* 浮标跟着相机距离缩放 */
     updateLabelOcclusion();              /* 被模型挡住的浮标藏起来 */
     /* 厂房灯（玻璃 / 门里的光 / 墙面柔光 / 地面光晕）一起呼吸：
