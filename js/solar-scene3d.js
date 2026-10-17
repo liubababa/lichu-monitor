@@ -3,14 +3,17 @@
  *
  *   两层小楼（白主墙 + 灰腰线 + 大窗，夜里窗户发光）+ 屋顶光伏阵列
  *   （4 排 × 5 块组件级建模：玻璃 / 铝边框 / 导轨 / 竖撑 + 检修走道 + 屋面线槽）
- *   + 墙挂逆变器 + 通信模块 + 储能柜（光储一体柜：柜门、顶部空调、侧面 SOC 光柱）
- *   + 并网点（计量箱 / 电杆 / 瓷瓶 / 架空线）。
+ *   + 墙挂逆变器 + 通信模块 + 西墙进线箱（负载进楼处）
+ *   + 储能柜（光储一体柜：柜门、顶部空调、侧面 SOC 光柱）
+ *   + 并网铁塔（格构塔；关口线路走地面电缆到塔基终端箱）。
  *
- *   电流光纹分四条链路，方向跟着真实运行状态走：
+ *   电流光纹分五条链路，方向跟着真实运行状态走（和页面上的六种供电模式对得上）：
  *     · 直流（青）  屋面组串 → 线槽 → 逆变器
- *     · 交流（橙）  逆变器 → 沿墙 → 并网计量箱
+ *     · 交流（橙）  逆变器 → 沿西墙 → 檐口 → 西南角 → 并网计量箱
  *     · 储能（青绿=放电 / 蓝=充电） 计量箱 ↔ 储能柜
- *     · 关口（橙=馈电上网 / 蓝=从电网取） 计量箱 → 电杆 → 架空线
+ *     · 关口（橙=馈电上网 / 蓝=从电网取） 计量箱 → 地面电缆 → 铁塔基座终端箱
+ *     · 负载（颜色 = 谁在供院：储能青绿 / 光伏橙 / 电网蓝） 计量箱 → 西墙进线箱 → 卫生院
+ *   （计量箱是这四条交流线的汇合点：光伏 ↔ 箱、储能 ↔ 箱、电网 ↔ 箱、箱 → 负载）
  *
  *   天气（SolarScene.setWeather）驱动画面：
  *     云量 → 天空/光照亮度、云朵多少；降水 → 雨/雪粒子；
@@ -468,6 +471,9 @@ window.SolarScene = (function () {
   /* 并网计量箱：西南角外的场坪上（楼西墙外 1.4m、南墙外 1.75m）。提到模块级常量，
      是因为储能支线（3 点）和关口地面线（7 点）都从它出线，避免箱子挪了线没跟着挪 */
   const MTR_X = -(W2 / 2 + 1.4), MTR_Z = D2 / 2 + 1.75;
+  /* 西墙进线箱：负载线（计量箱 → 卫生院）从这儿进楼。卡在一层侧窗（z≈1.0~3.0）与
+     西南角（z=4）之间，进出线两端都用它算 */
+  const JB_Z = D2 / 2 - .5;
   /* 屋顶阵列按新屋面重算：一排 5 块 = 11.64 宽（女儿墙内侧 ±6.35，两侧各余 0.53）；
      4 排、行距 1.5（外排组件外沿 ±3.05，离女儿墙内侧 0.8），中间留检修走道 */
   const COLS = 5;
@@ -979,6 +985,16 @@ window.SolarScene = (function () {
     root.add(cyl(.022, .022, .8, steel, -W2 / 2 - 2.2, 3.76, -2.6, 6));
     label('通信模块<em>数据回传阳光云</em>', 'tag3d-gt', -W2 / 2 - 2.2, 5.35, -4.2);
 
+    /* ---------- 西墙进线箱（负载进楼处） ----------
+       六种供电模式里"供卫生院"那一路的终点：计量箱过来的负载线从这里进楼。
+       样式沿用计量箱那套（箱体 + 内嵌门 + 箱顶小檐），夜里也认得出是个箱子 */
+    const jbMat = regThemeMat(std(0xd4d9d4, { roughness: .5, metalness: .3, envMapIntensity: .4 }), { color: 0x33454d, envMapIntensity: .7 });
+    const jbIn = regThemeMat(std(0x8f9a9c, { roughness: .6, metalness: .4 }), { color: 0x22333a });
+    const jbLip = regThemeMat(std(0xb2b8b4, { roughness: .5, metalness: .4 }), { color: 0x2b3a42 });
+    root.add(box(.34, .8, .7, jbMat, -(W2 / 2 + .17), 1.0, JB_Z));
+    root.add(box(.12, .62, .56, jbIn, -(W2 / 2 + .36), 1.0, JB_Z));
+    root.add(box(.06, .08, .78, jbLip, -(W2 / 2 + .2), 1.44, JB_Z));
+
     /* ---------- 并网点：计量箱 + 电杆 + 架空线 ---------- */
     /* 计量箱：楼西南角外的开阔场坪上（原来贴在楼西墙中段，被楼体挡住看不见）。
        位置提到模块级常量 MTR_X / MTR_Z：储能支线与关口地面线都从它出线 */
@@ -1223,6 +1239,14 @@ window.SolarScene = (function () {
       new T.Vector3(-23.40, .36, 6.70),
       new T.Vector3(-28.6, .38, 7.0)
     ], 'grid', .068);
+    /* 交流支线：计量箱 → 卫生院（负载）。六种供电模式里，电最后都是从这条进院的——
+       原来缺这条，⑤/⑥ 档里能量到计量箱就"没了"。线色跟着"谁在供院"走
+       （储能放电=青绿 / 光伏出力=橙 / 都没有=从电网取=蓝），跟浮标上的模式文字对得上 */
+    addFlow([
+      new T.Vector3(MTR_X + .4, 1.10, MTR_Z - .35),           /* 从计量箱东侧出线 */
+      new T.Vector3(MTR_X + .8, .80, MTR_Z - 1.25),
+      new T.Vector3(-W2 / 2 - .2, .95, JB_Z)                  /* 进西墙进线箱 */
+    ], 'load', .058);
 
     /* ---------- 天气：太阳 / 月亮 / 云 / 降水 ---------- */
     sun = new T.Mesh(new T.SphereGeometry(3.2, 20, 20), new T.MeshBasicMaterial({ color: 0xffe9a8, fog: false }));
@@ -1523,6 +1547,7 @@ window.SolarScene = (function () {
       ['当前供电模式', pModeNow ? (pModeNow + ' ' + pModeTxtNow) : '--'],
       ['SOC', Math.round(soc) + ' %'],
       ['实时功率', f1(cur.storPower) + ' kW（' + (r.status_text || '--') + '）'],
+      ['卫生院负载', f1(cur.loadKw) + ' kW'],
       ['今日充电', f1(td.charge_kwh) + ' 度'],
       ['今日放电', f1(td.discharge_kwh) + ' 度'],
       ['柜内配置', brand],
@@ -1615,6 +1640,8 @@ window.SolarScene = (function () {
       && cur.storPower !== null && cur.storPower !== undefined
       && cur.loadKw !== null && cur.loadKw !== undefined;
     const surplus = known ? (pv + st - load) : null;
+    /* 三个状态位：供电模式分档和负载线配色都用同一组阈值，别各判各的 */
+    const pvOn = pv > .5, chg = st < -.5, dis = st > .5;
     flows.forEach(function (fl) {
       if (fl.kind === 'stor') {
         fl.on = Math.abs(st) > .3;
@@ -1627,6 +1654,13 @@ window.SolarScene = (function () {
         fl.dir = (surplus !== null && surplus > 0) ? 1 : -1;
         fl.tint = (surplus !== null && surplus > 0) ? 0xffb020 : 0x8fd8ff;
         fl.speed = .3 + Math.min(1, Math.abs(surplus || 0) / 100) * 1.8;
+        if (!fl.on) fl.tubeMat.color.setHex(c.idle);
+      } else if (fl.kind === 'load') {
+        /* 负载线：有负载就流、永远流进楼；颜色=谁在供院（跟模式文字对齐） */
+        fl.on = known && load > .3;
+        fl.dir = 1;
+        fl.tint = dis ? 0x3df0a0 : (pvOn ? c.ac : 0x8fd8ff);
+        fl.speed = .3 + Math.min(1, load / 40) * 1.8;
         if (!fl.on) fl.tubeMat.color.setHex(c.idle);
       }
     });
@@ -1649,7 +1683,6 @@ window.SolarScene = (function () {
        浮标和明细卡显示 --（不编数据） */
     let pMode = '', pModeTxt = '', pModeNote = '';
     if (known) {
-      const pvOn = pv > .5, chg = st < -.5, dis = st > .5;
       if (chg && pvOn && surplus > .3) {
         pMode = '①'; pModeTxt = '光伏→储能→卫生院→卖电网';
         pModeNote = '光伏先给储能充，余量供卫生院，再多的卖到电网';
