@@ -30,8 +30,9 @@ window.SolarScene = (function () {
   let _rainM = null;                                 /* 雨滴矩阵复用的临时对象 */
   const cloudMats = [];                              /* 云朵材质（跟主题换色） */
   let panelMats = [], invLabelEl = null, arrLabelEl = null, gridLabelEl = null;
-  /* 当前供电模式（updateEnergyFlows 判定，储能柜明细卡要用；两个函数之间用模块级变量传） */
-  let pModeNow = '', pModeTxtNow = '';
+  /* 当前供电模式（updateEnergyFlows 判定，储能柜浮标 / 明细卡要用；两个函数之间用模块级变量传）。
+     三个量缺一个就全为空串，显示 --（不编数据） */
+  let pModeNow = '', pModeTxtNow = '', pModeNoteNow = '';
   let raf = null, W = 0, H = 0;
   let camHome = null;                                /* 默认机位（按画布宽高比算好后存下来，重置视角复用） */
   const flows = [];                 // 电流光纹：{ map, tubeMat, kind, on, speed }
@@ -40,7 +41,9 @@ window.SolarScene = (function () {
   const cards = {};                 // 设备明细卡：key -> .card3d 元素
   let activeCard = null;
   const clock = { last: 0 };
-  let cur = { power: 0, cap: 110.16, today: null, cloud: 0, precip: 0, isDay: 1, radiation: 0, storPower: null, storSoc: null, loadKw: null };
+  /* pvSeen：光伏这一路这次到底有没有上报。供电模式要靠 pv 判，而 0 kW（夜里 / 真的没出力）
+     和"没数据"必须分开——所以 setPower 传 null 表示"没上报"，别当成 0 */
+  let cur = { power: 0, pvSeen: false, cap: 110.16, today: null, cloud: 0, precip: 0, isDay: 1, radiation: 0, storPower: null, storSoc: null, loadKw: null };
   let theme = 'night';
 
   const THREE_ = () => window.THREE;
@@ -1438,8 +1441,11 @@ window.SolarScene = (function () {
     refreshSkyLight();
   }
 
-  /* 发电功率：驱动组件发光、电流光纹流速、指示灯与浮标 */
+  /* 发电功率：驱动组件发光、电流光纹流速、指示灯与浮标。
+     kw 传 null / undefined = 这一路没上报（solar.js 在电站数据缺失时传 null）——
+     和"真的 0 kW"分开记，供电模式才不会把"没数据"当成"光伏不发电" */
   function setPower(kw, capKw, todayKwh) {
+    cur.pvSeen = kw !== null && kw !== undefined && !isNaN(Number(kw));
     cur.power = Number(kw) || 0;
     if (capKw) cur.cap = Number(capKw) || cur.cap;
     if (todayKwh !== undefined && todayKwh !== null) cur.today = Number(todayKwh);
@@ -1497,6 +1503,10 @@ window.SolarScene = (function () {
     cur.storPower = r.power_kw;
     cur.loadKw = r.load_kw;
     cur.storSoc = r.soc;
+    /* 先算供电模式再渲染：模式依赖刚写进来的储能 / 负载，而下面浮标和明细卡都要用它。
+       原来放在函数末尾，卡片模式行和柜顶浮标就永远慢一拍（同一张卡里功率是新的、
+       模式还是上一轮的），第一轮还会空着 */
+    updateEnergyFlows();
     const soc = Math.max(0, Math.min(100, Number(cur.storSoc) || 0));
     cabSocBars.forEach(function (bar) { bar.scale.y = Math.max(.02, soc / 100); });
     const dis = Number(cur.storPower) > 0, chg = Number(cur.storPower) < 0;
@@ -1517,8 +1527,9 @@ window.SolarScene = (function () {
       ['今日放电', f1(td.discharge_kwh) + ' 度'],
       ['柜内配置', brand],
       ['采样时间', String(r.time || '--').slice(11, 19)]
-    ], pModeNow ? (pModeNow + ' ' + pModeTxtNow) : (Math.abs(Number(cur.storPower) || 0) > .3
-      ? (dis ? '放电中（往系统送电）' : '充电中（把电存起来）') : '待机'));
+    ], pModeNoteNow ? pModeNoteNow                              /* 模式备注：谁给谁供电、关口在送还是在取 */
+      : (Math.abs(Number(cur.storPower) || 0) > .3
+        ? (dis ? '放电中（往系统送电）' : '充电中（把电存起来）') : '待机'));
     /* 铁塔明细：本站卖电/买电都走这条线 */
     const g = st.grid || {};
     setCard('tower', '并网铁塔 · 10kV 上网线路', [
@@ -1528,7 +1539,6 @@ window.SolarScene = (function () {
       ['今日取电（买电）', f1(g.draw_today_kwh) + ' 度'],
       ['累计取电', f1(g.draw_total_kwh) + ' 度']
     ], (Number(g.feed_today_kwh) || 0) > 0 ? '今天已往电网送电' : '暂无送出');
-    updateEnergyFlows();
   }
 
   /* 点击设备 → 弹明细卡（拖拽旋转时不触发） */
@@ -1599,8 +1609,10 @@ window.SolarScene = (function () {
     const pv = Number(cur.power) || 0;
     const st = Number(cur.storPower) || 0;
     const load = Number(cur.loadKw) || 0;
-    /* 储能或负载没上报时不要凭空算关口方向（缺一项就会误报"馈电上网"），显示无交换 */
-    const known = cur.storPower !== null && cur.storPower !== undefined
+    /* 光伏 / 储能 / 负载三路齐了才算关口（缺一项就显示 --：不然会把"没数据"当成 0，
+       既会误报"馈电上网"，也会把供电模式判错） */
+    const known = cur.pvSeen
+      && cur.storPower !== null && cur.storPower !== undefined
       && cur.loadKw !== null && cur.loadKw !== undefined;
     const surplus = known ? (pv + st - load) : null;
     flows.forEach(function (fl) {
@@ -1618,26 +1630,55 @@ window.SolarScene = (function () {
         if (!fl.on) fl.tubeMat.color.setHex(c.idle);
       }
     });
-    /* 洙边的供电模式（现场口径，五个）：
-       ① 光伏 → 储能 → 卫生院 → 卖电网      ② 光伏 → 储能 → 卫生院
-       ③ 电网给储能充电（并供医院）           ④ 全部由电网供电        ⑤ 储能直供卫生院
-       判据：pv 光伏功率、st 储能功率（正=放电/负=充电）、load 负载、surplus 关口净额 */
-    let pMode = '④', pModeTxt = '全部由电网供电', pModeNote = '储能无充放，卫生院由电网供电';
-    if (surplus !== null) {
-      if (st < -0.5 && pv > 0.5) {
-        if (surplus > .3) { pMode = '①'; pModeTxt = '光伏→储能→卫生院→卖电网'; pModeNote = '光伏先给储能充，余量送卫生院，再多的卖到电网'; }
-        else { pMode = '②'; pModeTxt = '光伏→储能→卫生院'; pModeNote = '光伏先给储能充，再供卫生院，不往电网送'; }
-      } else if (st < -0.5) {
-        pMode = '③'; pModeTxt = '电网给储能充电（并供医院）'; pModeNote = '光伏没出力，储能由电网充，卫生院也由电网供';
-      } else if (st > 0.5) {
-        pMode = '⑤'; pModeTxt = '储能直供卫生院'; pModeNote = '储能放电直供卫生院，关口基本不交换';
+    /* 洙边的五种供电模式（现场口径）。判据只有四个量：pv 光伏功率、st 储能功率
+       （正=放电 / 负=充电）、load 卫生院负载，以及推出来的关口净额 surplus = pv + st - load
+       （正=往电网卖、负=从电网买）：
+         ① 光伏→储能→卫生院→卖电网    储能充 + 光伏出力 + 关口在卖电
+         ② 光伏→储能→卫生院           储能充 + 光伏出力 + 不卖电（不够的部分电网补）
+         ③ 电网给储能充电（并供医院）   储能充 + 光伏没出力
+         ④ 全部由电网供电             储能不动 + 光伏没出力
+         ⑤ 储能直供卫生院             储能在放电（放不够时电网补、放多了余电上网）
+       两个容易判错的边角，这里按口径归位：
+         · 储能不动但光伏在出力（充满 / 待机）——原来会掉进 ④ 说"全部由电网供电"，
+           其实光伏正在带负载、甚至还在卖电；现在归 ② 这一族，模式行仍给"光伏自用"口径，
+           备注里写清是光伏直供、余电上网还是电网补差
+         · 储能充放 + 关口在反方向（充的时候电网补、放的时候余电上网）——原来备注一律写
+           "不往电网送 / 关口基本不交换"，现在按 surplus 三个区间分别写
+       三个量有一个没上报就整段留空，浮标和明细卡显示 --（不编数据） */
+    let pMode = '', pModeTxt = '', pModeNote = '';
+    if (known) {
+      const pvOn = pv > .5, chg = st < -.5, dis = st > .5;
+      if (chg && pvOn && surplus > .3) {
+        pMode = '①'; pModeTxt = '光伏→储能→卫生院→卖电网';
+        pModeNote = '光伏先给储能充，余量供卫生院，再多的卖到电网';
+      } else if (chg && pvOn) {
+        pMode = '②'; pModeTxt = '光伏→储能→卫生院';
+        pModeNote = surplus < -.3 ? '光伏先给储能充，缺口由电网补'
+          : '光伏先给储能充，再供卫生院，不往电网送';
+      } else if (chg) {
+        pMode = '③'; pModeTxt = '电网给储能充电（并供医院）';
+        pModeNote = '光伏没出力，储能由电网充，卫生院也由电网供';
+      } else if (dis) {
+        pMode = '⑤'; pModeTxt = '储能直供卫生院';
+        pModeNote = surplus > .3 ? '储能放电供卫生院，富余的往电网送'
+          : surplus < -.3 ? '储能放电供卫生院，缺口由电网补'
+            : '储能放电直供卫生院，关口基本不交换';
+      } else if (pvOn) {
+        pMode = '②'; pModeTxt = '光伏→储能→卫生院';
+        pModeNote = surplus > .3 ? '储能未充放（已满 / 待机），光伏直供卫生院，余电上网'
+          : surplus < -.3 ? '储能未充放（待机），光伏直供卫生院，缺口由电网补'
+            : '储能未充放（待机），光伏直供卫生院，不往电网送';
+      } else {
+        pMode = '④'; pModeTxt = '全部由电网供电';
+        pModeNote = '储能无充放、光伏没出力，全站由电网供';
       }
     }
-    pModeNow = pMode; pModeTxtNow = pModeTxt;      /* 传给储能柜明细卡用 */
+    /* 传给储能柜浮标 / 明细卡（空串表示没数据，显示 --） */
+    pModeNow = pMode; pModeTxtNow = pModeTxt; pModeNoteNow = pModeNote;
     if (gridLabelEl) {
       gridLabelEl.innerHTML = '并网点<i>' + (surplus === null ? '--' : (Math.abs(surplus) > .3
         ? (surplus > 0 ? '馈电上网 ' + surplus.toFixed(1) + ' kW' : '从电网取 ' + Math.abs(surplus).toFixed(1) + ' kW')
-        : '无交换')) + '</i><em>' + pMode + ' ' + pModeTxt + '</em>';
+        : '无交换')) + '</i><em>' + (pMode ? (pMode + ' ' + pModeTxt) : '--') + '</em>';
     }
     if (twrLabelEl) {
       twrLabelEl.innerHTML = '并网铁塔<i>10kV 上网线路</i><em>' + (surplus === null ? '--' : (Math.abs(surplus) > .3

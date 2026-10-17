@@ -645,7 +645,9 @@ window.SolarUI = (function () {
         : '--';
     }
     if (!window.SolarScene || !sceneOn) return;
-    const pKw = sum ? (num(sum.power) || 0) / 1000 : 0;
+    /* 电站数据没拿到时传 null（不是 0）：场景那边要区分"真的 0 kW"和"没上报"——
+       供电模式靠这个判，传 0 会被当成"光伏不发电"，直接把模式判成③/④ */
+    const pKw = sum ? (num(sum.power) || 0) / 1000 : null;
     SolarScene.setPower(pKw, sum ? num(sum.capacity) : null, sum ? kwh(sum.daily_yield) : null);
     if (stor) SolarScene.setStorage(stor);       /* 储能柜：SOC 光柱、充放电光纹、卖电方向 */
     if (wx) SolarScene.setWeather(wx);
