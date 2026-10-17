@@ -531,8 +531,10 @@ window.SolarScene = (function () {
   let winMat = null;
   function buildBuilding() {
     const T = THREE_();
-    const wallMat = regThemeMat(new T.MeshStandardMaterial({ map: wallTexture(theme), roughness: .78, metalness: .1, envMapIntensity: .16 }),
-      { map: function (t) { return wallTexture(t); }, envMapIntensity: .3 });
+    /* 外立面统一按旭日东明那套（现场实况：白色厂房、夜里也是白墙 + 暖窗光）：
+       原来夜里换"深灰蓝墙板 + 青缝线"的科幻皮肤，现在两个主题都用白天那套白墙 */
+    const wallMat = regThemeMat(new T.MeshStandardMaterial({ map: wallTexture('day'), roughness: .78, metalness: .1, envMapIntensity: .16 }),
+      { map: wallTexture('day'), envMapIntensity: .3 });
     const wallTop = regThemeMat(std(0xbcc0b7, { roughness: .92, envMapIntensity: .14 }), { color: 0x22333c, envMapIntensity: .26 });
     const wallBottom = regThemeMat(std(0x545c58, { roughness: .95, envMapIntensity: .12 }), { color: 0x0d1519 });
     const trimMat = regThemeMat(std(0x8d9598, { roughness: .62, metalness: .3 }), { color: 0x2c4048 });     /* 灰带 / 窗框 */
