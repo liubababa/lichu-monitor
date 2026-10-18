@@ -90,10 +90,11 @@ window.SolarScene = (function () {
       particle: { color: 0x0f9e86, opacity: .16 }
     }
   };
-  /* 电流光纹配色：直流（光伏侧）青 / 交流（并网侧）橙；白天浅底用深一档 */
+  /* 电流光纹配色（全站统一口径）：直流=青、交流=橙；状态色 充=蓝 / 放=青绿 / 馈电（卖）=橙 / 取电（买）=蓝。
+     白天浅底整体用深一档，否则浅色底上只剩一片白。下面几条线的颜色都从这里取，别再各写各的 */
   const FLOWC = {
-    night: { dc: 0x2ee6c8, ac: 0xffb020, idle: 0x24444a },
-    day: { dc: 0x0f9e86, ac: 0xd97700, idle: 0x6f8a86 }
+    night: { dc: 0x2ee6c8, ac: 0xffb020, idle: 0x24444a, chg: 0x8fd8ff, dis: 0x3df0a0, sell: 0xffb020, buy: 0x8fd8ff },
+    day: { dc: 0x0f9e86, ac: 0xd97700, idle: 0x6f8a86, chg: 0x1f7fd0, dis: 0x159a63, sell: 0xd97700, buy: 0x1f7fd0 }
   };
 
   /* ---------------- 基础工具 ---------------- */
@@ -1465,10 +1466,13 @@ window.SolarScene = (function () {
       m.emissive.setHex(on ? (day ? 0x14507f : 0x0b3c60) : 0x061528);
     });
     flows.forEach(function (fl) {
-      if (fl.kind !== 'dc' && fl.kind !== 'ac') return;    /* 储能/关口两支线由 updateEnergyFlows 管 */
+      if (fl.kind !== 'dc' && fl.kind !== 'ac') return;    /* 储能/关口/负载支线由 updateEnergyFlows 管 */
       fl.on = on;
       fl.speed = .35 + ratio * 1.9;
-      fl.tubeMat.color.setHex(fl.on ? (fl.kind === 'dc' ? p.dc : p.ac) : p.idle);
+      /* 直流固定青（光伏侧）；光伏支线（ac）的颜色由 updateEnergyFlows 定：
+         充电时用"充=蓝"，直接供出去时用交流橙——这里只负责熄灭时压回 idle 色 */
+      if (fl.kind === 'dc') fl.tubeMat.color.setHex(fl.on ? p.dc : p.idle);
+      else if (!fl.on) fl.tubeMat.color.setHex(p.idle);
     });
     updateEnergyFlows();
     if (invLabelEl) invLabelEl.innerHTML = '逆变器<i>' + cur.power.toFixed(2) + ' kW</i><em>' + (on ? '运行中' : '待机') + '</em>';
@@ -1510,7 +1514,8 @@ window.SolarScene = (function () {
     const soc = Math.max(0, Math.min(100, Number(cur.storSoc) || 0));
     cabSocBars.forEach(function (bar) { bar.scale.y = Math.max(.02, soc / 100); });
     const dis = Number(cur.storPower) > 0, chg = Number(cur.storPower) < 0;
-    const col = chg ? 0x8fd8ff : (dis ? 0x3df0a0 : 0x6f9a94);
+    const fc = FLOWC[theme] || FLOWC.night;
+    const col = chg ? fc.chg : (dis ? fc.dis : 0x6f9a94);   /* 充=蓝 / 放=青绿（跟光纹同一套色） */
     if (cabLed) cabLed.material.color.setHex(col);
     if (cabGlow) cabGlow.material.color.setHex(col);
     const td = st.today || {}, dv = st.device || {};
@@ -1621,18 +1626,23 @@ window.SolarScene = (function () {
     flows.forEach(function (fl) {
       if (fl.kind === 'load') {
         /* 负载支线（储能柜 → 卫生院）：有负载就流，永远从柜子流向楼；
-           颜色=谁在供院（储能放电=青绿 / 光伏出力=橙 / 都没有则从电网取=蓝） */
+           颜色=谁在供院（储能放电=青绿 / 光伏出力=交流橙 / 都没有则从电网取=蓝） */
         fl.on = known && load > .3;
         fl.dir = 1;
-        fl.tint = dis ? 0x3df0a0 : (pvOn ? c.ac : 0x8fd8ff);
+        fl.tint = dis ? c.dis : (pvOn ? c.ac : c.buy);
         fl.speed = .3 + Math.min(1, load / 40) * 1.8;
         if (!fl.on) fl.tubeMat.color.setHex(c.idle);
       } else if (fl.kind === 'grid') {
+        /* 关口支线：卖电=橙 / 从电网取=蓝（取电口同时也是"电网给储能充电"那一路） */
         fl.on = surplus !== null && Math.abs(surplus) > .3;
         fl.dir = (surplus !== null && surplus > 0) ? 1 : -1;
-        fl.tint = (surplus !== null && surplus > 0) ? 0xffb020 : 0x8fd8ff;
+        fl.tint = (surplus !== null && surplus > 0) ? c.sell : c.buy;
         fl.speed = .3 + Math.min(1, Math.abs(surplus || 0) / 100) * 1.8;
         if (!fl.on) fl.tubeMat.color.setHex(c.idle);
+      } else if (fl.kind === 'ac') {
+        /* 光伏支线：在给储能充电时用"充=蓝"（①②档一眼能看出在充），
+           不充电、直接把电送出去时用交流橙（⑥档）；光伏没出力就不上色 */
+        fl.tint = pvOn ? (chg ? c.chg : c.ac) : 0;
       }
     });
     /* 洙边的六种供电模式（现场口径：原来 ①~⑤ 之外的"储能满 + 光伏卖电"单列成 ⑥）。
