@@ -41,8 +41,8 @@ window.GaoteScene3D = (function () {
       sunColor: 0xffffff, sunInt: .85, fillColor: 0x2ee6c8, fillInt: .35, bloom: .62, bloomTh: .82,
       /* 状态色：充电(蓝) / 放电(青) / 待机(灰) */
       stateChg: 0x8fd8ff, stateDis: 0x3df0a0, stateIdle: 0x6f9a94,
-      /* 电流光纹：放电(青) / 充电(蓝) / 待机(暗)；夜里用加色混合发光 */
-      flowDis: 0x3df0a0, flowChg: 0x8fd8ff, flowIdle: 0x16303a, flowBlend: 1,
+      /* 电流光纹：放电(青) / 充电(蓝) / 馈电卖电(橙) / 待机(暗)；夜里用加色混合发光 */
+      flowDis: 0x3df0a0, flowChg: 0x8fd8ff, flowSell: 0xffb020, flowIdle: 0x16303a, flowBlend: 1,
       sky: null
     },
     day: {
@@ -54,7 +54,7 @@ window.GaoteScene3D = (function () {
       /* 白天：充电(蓝) / 放电(绿) / 待机(灰)——与光纹同色系 */
       stateChg: 0x1f7fd0, stateDis: 0x159a63, stateIdle: 0x9aa9a9,
       /* 电流光纹：白天浅底用饱和暖色 + 普通混合，否则会被浅底冲淡 */
-      flowDis: 0x159a63, flowChg: 0x1f7fd0, flowIdle: 0x9aa9a9, flowBlend: 0,
+      flowDis: 0x159a63, flowChg: 0x1f7fd0, flowSell: 0xd97700, flowIdle: 0x9aa9a9, flowBlend: 0,
       /* 天空穹顶的竖直渐变：天顶蓝 → 地平线白雾（相机基本平视，
          所以蓝色要压到接近地平线才看得见，否则整片都是白的） */
       sky: { stops: [[0, '#4f9fd4'], [.36, '#7dbde3'], [.47, '#b6d9ee'], [.52, '#e6eff4'], [1, '#e6eff4']] }
@@ -388,7 +388,14 @@ window.GaoteScene3D = (function () {
       const on = fl.dir !== 0;
       /* flip：几何方向与"充/放"语义相反（如"汇流柜 → 堆"的充电电缆），取色时翻一下 */
       const sd = fl.flip ? -fl.dir : fl.dir;
-      fl.tubeMat.color.setHex(sd > 0 ? p.flowDis : (sd < 0 ? p.flowChg : p.flowIdle));
+      /* 取色分两类（和洙边口径统一）：
+         · 储能电缆：放电=青绿、充电=蓝
+         · 并网线 / 电网→厂房直供线（stack=-1）：送电（馈电上网）=橙、取电=蓝
+         原来两类都用青绿，卖电会被画成"放电"，和洙边的馈电橙对不上 */
+      const col = fl.stack === -1
+        ? (sd > 0 ? p.flowSell : (sd < 0 ? p.flowChg : p.flowIdle))
+        : (sd > 0 ? p.flowDis : (sd < 0 ? p.flowChg : p.flowIdle));
+      fl.tubeMat.color.setHex(col);
       /* 有电流时全亮（夜里再加一层加色发光），待机时暗下来但管线还在 */
       fl.tubeMat.opacity = on ? 1 : (p.flowBlend ? .26 : .42);
       if (on) fl.map.offset.x -= fl.dir * fl.speed * dt * .35;     // 光纹沿电缆滚动
