@@ -1311,7 +1311,15 @@ window.GaoteScene3D = (function () {
         + (emuP === null ? '--' : (emuP < 0 ? '充电中' : (emuP > 0 ? '放电中' : '待机'))) + '</em>';
     }
     const gl = labelEls.grid;
-    if (gl) gl.innerHTML = '<b>并网点</b><i>' + f(GaoteService.val('meter-lems-antireflux', 'meter_tot_p'), 1, ' kW') + '</i>';
+    if (gl) {
+      /* 电表总有功：正=从电网取电、负=往电网送电（和光纹方向同一口径）。
+         原来只显示带符号的数字，正负不直观——直接写"取电 / 馈电"，跟洙边铁塔浮标一致 */
+      const gpv = GaoteService.val('meter-lems-antireflux', 'meter_tot_p');
+      const gnum = (gpv === null || gpv === undefined) ? null : Number(gpv);
+      gl.innerHTML = '<b>并网点</b><i>' + (gnum === null ? '--' : (Math.abs(gnum) > .5
+        ? (gnum > 0 ? '取电 ' + gnum.toFixed(1) + ' kW' : '馈电 ' + Math.abs(gnum).toFixed(1) + ' kW')
+        : '无交换')) + '</i>';
+    }
 
     /* 供电工况（现场三种）：
        ① 电网供电 + 储能充电：电塔既供厂房、又给储能充电（充电时默认这一种）
