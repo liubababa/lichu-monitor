@@ -971,9 +971,12 @@ window.SolarScene = (function () {
     const finMat = regThemeMat(std(0xa7b1b3, { roughness: .4, metalness: .6, envMapIntensity: .5 }), { color: 0x4a5b63, envMapIntensity: .7 });
     /* ---------- 逆变器（挂西墙，正面朝西；按现场要求从左到右看是"逆变器在左侧"） ----------
        现场口径：逆变器不走电线（光伏那一路从屋面直接进柜），也不挂浮标 / 明细卡——
-       跟通信模块一样只留设备本体；位置从 z=1.2 往北挪到 -2.6，和通信模块排在西墙后半段 */
+       跟通信模块一样只留设备本体；位置比原来的 z=1.2 往北挪一段。
+       西墙上能"完全避开窗"的只有两扇一层窗中间那 2m 净墙（柜子连背板 1.28m 宽，
+       塞不进两侧各 1m 的空档），所以取这段净墙最靠北的位置 z=-0.34：
+       北边离一层北窗框 2cm，南边离一层南窗框 0.70m，也不碰腰线与二层窗带 */
     const invG = new T.Group();
-    invG.position.set(-W2 / 2, 0, -2.6);
+    invG.position.set(-W2 / 2, 0, -0.34);
     invG.rotation.y = Math.PI;                    /* 柜体整体转向：仍朝墙外，不和西墙相嵌 */
     invG.add(box(.07, 1.66, 1.28, regThemeMat(std(0x8f9a9c, { roughness: .5, metalness: .5 }), { color: 0x2c3d45 }), .035, 2.18, 0));
     invG.add(box(.36, 1.5, 1.1, dark, .26, 2.18, 0));
