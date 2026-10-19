@@ -3,15 +3,17 @@
  *
  *   两层小楼（白主墙 + 灰腰线 + 大窗，夜里窗户发光）+ 屋顶光伏阵列
  *   （4 排 × 5 块组件级建模：玻璃 / 铝边框 / 导轨 / 竖撑 + 检修走道 + 屋面线槽）
- *   + 墙挂逆变器 + 通信模块（西墙上不挂配电箱/计量箱，线直接进楼）
+ *   + 墙挂逆变器（现场口径：不接线、不挂浮标/明细卡，场上只留设备本体）+ 通信模块
+ *     （西墙上不挂配电箱/计量箱，线直接进楼）
  *   + 储能柜（光储一体柜：柜门、顶部空调、侧面 SOC 光柱；全场电能的汇合点）
  *   + 并网铁塔（格构塔，和旭日东明那座同向；关口线路走地面电缆到塔基终端箱）。
  *
- *   电流光纹分四条链路，方向跟着真实运行状态走（和页面上的六种供电模式一一对应）：
- *     · 直流（青）  屋面组串 → 线槽 → 逆变器
- *     · 光伏支线（橙） 逆变器 → 储能柜北面                       光 → 储
- *     · 关口支线（橙=卖 / 蓝=买） 储能柜西面 ↔ 地面电缆 ↔ 铁塔终端箱  电网 ↔ 储
- *     · 负载支线（青绿=储供 / 橙=光供 / 蓝=电网供） 储能柜东面 → 卫生院（进墙）     储 → 院
+ *   电流光纹分三条链路，方向跟着真实运行状态走（和页面上的六种供电模式一一对应）：
+ *     · 光伏支线（黄） 屋面组串 → 线槽 → 西墙下来 → 储能柜北面             光 → 储
+ *     · 关口支线（黄=卖 / 蓝=买） 储能柜西面 ↔ 地面电缆 ↔ 铁塔终端箱  电网 ↔ 储
+ *     · 负载支线（青绿=储供 / 黄=光供 / 蓝=电网供） 储能柜东面 → 卫生院（进墙）     储 → 院
+ *   线色按"谁在供电"分：光伏黄、电网蓝、储能放电青绿。逆变器不接线（现场口径），
+ *   所以没有单独的直流段——光伏这一路从屋面直接走到柜子，不再在逆变器上断一下。
  *   储能柜是全场汇合点：光伏、电网先给它，它再送卫生院。"光伏给储能""电网给储能"
  *   都是直接进柜的线——原来走墙上配电箱中转，画面上看不出这两路（也正因为中转，
  *   光伏线还从二层窗带的玻璃里穿了过去）
@@ -19,7 +21,7 @@
  *   天气（SolarScene.setWeather）驱动画面：
  *     云量 → 天空/光照亮度、云朵多少；降水 → 雨/雪粒子；
  *     辐照度 → 光照强度、组件反光强度；昼夜（is_day）→ 太阳 / 月亮
- *   光伏功率（SolarScene.setPower）驱动：组件发光、直流/交流光纹流速、浮标
+ *   光伏功率（SolarScene.setPower）驱动：组件发光、光伏光纹流速与颜色
  *   储能数据（SolarScene.setStorage）驱动：柜体 SOC 光柱、指示灯、充放电与买卖电方向
  * ============================================================ */
 window.SolarScene = (function () {
@@ -33,7 +35,7 @@ window.SolarScene = (function () {
   const RAIN_N = 420, rainX = [], rainY = [], rainZ = [], rainV = [];
   let _rainM = null;                                 /* 雨滴矩阵复用的临时对象 */
   const cloudMats = [];                              /* 云朵材质（跟主题换色） */
-  let panelMats = [], invLabelEl = null, arrLabelEl = null;
+  let panelMats = [], arrLabelEl = null;
   /* 当前供电模式（updateEnergyFlows 判定，储能柜浮标 / 明细卡要用；两个函数之间用模块级变量传）。
      三个量缺一个就全为空串，显示 --（不编数据） */
   let pModeNow = '', pModeTxtNow = '', pModeNoteNow = '';
@@ -90,11 +92,13 @@ window.SolarScene = (function () {
       particle: { color: 0x0f9e86, opacity: .16 }
     }
   };
-  /* 电流光纹配色（全站统一口径）：直流=青、交流=橙；状态色 充=蓝 / 放=青绿 / 馈电（卖）=橙 / 取电（买）=蓝。
+  /* 电流光纹配色（全站统一口径，按"谁在供电"上色）：光伏=黄（ac / sell 同色）、电网=蓝（buy）、
+     储能放电=青绿（dis），没出力一律 idle。chg 只给柜体指示灯 / 光晕用（充电中蓝），线路不再拿它上色——
+     充电是从哪来的电就用哪个源的颜色（光伏充就黄、电网充就蓝，看关口那条线）。
      白天浅底整体用深一档，否则浅色底上只剩一片白。下面几条线的颜色都从这里取，别再各写各的 */
   const FLOWC = {
-    night: { dc: 0x2ee6c8, ac: 0xffb020, idle: 0x24444a, chg: 0x8fd8ff, dis: 0x3df0a0, sell: 0xffb020, buy: 0x8fd8ff },
-    day: { dc: 0x0f9e86, ac: 0xd97700, idle: 0x6f8a86, chg: 0x1f7fd0, dis: 0x159a63, sell: 0xd97700, buy: 0x1f7fd0 }
+    night: { ac: 0xffb020, idle: 0x24444a, chg: 0x8fd8ff, dis: 0x3df0a0, sell: 0xffb020, buy: 0x8fd8ff },
+    day: { ac: 0xd97700, idle: 0x6f8a86, chg: 0x1f7fd0, dis: 0x159a63, sell: 0xd97700, buy: 0x1f7fd0 }
   };
 
   /* ---------------- 基础工具 ---------------- */
@@ -965,10 +969,11 @@ window.SolarScene = (function () {
     const steel = regThemeMat(std(0xc6ccce, { roughness: .45, metalness: .55, envMapIntensity: .6 }), { color: 0x46565d, envMapIntensity: .8 });
     const dark = std(0x22333a, { roughness: .5, metalness: .5, envMapIntensity: .5 });
     const finMat = regThemeMat(std(0xa7b1b3, { roughness: .4, metalness: .6, envMapIntensity: .5 }), { color: 0x4a5b63, envMapIntensity: .7 });
-    /* ---------- 逆变器（挂西墙，正面朝西；按现场要求从左到右看是"逆变器在左侧"） ---------- */
+    /* ---------- 逆变器（挂西墙，正面朝西；按现场要求从左到右看是"逆变器在左侧"） ----------
+       现场口径：逆变器不走电线（光伏那一路从屋面直接进柜），也不挂浮标 / 明细卡——
+       跟通信模块一样只留设备本体；位置从 z=1.2 往北挪到 -2.6，和通信模块排在西墙后半段 */
     const invG = new T.Group();
-    invG.userData.key = 'inverter';               /* 点逆变器可弹明细卡 */
-    invG.position.set(-W2 / 2, 0, 1.2);
+    invG.position.set(-W2 / 2, 0, -2.6);
     invG.rotation.y = Math.PI;                    /* 柜体整体转向：仍朝墙外，不和西墙相嵌 */
     invG.add(box(.07, 1.66, 1.28, regThemeMat(std(0x8f9a9c, { roughness: .5, metalness: .5 }), { color: 0x2c3d45 }), .035, 2.18, 0));
     invG.add(box(.36, 1.5, 1.1, dark, .26, 2.18, 0));
@@ -978,8 +983,7 @@ window.SolarScene = (function () {
     invG.add(box(.03, .16, .22, std(0xd9b23a, { roughness: .5 }), .465, 1.95, -.34));             /* 隔离开关 */
     invG.add(box(.02, .1, .4, regThemeMat(std(0xd8dee0, { roughness: .6 }), { color: 0x8f9aa0 }), .465, 1.8, .22));                 /* 铭牌 */
     root.add(invG);
-    invLabelEl = label('逆变器<i>-- kW</i><em>待机</em>', 'tag3d-gt', -W2 / 2 - 1.7, 3.85, 1.2);
-    addCard('inverter', -W2 / 2 - 1.7, 2.9, 1.2);
+    /* 不加浮标、不给明细卡（现场要求，与通信模块一致）：场上只留本体 */
 
     /* ---------- 通信模块（立杆）——同样按现场要求移到左侧 ---------- */
     root.add(cyl(.07, .09, 3.4, steel, -W2 / 2 - 2.2, 1.7, -2.6, 10));
@@ -1000,7 +1004,7 @@ window.SolarScene = (function () {
     [[-8.7, 3.04], [-9.7, 2.97], [-10.7, 2.91]].forEach(function (p) {
       root.add(box(.14, .1, .14, saddleMat, p[0], .17, p[1]));
     });
-    /* 光伏支线（逆变器 → 储能柜）的地面段，两个墩（电缆中心 .29，墩顶 .22） */
+    /* 光伏支线（屋面 → 储能柜）的地面段，两个墩（电缆中心 .29，墩顶 .22） */
     [[-9.2, 1.63], [-10.2, 1.67]].forEach(function (p) {
       root.add(box(.14, .1, .14, saddleMat, p[0], .17, p[1]));
     });
@@ -1064,9 +1068,9 @@ window.SolarScene = (function () {
     }
     return best;
   }
-  /* 关键点取全场最外沿：小楼四角与女儿墙顶、屋上两个浮标、西墙外的逆变器 / 通信模块 /
-     储能柜（含浮标）、铁塔塔脚到塔尖。这样"光伏 → 逆变器 → 储能 / 计量 → 电网"
-     这条线无论画布什么比例都不会被裁头去尾 */
+  /* 关键点取全场最外沿：小楼四角与女儿墙顶、屋上两个浮标、场坪上的储能柜（含浮标）、
+     铁塔塔脚到塔尖。这样"光伏 → 储能 → 电网"这条线无论画布什么比例都不会被裁头去尾。
+     逆变器不挂浮标、且本体缩在楼体轮廓内（西墙上），所以不再单列关键点 */
   function fitStory() {
     const T = THREE_();
     const tgt = new T.Vector3(-11.5, 2.6, 1.0);
@@ -1076,7 +1080,6 @@ window.SolarScene = (function () {
       new T.Vector3(-W2 / 2 - .3, roofY + .5, D2 / 2 + .3), new T.Vector3(-W2 / 2 - .3, 0, -D2 / 2 - .3),
       new T.Vector3(W2 / 2 + .3, 0, -D2 / 2 - .3),
       new T.Vector3(0, roofY + 3.6, 0),                       /* 屋顶阵列浮标 */
-      new T.Vector3(-W2 / 2 - 1.7, 3.85, 1.2),                /* 逆变器浮标 */
       new T.Vector3(CAB_X - 1, 0, CAB_Z + CAB_W / 2),
       new T.Vector3(CAB_X, CAB_H + 3.9, CAB_Z),               /* 储能柜浮标 */
       new T.Vector3(TWR_X, 0, TWR_Z), new T.Vector3(TWR_X, TWR_H + 1.1, TWR_Z),
@@ -1174,12 +1177,11 @@ window.SolarScene = (function () {
     buildWalkers();               /* 院内走动的人（抽象小人） */
 
     /* ---------- 能量流 ---------- */
-    /* 直流侧：屋面线槽 → 女儿墙套管 → 沿西墙下到逆变器顶（逆变器已从东墙挪到左侧）。
-       屋面那两个中间点跟着新屋面收（原 4 / -9.5 是 26m 宽屋面的坐标，现在会悬到墙外） */
-    /* 直流线沿西墙下来时整条二层窗带挡在路上（窗带 z -3.8~3.8、y 4.225~5.975，
-       玻璃还出墙 0.2）——原来那条直接穿玻璃过去了（视觉上是"线进了窗户"）。
-       现在：出女儿墙套管后先在檐口高度往南走，到窗带东头（z≈3.9）再往下，
-       过了窗带下沿（4.225）折回、贴着墙走到逆变器顶 */
+    /* 光伏支线（屋面组串 → 储能柜）：逆变器不接线（现场口径），所以直流段和原来的
+       "逆变器 → 储能柜"合成一条，从屋面一路走到柜子北面，中途不在逆变器上断一下。
+       走线和原来两段一样，只是把中间那个端点接上：
+       屋面线槽 → 女儿墙套管 → 沿西墙下来（二层窗带挡路，先到窗带东头 z≈3.9 再下、
+       过了窗带下沿折回）→ 继续贴墙下到勒脚外 → 场坪上沿电缆墩往西 → 进柜体北面 */
     addFlow([
       new T.Vector3(rowW / 2 + .2, roofY + .40, 0),            /* 起点落在屋面线槽里（原来出槽口 0.1m，悬空） */
       new T.Vector3(3.2, roofY + .42, 0),
@@ -1190,23 +1192,17 @@ window.SolarScene = (function () {
       new T.Vector3(-W2 / 2 - .36, 6.7, 3.6),                  /* 檐口高度往南（窗带上方） */
       new T.Vector3(-W2 / 2 - .36, 5.2, 3.9),                  /* 到窗带东侧再下（z=3.9，避开整条窗带） */
       new T.Vector3(-W2 / 2 - .36, 3.3, 3.9),
-      new T.Vector3(-W2 / 2 - .36, 2.9, 3.4),                  /* 窗带下沿以下折回 */
-      new T.Vector3(-W2 / 2 - .36, 2.88, 1.7),
-      new T.Vector3(-W2 / 2 - .22, 2.95, 1.25)                 /* 进逆变器顶 */
-    ], 'dc', .069);
+      new T.Vector3(-W2 / 2 - .36, 2.9, 3.4),                  /* 窗带下沿以下折回，接着往下走 */
+      new T.Vector3(-W2 / 2 - .36, 2.88, 1.9),
+      new T.Vector3(-W2 / 2 - .4, 2.2, 1.5),                   /* 贴墙下来（出一层侧窗玻璃面 -6.72 以外） */
+      new T.Vector3(-W2 / 2 - .42, 1.0, 1.35),
+      new T.Vector3(-7.4, .38, 1.48),                          /* 越过勒脚外侧 */
+      new T.Vector3(-8.6, .29, 1.60),                          /* 落到场坪（墩上） */
+      new T.Vector3(-10.9, .29, 1.70),                         /* 地面段 */
+      new T.Vector3(CAB_X + .5, .50, CAB_Z - CAB_D / 2 + .12)  /* 进柜体北面 */
+    ], 'pv', .07);
     /* 过墙套管（电缆从套管中间穿出女儿墙，避免穿模） */
     root.add(box(.7, .2, .2, regThemeMat(std(0x9aa5a6, { roughness: .5, metalness: .5 }), { color: 0x3d4d55 }), -W2 / 2 - .06, roofY + .42, .55));
-    /* 光伏支线（逆变器 → 储能柜）：这就是"光伏给储能"的那一条。
-       逆变器在墙上，柜子在场坪上，线从柜底下来、沿地面往西，进柜体北面；
-       原来这路电要绕到西墙配电箱再折回来，画面上看不到"光伏→储能"这一路 */
-    addFlow([
-      new T.Vector3(-W2 / 2 - .4, 1.42, 1.25),                   /* 逆变器底部出线（起点藏在柜底） */
-      new T.Vector3(-W2 / 2 - .42, 1.0, 1.35),                   /* 贴着柜底往下（出一层侧窗玻璃面 -6.72 以外） */
-      new T.Vector3(-7.4, .38, 1.48),                            /* 越过勒脚外侧 */
-      new T.Vector3(-8.6, .29, 1.60),                            /* 落到场坪（墩上） */
-      new T.Vector3(-10.9, .29, 1.70),                           /* 地面段 */
-      new T.Vector3(CAB_X + .5, .50, CAB_Z - CAB_D / 2 + .12)    /* 进柜体北面 */
-    ], 'ac', .07);
     /* 负载支线（储能柜 → 卫生院）：柜体东面出线，落地往东、翻过勒脚，直接进楼
        （西墙根，z≈3.3 那一段；墙上不再挂任何箱子）。柜子是全场汇合点：
        光伏、电网都是先给柜子，再由柜子送医院，所以这条永远是柜 → 楼 */
@@ -1466,16 +1462,14 @@ window.SolarScene = (function () {
       m.emissive.setHex(on ? (day ? 0x14507f : 0x0b3c60) : 0x061528);
     });
     flows.forEach(function (fl) {
-      if (fl.kind !== 'dc' && fl.kind !== 'ac') return;    /* 储能/关口/负载支线由 updateEnergyFlows 管 */
+      if (fl.kind !== 'pv') return;                        /* 储能/关口/负载支线由 updateEnergyFlows 管 */
       fl.on = on;
       fl.speed = .35 + ratio * 1.9;
-      /* 直流固定青（光伏侧）；光伏支线（ac）的颜色由 updateEnergyFlows 定：
-         充电时用"充=蓝"，直接供出去时用交流橙——这里只负责熄灭时压回 idle 色 */
-      if (fl.kind === 'dc') fl.tubeMat.color.setHex(fl.on ? p.dc : p.idle);
-      else if (!fl.on) fl.tubeMat.color.setHex(p.idle);
+      /* 颜色（光伏出力=黄）由 updateEnergyFlows 定；这里只负责没出力时压回 idle 色。
+         光伏线只被光伏自己驱动：不发（夜里 / 没太阳）就不动、不上色——电网往里送电时它不亮 */
+      if (!fl.on) fl.tubeMat.color.setHex(p.idle);
     });
     updateEnergyFlows();
-    if (invLabelEl) invLabelEl.innerHTML = '逆变器<i>' + cur.power.toFixed(2) + ' kW</i><em>' + (on ? '运行中' : '待机') + '</em>';
     if (arrLabelEl) arrLabelEl.innerHTML = '屋顶光伏阵列<i>' + cur.power.toFixed(2) + ' kW</i><em>今日 '
       + (cur.today === null ? '--' : cur.today.toFixed(1)) + ' 度</em>';
     /* 关口功率 / 供电模式由 updateEnergyFlows() 统一刷新（它知道储能与负载） */
@@ -1489,13 +1483,7 @@ window.SolarScene = (function () {
       ['等效利用小时', hoursTxt],
       ['组件排布', rowZs.length + ' 排 × ' + COLS + ' 块 · 倾角 28°']
     ], on ? ('发电中 · 出力 ' + (ratio * 100).toFixed(0) + '%') : '当前无出力');
-    setCard('inverter', '逆变器 · SG100CX-P2-CN', [
-      ['有功功率', cur.power.toFixed(2) + ' kW'],
-      ['运行状态', on ? '运行中（并网）' : '待机'],
-      ['今日发电', todayTxt],
-      ['安装位置', '卫生院西墙外侧'],
-      ['接线', '屋顶组串 → 屋面线槽 → 逆变器']
-    ], on ? '并网发电中' : '无输出');
+    /* 逆变器按现场口径只留本体：不挂浮标、不给明细卡（原来那张卡上的功率就是本卡"当前功率"） */
     /* 并网点（计量箱）已去掉：关口功率 / 方向在铁塔浮标上看，供电模式看储能柜浮标和明细卡 */
   }
 
@@ -1605,9 +1593,8 @@ window.SolarScene = (function () {
     }
   }
 
-  /* 光伏 / 储能 / 负载三者决定两条支线的方向与颜色：
-     储能充放：充电流进柜（蓝）、放电流出柜（青绿）
-     关口：发得多就往外卖（橙，往电网去）、不够就从电网取（蓝）
+  /* 光伏 / 储能 / 负载三者决定三条支线的方向与颜色。线色一律按"谁在供电"（现场口径）：
+     光伏出力=黄 / 从电网取电=蓝 / 储能放电=青绿 / 卖电=黄（卖的就是光伏余电）
      口径核对（2026-10 用日升云实时数据验过）：日升云的 power_kw 正=放电、负=充电；
      现场数字也对得上——负载 10.2 = 电池放 9.2 + 电网来 0.7，只有"正=放电"成立 */
   function updateEnergyFlows() {
@@ -1626,23 +1613,23 @@ window.SolarScene = (function () {
     flows.forEach(function (fl) {
       if (fl.kind === 'load') {
         /* 负载支线（储能柜 → 卫生院）：有负载就流，永远从柜子流向楼；
-           颜色=谁在供院（储能放电=青绿 / 光伏出力=交流橙 / 都没有则从电网取=蓝） */
+           颜色=谁在供院（储能放电=青绿 / 光伏出力=黄 / 都没有则从电网取=蓝） */
         fl.on = known && load > .3;
         fl.dir = 1;
         fl.tint = dis ? c.dis : (pvOn ? c.ac : c.buy);
         fl.speed = .3 + Math.min(1, load / 40) * 1.8;
         if (!fl.on) fl.tubeMat.color.setHex(c.idle);
       } else if (fl.kind === 'grid') {
-        /* 关口支线：卖电=橙 / 从电网取=蓝（取电口同时也是"电网给储能充电"那一路） */
+        /* 关口支线：卖电=黄 / 从电网取=蓝（取电口同时也是"电网给储能充电"那一路） */
         fl.on = surplus !== null && Math.abs(surplus) > .3;
         fl.dir = (surplus !== null && surplus > 0) ? 1 : -1;
         fl.tint = (surplus !== null && surplus > 0) ? c.sell : c.buy;
         fl.speed = .3 + Math.min(1, Math.abs(surplus || 0) / 100) * 1.8;
         if (!fl.on) fl.tubeMat.color.setHex(c.idle);
-      } else if (fl.kind === 'ac') {
-        /* 光伏支线：在给储能充电时用"充=蓝"（①②档一眼能看出在充），
-           不充电、直接把电送出去时用交流橙（⑥档）；光伏没出力就不上色 */
-        fl.tint = pvOn ? (chg ? c.chg : c.ac) : 0;
+      } else if (fl.kind === 'pv') {
+        /* 光伏支线（屋面 → 储能柜）：光伏出力就上光伏黄——给储能充、供卫生院、卖电网都是这一路电，
+           不再按"在充电"换成蓝色；没太阳就不上色（熄火由 setPower 压回 idle） */
+        fl.tint = pvOn ? c.ac : 0;
       }
     });
     /* 洙边的六种供电模式（现场口径：原来 ①~⑤ 之外的"储能满 + 光伏卖电"单列成 ⑥）。
@@ -1656,6 +1643,8 @@ window.SolarScene = (function () {
          ⑤ 储能直供卫生院             储能在放电（放不够时电网补、放多了余电上网）
          ⑥ 光伏直供卫生院             储能不动（充满 / 待机）+ 光伏在出力：
                                       光伏自己带卫生院，多余的上不上网写在备注里
+       线色跟着"谁在供电"走，六档共用一套：光伏支线出力就黄（①②⑥）；负载线按供院的那一路
+       上色——储放=青绿（⑤）、有光=黄（①②⑥）、纯电网=蓝（③④）；关口线卖=黄、取=蓝。
        储能这一路的状态（充 / 放 / 不动）先分家：不动时再看光伏出不出力——
        出力就是 ⑥，不出力才是 ④。⑥ 和 ⑤ 一样只报"电从哪来"，
        关口三个区间（余电上网 / 缺口由电网补 / 基本不交换）都写在备注里
