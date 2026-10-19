@@ -1277,7 +1277,11 @@ window.GaoteScene3D = (function () {
           ? (cur < -0.5 ? 1 : 0)
           : (cur > 0.5 ? 1 : 0);
         fl.flip = !!fl.pcs;                      /* 颜色语义仍按充/放区分 */
-        fl.speed = Math.min(4, Math.abs(cur) / 80);
+        /* 速度按"该柜功率"算（电压 × 电流 = kW），和并网线同一个量纲：
+           原来这边拿电流 A÷80、并网线拿 kW÷80，单位不一致，两堆之间、堆与并网线之间的
+           流速对不上。再加 0.25 的基础速度，小功率时也不会看着像卡住 */
+        const vol = (d && d.vol !== null && d.vol !== undefined && Number(d.vol) > 100) ? Number(d.vol) : 750;
+        fl.speed = .25 + Math.min(1, Math.abs(vol * cur) / 1000 / 100) * 1.6;
       } else if (fl.stack === -1) {
         /* 并网线：优先按关口表功率（正 = 从电网取电）。表没上报时按工况兜底——
            充电(①②) = 电塔往站内送电（朝站内流）；放电(③) = 关口基本不交换，不流动 */
@@ -1286,10 +1290,10 @@ window.GaoteScene3D = (function () {
         const gv = hasGp ? Number(gp) : 0;
         if (hasGp) {
           fl.dir = gv > 0.5 ? -1 : (gv < -0.5 ? 1 : 0);
-          fl.speed = Math.min(4, Math.abs(gv) / 80);
+          fl.speed = .25 + Math.min(1, Math.abs(gv) / 100) * 1.6;
         } else {
           fl.dir = pNum < -0.5 ? -1 : 0;
-          fl.speed = Math.min(4, Math.abs(pNum) / 80);
+          fl.speed = .25 + Math.min(1, Math.abs(pNum) / 100) * 1.6;
         }
       }
     }
