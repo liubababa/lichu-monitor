@@ -1342,13 +1342,20 @@ window.GaoteScene3D = (function () {
         powerModeNote = (mv === null ? '电塔供厂房并给储能充电（关口表暂无数据）' : '电塔供厂房，同时给储能充电');
       }
     } else if (disNow) {
-      powerMode = '③'; powerModeTxt = '储能单独供厂房';
-      /* ③ 只说明"放电供厂房"这一件事；关口实际在送还是在取，按表值分三种写清楚，
-         不能一律写"基本不交换"（放得多会往电网送、放不够要电网补） */
-      powerModeNote = (mv === null) ? '储能放电直供厂房（关口表暂无数据）'
-        : (mv < -1.5 ? '储能放电供厂房，余电往电网送'
-          : (mv > 1.5 ? '储能放电供厂房，缺口由电网补'
-            : '储能放电直供厂房，关口基本不交换'));
+      /* ③ 只说明"储能放电"这一件事：电网同时在送还是在取，决定能不能叫"单独供厂房"。
+         现场常见储能放 200、关口取 160 这种"储能 + 电网一起供"的工况，
+         一律写"单独"就错了；按关口方向分三档写 */
+      const tol = Math.max(1.5, Math.abs(pNum) * .08);
+      powerMode = '③';
+      if (mv === null) {
+        powerModeTxt = '储能单独供厂房'; powerModeNote = '储能放电直供厂房（关口表暂无数据）';
+      } else if (mv > tol) {
+        powerModeTxt = '储能 + 电网供厂房'; powerModeNote = '储能放电供厂房，缺口由电网补';
+      } else if (mv < -tol) {
+        powerModeTxt = '储能供厂房 + 余电上网'; powerModeNote = '储能放电供厂房，余电往电网送';
+      } else {
+        powerModeTxt = '储能单独供厂房'; powerModeNote = '储能放电直供厂房，关口基本不交换';
+      }
     }
     /* 厂房灯（呼吸灯的基准亮度在这里算，亮暗起伏在 loop 里做）：
        窗格暖光长亮，工厂受电（放电供电）时再亮一档；改进版整体压暗一档，避免过曝 */
