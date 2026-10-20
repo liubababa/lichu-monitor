@@ -31,6 +31,28 @@ window.SolarUI = (function () {
   let sum = null, devices = [], trend = [], wx = null, sceneOn = true;
   let stor = null, storDevs = [], storTrend = [], revTrend = [], powTrend = [];
   let storChart = null, revChart = null, powChart = null;
+  /* 演示工况：'' = 实时；其余值见 DEMO。只替换喂给三维场景的那份数据，真实数据链路不动 */
+  let demo = '';
+
+  /* 几种典型形态的模拟数据（现场演示用；数值按日升云口径：power_kw 正=放电 / 负=充电） */
+  const DEMO = {
+    charge: {
+      pv: 40, st: -25, load: 15, soc: 72, status: '充电中',
+      note: '光伏 40kW 给储能充 25kW，余量 15kW 供卫生院，不卖电'
+    },
+    hospital: {
+      pv: 15, st: 0, load: 15, soc: 98, status: '待机',
+      note: '储能已满、待机，光伏 15kW 直接供卫生院'
+    },
+    sell: {
+      pv: 55, st: -15, load: 12, soc: 66, status: '充电中',
+      note: '光伏 55kW 先给储能充 15kW、供院 12kW，余 28kW 卖电网'
+    },
+    grid: {
+      pv: 0, st: 0, load: 12, soc: 55, status: '待机',
+      note: '光伏没出力，全站 12kW 由电网供'
+    }
+  };
 
   /* ---------------- 小工具 ---------------- */
   const num = v => (v === null || v === undefined || v === '' || isNaN(Number(v))) ? null : Number(v);
@@ -636,6 +658,28 @@ window.SolarUI = (function () {
       + row('日出 / 日落', (wx.sunrise || '--') + ' / ' + (wx.sunset || '--'));
   }
 
+  /* 演示工况：把模拟数据按"日升云实时 + 天气"的口径喂给三维场景（不碰真实数据链路） */
+  function pushDemo(d) {
+    const day = isDay();
+    SolarScene.setWeather({
+      cloud: 10, precip: 0, is_day: day ? 1 : 0, radiation: day ? 820 : 0,
+      temp: 24, text: '晴'
+    });
+    SolarScene.setPower(d.pv, 110.16, 150);
+    SolarScene.setStorage({
+      realtime: {
+        power_kw: d.st, load_kw: d.load, soc: d.soc,
+        time: new Date().toISOString().slice(0, 19).replace('T', ' '),
+        status_text: d.status
+      },
+      today: { charge_kwh: 38.5, discharge_kwh: 9.2 },
+      device: { bcu_brand: 'SYL', pcs_brand: 'EJ' },
+      grid: { feed_today_kwh: 12.4, feed_total_kwh: 9820, draw_today_kwh: 3.1, draw_total_kwh: 1450 }
+    });
+    const meta = byId('slSceneMeta');
+    if (meta) meta.textContent = '演示 · ' + d.note;
+  }
+
   /* 把实时功率与天气推给三维场景 */
   function pushScene() {
     const meta = byId('slSceneMeta');
@@ -645,6 +689,8 @@ window.SolarUI = (function () {
         : '--';
     }
     if (!window.SolarScene || !sceneOn) return;
+    /* 选了演示工况就喂模拟数据，别再拿实时数据覆盖它 */
+    if (demo && DEMO[demo]) { pushDemo(DEMO[demo]); return; }
     /* 电站数据没拿到时传 null（不是 0）：场景那边要区分"真的 0 kW"和"没上报"——
        供电模式靠这个判，传 0 会被当成"光伏不发电"，直接把模式判成③/④ */
     const pKw = sum ? (num(sum.power) || 0) / 1000 : null;
@@ -817,6 +863,15 @@ window.SolarUI = (function () {
     });
     const bs = byId('slBtnReset');
     if (bs) bs.addEventListener('click', function () { if (window.SolarScene) SolarScene.resetView(); });
+    /* 演示工况下拉：选一个就用模拟数据把那种形态演出来，切回"实时"恢复真实数据 */
+    const bd = byId('slDemo');
+    if (bd) {
+      bd.addEventListener('change', function () {
+        demo = DEMO[bd.value] ? bd.value : '';
+        bd.classList.toggle('on', !!demo);
+        pushScene();
+      });
+    }
     /* 右栏滑出/收起时重算图表尺寸（否则宽度变了没重画，会和下面的板块叠在一起） */
     const right = byId('slRight');
     if (right) {
@@ -825,9 +880,13 @@ window.SolarUI = (function () {
       });
       right.addEventListener('transitionend', function () { if (chart) chart.resize(); });
     }
-    /* 主题切换时重画坐标轴颜色 */
-    new MutationObserver(function () { setTimeout(function () { applyTheme(); if (chart) chart.resize(); }, 60); })
-      .observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    /* 主题切换时重画坐标轴颜色；演示工况下顺带按新主题重推一次（白天/夜晚的晴/夜天气） */
+    new MutationObserver(function () {
+      setTimeout(function () {
+        applyTheme(); if (chart) chart.resize();
+        if (demo) pushScene();
+      }, 60);
+    }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
     window.addEventListener('resize', function () { if (chart) chart.resize(); });
   }
 

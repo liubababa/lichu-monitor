@@ -6,7 +6,7 @@
 <title>力储未来能源综合管理系统</title>
 <link rel="icon" type="image/png" sizes="64x64" href="libs/logo-64.png?v=20260923a"/>
 <link rel="apple-touch-icon" href="libs/logo-180.png?v=20260923a"/>
-<link rel="stylesheet" href="css/style.css?v=20261016n"/>
+<link rel="stylesheet" href="css/style.css?v=20261020r"/>
 <script>
 /* 加载期错误收集（便于排查依赖/脚本问题） */
 window.__loadErrs = [];
@@ -317,6 +317,13 @@ window.addEventListener('error', function (e) {
         <div class="station-chip">电站名称：<b id="slStation">--</b></div>
       </div>
       <div class="sh-right">
+        <select class="ghost-btn" id="slDemo" title="演示工况：用模拟数据把几种典型形态演一遍（只影响三维场景，不动真实数据）">
+          <option value="">实时</option>
+          <option value="charge">演示：光伏充储能</option>
+          <option value="hospital">演示：光伏供卫生院</option>
+          <option value="sell">演示：光伏卖电</option>
+          <option value="grid">演示：电网供电</option>
+        </select>
         <button class="ghost-btn" id="slBtnLabels" title="显示 / 隐藏设备浮标">标签</button>
         <button class="ghost-btn" id="slBtnRotate" title="自动旋转开 / 关">旋转</button>
         <button class="ghost-btn" id="slBtnReset" title="重置视角">重置视角</button>
@@ -324,7 +331,7 @@ window.addEventListener('error', function (e) {
       </div>
     </div>
     <div id="slAlarmBar" class="alarm ok"><span class="dot"></span><span id="slAlarmText">天气读取中…</span></div>
-    <div class="scene-tip">拖拽旋转 · 双指 / 滚轮缩放 · 点阵列 / 逆变器 / 计量箱看明细 · 点右侧竖边看数据面板</div>
+    <div class="scene-tip">拖拽旋转 · 双指 / 滚轮缩放 · 点阵列 / 储能柜 / 铁塔看明细 · 点右侧竖边看数据面板</div>
   </section>
 
   <aside id="slRight">
