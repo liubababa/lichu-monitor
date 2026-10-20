@@ -331,21 +331,6 @@ window.SolarScene = (function () {
       g.fillStyle = night ? 'rgba(46,230,200,.05)' : 'rgba(120,138,140,.10)'; g.fillRect(0, 0, w, 10);
     }, 512, 256);
   }
-  /* 门头院名牌（单独一块板贴在大门上方） */
-  function namePlateTexture() {
-    return tex(function (g, w, h) {
-      g.fillStyle = '#eef4f2'; g.fillRect(0, 0, w, h);
-      g.strokeStyle = '#9fb0b4'; g.lineWidth = 4; g.strokeRect(3, 3, w - 6, h - 6);
-      g.fillStyle = '#1d6ab0';
-      g.font = 'bold 46px "Microsoft YaHei", sans-serif';
-      g.textAlign = 'center'; g.textBaseline = 'middle';
-      g.fillText('洙边卫生院', w / 2 - 26, h / 2 + 2);
-      g.fillStyle = '#d33a2c';                                       /* 红十字 */
-      g.fillRect(w / 2 + 108, h / 2 - 24, 14, 48);
-      g.fillRect(w / 2 + 88, h / 2 - 7, 54, 14);
-    }, 512, 128, 2);
-  }
-
   /* 水泥地坪（按白天新设计的 Demo 改：原来是发光网格地台，现在铺成真水泥地）
      细砂眼 + 少量小色差 + 抹痕：远看近看都像水泥，不是一块平色板 */
   function concreteTexture(t) {
@@ -627,8 +612,7 @@ window.SolarScene = (function () {
       emissive: new T.Color(0xfff3e2), emissiveIntensity: .16
     }), { color: 0x0e1a1f, emissive: 0xeef4f2, emissiveIntensity: .58 });
     /* 一整层的大窗带：深色窗带里嵌 n 扇玻璃，中间用竖挺分开。
-       体量压到 13×8×6.2 后窗带往上提 20cm（下沿 4.225），门楣（顶 3.2）与院名牌
-       （3.27~4.17）之间那点空档才够用，窗带下沿不会压到名牌 */
+       体量压到 13×8×6.2 后窗带往上提 20cm（下沿 4.225），门楣（顶 3.2）上方留出立面空档 */
     const bandH = 1.75, bandD = .24, winY = FLOOR_Y + .3 + 1.7;
     function winBand(alongX, len, n, cx, cz, ww) {
       const inner = len - .7, wwv = ww || 1.6;
@@ -655,7 +639,7 @@ window.SolarScene = (function () {
         root.add(box(.2, 1.1, 1.7, winMat, sx * (W2 / 2 + .07), 1.85, oz));
       });
     });
-    /* 正面大门：门套 + 双开门 + 雨棚 + 台阶 + 院名牌 */
+    /* 正面大门：门套 + 双开门 + 雨棚 + 台阶（院名牌按现场要求已去掉） */
     const dz = D2 / 2;
     root.add(box(3.4, 2.9, .24, regThemeMat(std(0xcfd6d2, { roughness: .7, envMapIntensity: .16 }), { color: 0x22333c, envMapIntensity: .3 }), 0, 1.75, dz + .04));
     const doorMat = regThemeMat(std(0x31505c, { roughness: .45, metalness: .35, envMapIntensity: .4 }), { color: 0x14262e, envMapIntensity: .7 });
@@ -672,12 +656,7 @@ window.SolarScene = (function () {
     root.add(box(2.6, 2.28, .03, regThemeMat(new T.MeshBasicMaterial({ color: 0x4e4b40 }),
       { color: 0x4e4b40 }, { color: 0x8e8a7e }), 0, 1.5, dz + .2));                          /* 门里透出的光 */
     root.add(box(2.2, .22, .1, regThemeMat(std(0xbcd6dd, { roughness: .3, metalness: .3 }), { color: 0x16333c, envMapIntensity: .8 }), 0, 2.62, dz + .16));   /* 门头玻璃 */
-    const plate = new T.Mesh(new T.PlaneGeometry(3.6, .9),
-      new T.MeshBasicMaterial({ map: namePlateTexture(), transparent: true }));
-    /* 院名牌往外挪 10cm、并卡在门楣（顶 3.2）与二层窗带（底 4.225）之间的空档：
-       原来贴在 z=8.16 与窗带前脸完全共面，远看会深度闪烁 */
-    plate.position.set(0, 3.72, dz + .26);
-    root.add(plate);
+    /* 院名牌（"洙边卫生院"+ 红十字）按现场要求去掉，门楣上面这块留空 */
     const aw = regThemeMat(std(0xc3c8c2, { roughness: .8, envMapIntensity: .16 }), { color: 0x1c2a31, envMapIntensity: .26 });
     const awPost = regThemeMat(std(0xadb2ab, { roughness: .8 }), { color: 0x18242a });
     root.add(box(5.4, .16, 2.0, aw, 0, H2 - .35, dz + 1.0));
