@@ -477,12 +477,12 @@ window.SolarScene = (function () {
      柜门朝南（正对院子和默认机位）。柜子现在只挂一条储能支线（北面进线，见能量流） */
   const CAB_X = -(W2 / 2 + 6), CAB_Z = 2.7, CAB_W = 2.7, CAB_H = 2.6, CAB_D = 1.7;
   /* 关口地面电缆的墩线：从汇流点 F 绕到塔基那一段用这条弧线算。
-     起点取柜子西侧那一点（z 1.95），终点是塔基（TWR_Z 2.7）；
-     中间向南弓 0.35m——实铺的电缆不会拉得像尺子一样直，带一点自然弧线；
+     起点取柜子西侧那一点（x -16.2 / z 1.95），终点是塔基终端箱（TWR_WIRE_X / TWR_Z 2.7）；
+     中间向南弓 0.30m——实铺的电缆不会拉得像尺子一样直，带一点自然弧线；
      墩子和电缆点都用同一条弧线算，线才不会离开墩子 */
-  const GRD_X0 = -15.6, GRD_Z0 = 1.95, GRD_BOW = .35;
+  const GRD_X0 = -16.2, GRD_Z0 = 1.95, GRD_BOW = .3;
   function grdPoint(t) {
-    return [GRD_X0 + (-28.6 - GRD_X0) * t, GRD_Z0 + (TWR_Z - GRD_Z0) * t + Math.sin(Math.PI * t) * GRD_BOW];
+    return [GRD_X0 + (TWR_WIRE_X - GRD_X0) * t, GRD_Z0 + (TWR_Z - GRD_Z0) * t + Math.sin(Math.PI * t) * GRD_BOW];
   }
   /* 汇流点 F：光伏从屋面下来在场坪上的落点，三条支线都从这里分出去
      （储能柜 / 卫生院 / 铁塔）。取在楼与储能柜之间的场坪上、柜子基础台以东一点，
@@ -852,8 +852,12 @@ window.SolarScene = (function () {
      本站储能要往电网卖电，线路上立一座塔比排几根电杆更像回事。
      方向和旭日东明那座塔一致：不旋转，横担沿 ±x（东西向挑出）、线路沿 ±z 穿塔。
      进线走地面电缆（从汇流点 F 绕到塔基终端箱），塔上不架空中导线——按现场观感，天上不留电线。
-     位置：按现场要求往北挪到和储能柜同一排（z 2.7），场上设备连成一条线，不再杵在院子前沿。 ---------------- */
-  const TWR_X = -31, TWR_Z = 2.7, TWR_H = 10.4;
+     位置：按现场要求往北挪到和储能柜同一排（z 2.7）、并往储能柜靠（x -22，原来 -31 太靠左）——
+     挪完塔基离储能柜基础台约 6.4m，和"柜子→楼"那段间距大致相当，场上设备连成一条线。
+     塔基终端箱和落到塔基的电缆都跟着 TWR_X 走。 ---------------- */
+  const TWR_X = -22, TWR_Z = 2.7, TWR_H = 10.4;
+  const TBOX_X = TWR_X + 2.25;                 /* 塔基旁的电缆终端箱（关口线、电网直供线都接在这里） */
+  const TWR_WIRE_X = TWR_X + 2.4;              /* 地面电缆落到终端箱的那一点 */
   let twrLabelEl = null;
   function buildTower() {
     const T = THREE_();
@@ -1003,12 +1007,12 @@ window.SolarScene = (function () {
     root.add(cyl(.022, .022, .8, steel, -W2 / 2 - 2.2, 3.76, -2.6, 6));
     /* 通信模块不加浮标（现场要求）：杆子本身留着，不再挂文字 */
 
-    /* 关口电缆走地面：储能柜西侧落地 → 沿场坪（混凝土电缆墩托着）→ 铁塔基座的电缆终端箱。
+    /* 关口电缆走地面：从汇流点 F 绕到塔基终端箱，沿弧线敷设（混凝土电缆墩托着）。
        原来这里是「电杆 + 三跨空中导线」，按现场观感改成地面敷设，空中不再有电线 */
     const G_CY = .36;                                             /* 电缆中心离场坪的高度 */
     const saddleMat = std(0x5a6a70, { roughness: .85, envMapIntensity: .2 });
-    for (let i = 1; i <= 6; i++) {                                /* 电缆墩：沿弧线每 ~1.9m 一个 */
-      const p = grdPoint(i / 7);
+    for (let i = 1; i <= 4; i++) {                                /* 电缆墩：沿弧线每 ~1.5m 一个 */
+      const p = grdPoint(i / 5);
       root.add(box(.16, .12, .16, saddleMat, p[0], .24, p[1]));
     }
     /* 负载支线（汇流点 F → 卫生院）斜穿院子那段，托三个墩（墩顶 0.22，电缆中心 0.28） */
@@ -1020,18 +1024,18 @@ window.SolarScene = (function () {
       root.add(box(.14, .1, .14, saddleMat, p[0], .17, p[1]));
     });
     /* 关口支线从 F 贴柜子北侧绕出去那段，再托两个墩（过了柜子西沿就上弧线墩） */
-    [[-12.2, 1.55], [-13.9, 1.61]].forEach(function (p) {
+    [[-12.2, 1.55], [-14.1, 1.61], [-15.3, 1.74]].forEach(function (p) {
       root.add(box(.14, .1, .14, saddleMat, p[0], .17, p[1]));
     });
     /* 电网直供线（塔基 → 卫生院）沿院子前沿那段，托五个墩 */
-    [[-26.5, 3.22], [-21.0, 3.63], [-16.5, 3.84], [-12.8, 3.87], [-9.6, 3.80]].forEach(function (p) {
+    [[-19.4, 3.28], [-17.3, 3.62], [-14.6, 3.87], [-11.8, 3.87], [-9.4, 3.79]].forEach(function (p) {
       root.add(box(.14, .1, .14, saddleMat, p[0], .17, p[1]));
     });
     /* 汇流点 F：三支交汇处放一个稍大的墩当"落点"（不摆任何箱子） */
     root.add(box(.22, .1, .22, saddleMat, F_X, .17, F_Z));
     /* 铁塔基座旁的电缆终端箱（地面电缆从这里进塔） */
     const tbox = new T.Group();
-    tbox.position.set(-28.75, 0, TWR_Z);
+    tbox.position.set(TBOX_X, 0, TWR_Z);
     tbox.add(box(.72, .1, .62, std(0x2b3a42, { roughness: .9 }), 0, .23, 0));
     tbox.add(box(.6, .72, .5, regThemeMat(std(0xb9c2c4, { roughness: .5, metalness: .35 }), { color: 0x33454d }), 0, .64, 0));
     tbox.add(box(.66, .06, .56, std(0x2b3a42, { roughness: .6, metalness: .4 }), 0, 1.03, 0));
@@ -1252,21 +1256,21 @@ window.SolarScene = (function () {
     addFlow([
       new T.Vector3(F_X, .29, F_Z),
       new T.Vector3(-12.2, .28, 1.55),                           /* 贴柜子北侧过（柜子基础台 z 1.73 起） */
-      new T.Vector3(-14.2, .30, 1.62),
-      new T.Vector3(-15.35, .33, 1.80),
+      new T.Vector3(-14.4, .30, 1.62),
+      new T.Vector3(-15.9, .33, 1.80),
       new T.Vector3(GRD_X0, .36, GRD_Z0),                        /* 落到墩线上 */
       new T.Vector3(grdPoint(.25)[0], .36, grdPoint(.25)[1]),    /* 沿弧线（和电缆墩同一条线） */
       new T.Vector3(grdPoint(.5)[0], .36, grdPoint(.5)[1]),
       new T.Vector3(grdPoint(.75)[0], .36, grdPoint(.75)[1]),
-      new T.Vector3(-28.6, .38, TWR_Z)                           /* 铁塔基座终端箱 */
+      new T.Vector3(TWR_WIRE_X, .38, TWR_Z)                      /* 铁塔基座终端箱 */
     ], 'grid', .068);
     /* 电网直供线（铁塔 → 卫生院）：现场口径"电网拉一条电线直接到卫生院，作为电网供电"。
        从塔基终端箱出来、从储能柜南侧绕过去（柜子基础台南沿 z 3.76），沿院子前沿进西墙根，
        和负载支线并排进楼（进线点在南窗带以南 z≈3.7，不压窗）。只有从电网取电时才亮（蓝）。 */
     addFlow([
-      new T.Vector3(-28.9, .38, 3.00),                           /* 塔基终端箱南侧出线 */
-      new T.Vector3(-24.0, .36, 3.45),
-      new T.Vector3(-18.5, .34, 3.80),
+      new T.Vector3(TBOX_X - .15, .38, 3.00),                    /* 塔基终端箱南侧出线 */
+      new T.Vector3(-18.6, .36, 3.35),
+      new T.Vector3(-16.8, .34, 3.68),
       new T.Vector3(-14.6, .32, 3.88),                           /* 从柜子南侧过（出基础台外沿 0.12） */
       new T.Vector3(-11.0, .30, 3.85),
       new T.Vector3(-8.4, .29, 3.74),
