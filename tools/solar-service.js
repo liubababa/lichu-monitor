@@ -7,11 +7,16 @@
  *   3) 对外接口（给页面用，字段统一）：
  *        GET /solar/summary      当日/累计发电、实时功率、装机、状态、更新时间
  *        GET /solar/devices      设备列表（类型/SN/状态/关键指标）
- *        GET /solar/trend        功率曲线（today | yesterday | days3，interval 分钟）
+ *        GET /solar/trend        功率曲线（today | yesterday | daysN；长区间自动降采样）
  *        GET /solar/healthz      连通性、最近拉取时间、错误
+ *   4) 发电趋势缓存：每次拉取把那批曲线点归一化成 kW / kWh 后并进 <dir>/trend/<日期>.jsonl
+ *      （一点一行 {t, power_kw, daily_yield_kwh, total_yield_kwh}，按 t 去重排序、整文件原子重写）。
+ *      它和原始轮询日文件分家：原始文件只留 --days 天（默认 3，体积大），
+ *      趋势缓存留 --trend-days 天（默认 400，一天约 26KB）——曲线不会再跟着原始日志被删掉；
+ *      页面取趋势只读这份缓存，缺的日子才回退翻原始日志，也不额外打阳光接口。
  *   凭据来自环境变量（部署时写 /etc/lichu-solar.env，600，不进仓库）
  *
- *   用法：node solar-service.js --listen 8096 --dir /var/lib/lichu-solar
+ *   用法：node solar-service.js --listen 8096 --dir /var/lib/lichu-solar [--trend-days 400]
  * ============================================================ */
 'use strict';
 
@@ -42,7 +47,8 @@ const OPT = {
   listen: parseInt(arg('listen', process.env.SOLAR_PORT || '8096'), 10),
   dir: arg('dir', process.env.SOLAR_DIR || path.join(__dirname, '..', 'logs', 'solar')),
   poll: parseInt(arg('poll', process.env.SOLAR_POLL || '300'), 10),      // 拉取周期（秒），阳光数据 5 分钟一更
-  days: parseInt(arg('days', process.env.SOLAR_DAYS || '3'), 10)         // 历史保留天数
+  days: parseInt(arg('days', process.env.SOLAR_DAYS || '3'), 10),        // 原始轮询日文件保留天数
+  trendDays: parseInt(arg('trend-days', process.env.SOLAR_TREND_DAYS || '400'), 10)   // 发电趋势缓存保留天数
 };
 const GW = (REGION[OPT.region] || REGION.cn).gateway;
 const AUTH_HOST = (REGION[OPT.region] || REGION.cn).auth;
@@ -165,6 +171,107 @@ function dayFile(ms) {
   const d = new Date(ms);
   const p = function (n) { return String(n).padStart(2, '0'); };
   return path.join(OPT.dir, d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + '.jsonl');
+}
+
+/* ---------------- 发电趋势缓存 ----------------
+   一点一行 {t, power_kw, daily_yield_kwh, total_yield_kwh}，按 t 去重、排序、整文件原子重写。
+   保留期由 OPT.trendDays 管（默认 400 天），和原始轮询日文件（OPT.days，默认 3 天）分家 */
+function trendDir() {
+  const d = path.join(OPT.dir, 'trend');
+  try { fs.mkdirSync(d, { recursive: true }); } catch (_) {}
+  return d;
+}
+function trendFile(ms) {
+  const d = new Date(ms);
+  const p = function (n) { return String(n).padStart(2, '0'); };
+  return path.join(trendDir(), d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + '.jsonl');
+}
+/* 接口原始点位（W / Wh）与快照点位都收成 kW / kWh 的统一形状 */
+function normPoint(raw) {
+  if (!raw || !isFinite(raw.t)) return null;
+  const o = { t: raw.t };
+  const pk = (raw.power_kw !== undefined) ? Number(raw.power_kw)
+    : (raw.power !== undefined ? Number(raw.power) / 1000 : undefined);
+  if (pk !== undefined && isFinite(pk)) o.power_kw = +pk.toFixed(3);
+  const dy = (raw.daily_yield_kwh !== undefined) ? Number(raw.daily_yield_kwh)
+    : (raw.daily_yield !== undefined ? Number(raw.daily_yield) / 1000 : undefined);
+  if (dy !== undefined && isFinite(dy)) o.daily_yield_kwh = +dy.toFixed(3);
+  const ty = (raw.total_yield_kwh !== undefined) ? Number(raw.total_yield_kwh)
+    : (raw.total_yield !== undefined ? Number(raw.total_yield) / 1000 : undefined);
+  if (ty !== undefined && isFinite(ty)) o.total_yield_kwh = +ty.toFixed(3);
+  return o;
+}
+/* 把这批曲线点并进当天的趋势文件，返回文件里最新的点数 */
+function saveTrend(pts, ms) {
+  const list = (pts || []).map(normPoint).filter(Boolean);
+  if (!list.length) return 0;
+  const f = trendFile(ms === undefined ? Date.now() : ms);
+  const map = {};
+  try {
+    fs.readFileSync(f, 'utf8').split('\n').forEach(function (line) {
+      if (!line) return;
+      try { const o = JSON.parse(line); if (o && isFinite(o.t)) map[o.t] = o; } catch (_) {}
+    });
+  } catch (_) {}
+  list.forEach(function (o) { map[o.t] = Object.assign(map[o.t] || {}, o); });
+  const out = Object.keys(map).map(function (k) { return map[k]; }).sort(function (a, b) { return a.t - b.t; });
+  const tmp = f + '.tmp';
+  fs.writeFileSync(tmp, out.map(function (o) { return JSON.stringify(o); }).join('\n') + '\n');
+  fs.renameSync(tmp, f);
+  return out.length;
+}
+/* 读趋势缓存（按天文件名取，读的是 [from, to] 里的点） */
+function readTrendCache(fromMs, toMs) {
+  const map = {};
+  const d = new Date(fromMs); d.setHours(0, 0, 0, 0);
+  for (; d.getTime() <= toMs; d.setDate(d.getDate() + 1)) {
+    const f = trendFile(d.getTime());
+    if (!fs.existsSync(f)) continue;
+    fs.readFileSync(f, 'utf8').split('\n').forEach(function (line) {
+      if (!line) return;
+      try {
+        const o = JSON.parse(line);
+        if (o && o.t >= fromMs && o.t <= toMs) map[o.t] = o;
+      } catch (_) {}
+    });
+  }
+  return Object.keys(map).map(function (k) { return map[k]; }).sort(function (a, b) { return a.t - b.t; });
+}
+function pruneTrend() {
+  const today0 = new Date(); today0.setHours(0, 0, 0, 0);
+  const cutoff = today0.getTime() - (OPT.trendDays - 1) * 86400000;
+  let n = 0;
+  try {
+    fs.readdirSync(trendDir()).forEach(function (f) {
+      const m = /^(\d{4})-(\d{2})-(\d{2})\.jsonl$/.exec(f);
+      if (!m) return;
+      const t = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])).getTime();
+      if (t < cutoff) { try { fs.unlinkSync(path.join(trendDir(), f)); n++; } catch (_) {} }
+    });
+  } catch (_) {}
+  return n;
+}
+/* 趋势缓存概况（/solar/healthz 用）：保留天数、文件数、今天已攒多少点 */
+function trendStat() {
+  let files = 0, todayPts = 0;
+  try {
+    files = fs.readdirSync(trendDir()).filter(function (f) { return /^\d{4}-\d{2}-\d{2}\.jsonl$/.test(f); }).length;
+  } catch (_) {}
+  try { todayPts = fs.readFileSync(trendFile(Date.now()), 'utf8').split('\n').filter(Boolean).length; } catch (_) {}
+  return { dir: trendDir(), keep_days: OPT.trendDays, files: files, today_points: todayPts };
+}
+/* 长区间降采样：桶内取大（峰值和当日累计都不会被抹平），免得一次甩几万个点给页面 */
+function downsample(pts, bucketMs) {
+  const map = {};
+  pts.forEach(function (p) {
+    const k = Math.floor(p.t / bucketMs) * bucketMs;
+    const o = map[k] || (map[k] = { t: k });
+    ['power_kw', 'daily_yield_kwh', 'total_yield_kwh', 'power_fraction'].forEach(function (key) {
+      if (p[key] === undefined || p[key] === null) return;
+      if (o[key] === undefined || p[key] > o[key]) o[key] = p[key];
+    });
+  });
+  return Object.keys(map).map(function (k) { return map[k]; }).sort(function (a, b) { return a.t - b.t; });
 }
 
 async function getPlants() {
@@ -329,6 +436,15 @@ async function poll() {
     };
     fs.appendFileSync(dayFile(Date.now()), JSON.stringify(rec) + '\n');
 
+    /* 发电趋势缓存：这次拉到的那批历史点 + 刚才的实时快照，一起并进今天的趋势文件 */
+    const rtPoint = {
+      t: Date.now(),
+      power_kw: rt.power ? Number(rt.power.value) / 1000 : undefined,
+      daily_yield_kwh: rt.daily_yield ? Number(rt.daily_yield.value) / 1000 : undefined,
+      total_yield_kwh: rt.total_yield ? Number(rt.total_yield.value) / 1000 : undefined
+    };
+    const trendPts = saveTrend(hist.concat([rtPoint]), Date.now());
+
     state.devices = rec.devices;
     state.summary = {
       ps_id: psId,
@@ -350,7 +466,7 @@ async function poll() {
     };
     state.last = now.toISOString();
     state.lastError = null;
-    log('拉取成功：实时点位 ' + Object.keys(rt).length + ' 个，设备 ' + rec.devices.length + ' 台，历史 ' + hist.length + ' 点');
+    log('拉取成功：实时点位 ' + Object.keys(rt).length + ' 个，设备 ' + rec.devices.length + ' 台，历史 ' + hist.length + ' 点，趋势缓存 ' + trendPts + ' 点');
   } catch (e) {
     state.errors++;
     state.lastError = e.message;
@@ -358,7 +474,7 @@ async function poll() {
   }
 }
 
-/* 保留 N 天：删更早的日文件 */
+/* 保留 N 天：删更早的原始日文件；趋势缓存按 OPT.trendDays 另算 */
 function prune() {
   const today0 = new Date(); today0.setHours(0, 0, 0, 0);
   const cutoff = today0.getTime() - (OPT.days - 1) * 86400000;
@@ -368,11 +484,13 @@ function prune() {
     const t = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])).getTime();
     if (t < cutoff) { try { fs.unlinkSync(path.join(OPT.dir, f)); } catch (_) {} }
   });
+  const n = pruneTrend();
+  if (n) log('趋势缓存清理：删了 ' + n + ' 个过期日文件（保留 ' + OPT.trendDays + ' 天）');
 }
 
-/* 读某天的曲线：历史接口的数据 + 每次拉取的实时快照（功率 / 当日发电）合并去重。
+/* 原始轮询日文件里回捞曲线：历史接口的数据 + 每次拉取的实时快照（功率 / 当日发电）合并去重。
    快照是 5 分钟一条，够画当天的功率曲线；历史接口一旦有数据会自动一起合并进来 */
-function readTrend(fromMs, toMs) {
+function readTrendRaw(fromMs, toMs) {
   const map = {};
   for (let d = new Date(fromMs).setHours(0, 0, 0, 0); d <= toMs; d += 86400000) {
     const f = dayFile(d);
@@ -400,6 +518,37 @@ function readTrend(fromMs, toMs) {
     });
   }
   return Object.keys(map).map(function (k) { return map[k]; }).sort(function (a, b) { return a.t - b.t; });
+}
+
+/* 把某天的原始轮询日志一次性转成趋势缓存（没有原始日志就跳过）。
+   页面第一次看昨天/前天时只慢这一次，之后只读小文件 */
+function ensureTrendDay(dayStartMs) {
+  if (fs.existsSync(trendFile(dayStartMs))) return false;
+  if (!fs.existsSync(dayFile(dayStartMs))) return false;
+  const pts = readTrendRaw(dayStartMs, dayStartMs + 86400000 - 1);
+  if (!pts.length) return false;
+  saveTrend(pts, dayStartMs);
+  return true;
+}
+/* 启动时把手上还在的原始日志整体回补一遍（正常最多 --days 天，一次性开销） */
+function backfillTrend() {
+  let days = 0;
+  try {
+    fs.readdirSync(OPT.dir).forEach(function (f) {
+      const m = /^(\d{4})-(\d{2})-(\d{2})\.jsonl$/.exec(f);
+      if (!m) return;
+      const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])).getTime();
+      if (ensureTrendDay(d)) days++;
+    });
+  } catch (_) {}
+  if (days) log('趋势缓存回补：从原始日志生成了 ' + days + ' 天（之后只读小文件）');
+  return days;
+}
+/* 曲线：按天读趋势缓存；缓存缺的那天先拿原始日志回补一次，再读缓存 */
+function readTrend(fromMs, toMs) {
+  const d0 = new Date(fromMs); d0.setHours(0, 0, 0, 0);
+  for (let d = d0.getTime(); d <= toMs; d += 86400000) ensureTrendDay(d);
+  return readTrendCache(fromMs, toMs);
 }
 
 /* ---------------- HTTP ---------------- */
@@ -449,7 +598,8 @@ const server = http.createServer(async function (req, res) {
         authorized: !!tk, token_expires_in_sec: tk ? tk.expires_at - Math.floor(Date.now() / 1000) : null,
         polls: state.polls, errors: state.errors,
         last_poll: state.last, last_error: state.lastError,
-        devices: state.devices.length, dir: OPT.dir
+        devices: state.devices.length, dir: OPT.dir,
+        trend: trendStat()
       });
     }
     if (u.pathname === '/solar/summary') {
@@ -467,7 +617,12 @@ const server = http.createServer(async function (req, res) {
       const today = d0.getTime();
       let from = today, to = now;
       if (range === 'yesterday') { from = today - 86400000; to = today - 1; }
-      else if (range === 'days3') { from = today - 2 * 86400000; }
+      else {
+        /* daysN = 近 N 天（含今天）；N 的上限就是趋势缓存的保留天数 */
+        const m = /^days(\d+)$/.exec(range);
+        const n = m ? Math.max(1, Math.min(OPT.trendDays, parseInt(m[1], 10))) : 1;
+        if (n > 1) from = today - (n - 1) * 86400000;
+      }
       /* 统一单位：功率 kW、发电量 kWh（历史接口给 W / Wh，快照已是 kW / kWh） */
       const pts = readTrend(from, to).map(function (p) {
         const o = { t: p.t };
@@ -483,7 +638,15 @@ const server = http.createServer(async function (req, res) {
         if (p.power_fraction !== undefined) o.power_fraction = Number(p.power_fraction);
         return o;
       });
-      return json({ ok: true, range: range, from: Math.floor(from / 1000), to: Math.floor(to / 1000), points: pts });
+      /* 长区间自动降采样：> 7 天按 15 分钟、> 30 天按 1 小时取桶内峰值，免得一次甩几万个点 */
+      const spanDays = (to - from) / 86400000;
+      const bucketMs = spanDays > 30 ? 3600000 : (spanDays > 7 ? 900000 : 0);
+      const points = bucketMs ? downsample(pts, bucketMs) : pts;
+      return json({
+        ok: true, range: range, from: Math.floor(from / 1000), to: Math.floor(to / 1000),
+        points: points, raw_points: pts.length, bucket_ms: bucketMs || null,
+        trend_days_kept: OPT.trendDays
+      });
     }
     if (u.pathname === '/solar/weather') {
       /* 电站经纬度来自阳光云的电站详情（洙边镇兜底），天气 10 分钟缓存 */
@@ -499,12 +662,13 @@ const server = http.createServer(async function (req, res) {
     if (u.pathname === '/solar/poll') { await poll(); return json({ ok: !state.lastError, last_error: state.lastError }); }
 
     res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
-    res.end('solar service\n  GET /solar/authorize\n  GET /solar/callback\n  GET /solar/healthz\n  GET /solar/summary\n  GET /solar/devices\n  GET /solar/trend?range=today|yesterday|days3\n  GET /solar/poll\n');
+    res.end('solar service\n  GET /solar/authorize\n  GET /solar/callback\n  GET /solar/healthz\n  GET /solar/summary\n  GET /solar/devices\n  GET /solar/trend?range=today|yesterday|daysN\n  GET /solar/poll\n');
   } catch (e) {
     json({ ok: false, error: e.message }, 500);
   }
 });
 
+backfillTrend();
 prune();
 setInterval(prune, 3600000);
 setInterval(function () { poll().catch(function () {}); }, OPT.poll * 1000);
