@@ -321,8 +321,11 @@ window.addEventListener('error', function (e) {
           <option value="">实时</option>
           <option value="charge">演示：光伏充储能</option>
           <option value="hospital">演示：光伏供卫生院</option>
+          <option value="storage">演示：储能供卫生院</option>
           <option value="sell">演示：光伏卖电</option>
+          <option value="surplus">演示：储能满·光伏上网</option>
           <option value="grid">演示：电网供电</option>
+          <option value="gridchg">演示：电网给储能充电</option>
         </select>
         <button class="ghost-btn" id="slBtnLabels" title="显示 / 隐藏设备浮标">标签</button>
         <button class="ghost-btn" id="slBtnRotate" title="自动旋转开 / 关">旋转</button>
@@ -358,6 +361,8 @@ window.addEventListener('error', function (e) {
           <button data-range="today" class="on">今日</button>
           <button data-range="yesterday">昨日</button>
           <button data-range="days3">近三日</button>
+          <button data-range="days7">近七日</button>
+          <button data-range="days30">近三十日</button>
         </span>
       </div>
       <div class="chart" id="slTrendChart"></div>
@@ -443,14 +448,14 @@ window.addEventListener('error', function (e) {
 <script src="js/gaote.js?v=20261016n"></script>
 <script src="js/gaote-view.js?v=20261016n"></script>
 <script src="js/gaote-detail.js?v=20261016q"></script>
-<script src="js/gaote-scene3d.js?v=20261019g"></script>
+<script src="js/gaote-scene3d.js?v=20261024a"></script>
 <script src="js/gaote-strategy.js?v=20261016n"></script>
 <script src="js/overview.js?v=20261016n"></script>
 <script src="js/mqtt-ui.js?v=20261016o"></script>
 <script src="js/portal.js?v=20261016n"></script>
 <script src="js/screensaver.js?v=20261016n"></script>
-<script src="js/solar.js?v=20261021a"></script>
-<script src="js/solar-scene3d.js?v=20261020q"></script>
+<script src="js/solar.js?v=20261023b"></script>
+<script src="js/solar-scene3d.js?v=20261024b"></script>
 <script src="js/scene3d.js?v=20261016n"></script>
 <script src="js/charts.js?v=20261016n"></script>
 <script src="js/main.js?v=20261016o"></script>

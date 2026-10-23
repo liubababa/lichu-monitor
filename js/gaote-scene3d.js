@@ -102,10 +102,9 @@ window.GaoteScene3D = (function () {
     }
   }
 
-  /* 能量流：每条电缆一根发光管，电流光纹沿线滚动，方向/速度各自按数据 */
+  /* 能量流：每条电缆一根发光管，电流光纹沿线滚动，方向各自按数据、速度全站统一 */
   const flows = [];
   const conductorMats = [];                // 铁塔导线材质（颜色随主题）
-  const flow = { dir: 0, units: 0 };       // 全站口径（并网线用）
 
   /* 柜体数量按实际上报自动排布；间距放大后设备之间不挤（柜宽 2.5，间距 5.2 → 净空 2.7） */
   const MAXN = 8, GAP = 5.2, STACK_W = 2.5, STACK_H = 2.8, STACK_D = 1.5;
@@ -1005,11 +1004,13 @@ window.GaoteScene3D = (function () {
       root.add(g);
       /* 每个柜两条电缆（本地坐标，实际走向在 layoutStacks 里按柜位重算）：
          ① 堆 → 厂房：放电回路，柜台右侧引出走电缆沟进厂房
-         ② 汇流柜 → 堆：充电回路，从汇流柜右侧接线点过来进柜子左下进线箱 */
+         ② 电缆井 → 堆：充电回路，从电缆井接线点过来进柜子左下进线箱
+         （下面的点只是 build 时的占位几何，layoutStacks 会立刻按柜位重建；
+           点序要跟重建后一致——起点在电缆井/柜子右下，dir 语义才是"充=进柜、放=出柜"） */
       const fpts = [new THREE.Vector3(.55, .3, .95), new THREE.Vector3(.55, .3, 2.4),
         new THREE.Vector3(2.4, .34, 3.7), new THREE.Vector3(4.2, .46, 3.75)];
-      const ppts = [new THREE.Vector3(-.55, .3, .95), new THREE.Vector3(-1.2, .34, 1.5),
-        new THREE.Vector3(-3.0, .5, 1.8), new THREE.Vector3(-2.4, .85, 2.4)];
+      const ppts = [new THREE.Vector3(-2.4, .85, 2.4), new THREE.Vector3(-3.0, .5, 1.8),
+        new THREE.Vector3(-1.2, .34, 1.5), new THREE.Vector3(-.55, .3, .95)];
       const pcsFlow = addFlow(ppts, g, i);
       pcsFlow.pcs = true;                       // 标记：这条是"汇流柜 → 堆"的充电电缆
       stackCables.push({ flow: addFlow(fpts, g, i), pcs: pcsFlow });
@@ -1033,13 +1034,16 @@ window.GaoteScene3D = (function () {
     /* 电网 → 厂房 直供电缆（工况①：电塔既供厂房、又给储能充电）。
        现场接线是电网和储能并接在厂房进线上：这条与储能那条并排进同一个进线箱。
        点序按"厂房 → 电缆井"排，这样沿用并网线的方向语义（进口时 dir=-1，正好朝厂房流） */
-    addFlow([
+    const facLine = addFlow([
       new THREE.Vector3(FAC_X - FAC_W / 2 - .16, 1.05, FAC_Z + FAC_D / 2 - 1.4),
       new THREE.Vector3(FAC_X - FAC_W / 2 - 1.3, .46, FAC_Z + FAC_D / 2 - .5),
       new THREE.Vector3(FAC_X - FAC_W / 2 - 3.6, .3, 5.05),
       new THREE.Vector3(-5.5, .3, 4.98),
       new THREE.Vector3(PCS_X - PCS_HW + .2, .22, PCS_Z + .38)
     ], root, -1);
+    /* 标记：这条是"电网 → 厂房"直供线，亮不亮要看"厂房自己有没有从电网取电"，
+       不能只看关口表（工况②关口取电全是给储能充电的，厂房没负荷，这条不该亮） */
+    if (facLine) facLine.fac = true;
 
     /* ---------- 降水（与洙边同源天气；只做视觉效果，不展示任何数据） ----------
        420 滴合批成一个 InstancedMesh：洙边当年雨写成 420 个独立网格，帧率掉到卡顿 */
@@ -1200,15 +1204,22 @@ window.GaoteScene3D = (function () {
     return sum;
   }
 
+  /* 全站额定功率（kW）：EMU 的允许充 / 放功率里取大的。没上报按 250 兜底，
+     用来把"当时功率"换算成 0~1 的负载比例（光纹速度全站共用这一个比例） */
+  function ratedPower() {
+    const a = Number(GaoteService.val('emu', 'MaxAllowChargPower'));
+    const b = Number(GaoteService.val('emu', 'MinAllowChargPower'));
+    const v = Math.max(isFinite(a) ? Math.abs(a) : 0, isFinite(b) ? Math.abs(b) : 0);
+    return v > 1 ? v : 250;
+  }
+
   function update() {
     if (!inited) return;
     const emuP = stationPower();
     const emuSoc = GaoteService.val('emu', 'SumsSOC');
 
-    /* 并网线：放电(正功率)=柜→PCS→电网，充电(负功率)=反向；速度随功率大小 */
+    /* 全站总有功：正 = 放电（柜 → PCS → 电网 / 厂房），负 = 充电 */
     const pNum = (emuP === null || emuP === undefined) ? 0 : Number(emuP);
-    flow.dir = pNum > 0.5 ? 1 : (pNum < -0.5 ? -1 : 0);
-    flow.units = Math.min(4, Math.abs(pNum) / 80);
 
     /* 储能柜数量按实际上报自动排布（真机可能只有 2 个储能单元，模拟器是 5 个） */
     const n = stackCount();
@@ -1263,7 +1274,18 @@ window.GaoteScene3D = (function () {
       ], chg ? '充电中' : (dis ? '放电中' : '待机'));
     }
 
-    /* 各柜电缆按"该柜自己"的电流定方向与速度；并网线按并网点电表 */
+    /* 各柜电缆按"该柜自己"的电流定方向；光纹速度全站统一（见下） */
+    const meterP = GaoteService.val('meter-lems-antireflux', 'meter_tot_p');
+    const mv = (meterP === null || meterP === undefined) ? null : Number(meterP);
+    const chgNow = pNum < -0.5, disNow = pNum > 0.5;
+    /* 全站一个流速：同一时刻所有电缆的光纹跑得一样快（"到厂房"与"到储能"不再一快一慢）。
+       参考功率取"全站功率 / 关口功率"里大的那个（谁在动就按谁），除以全站额定功率。
+       原来储能电缆拿"每堆功率"、并网线拿"关口功率"，都除以 100，口径差一个堆数
+       （5 个堆就慢 5 倍；关口功率还含储能充电那部分，会更快顶到上限），所以看着不一样 */
+    const rated = ratedPower();
+    const refP = Math.max(Math.abs(pNum), Math.abs(mv === null ? 0 : mv));
+    const stSpd = .25 + Math.min(1, refP / rated) * 1.6;
+
     for (let i = 0; i < flows.length; i++) {
       const fl = flows[i];
       if (fl.stack >= 0 && fl.stack < MAXN) {
@@ -1277,24 +1299,21 @@ window.GaoteScene3D = (function () {
           ? (cur < -0.5 ? 1 : 0)
           : (cur > 0.5 ? 1 : 0);
         fl.flip = !!fl.pcs;                      /* 颜色语义仍按充/放区分 */
-        /* 速度按"该柜功率"算（电压 × 电流 = kW），和并网线同一个量纲：
-           原来这边拿电流 A÷80、并网线拿 kW÷80，单位不一致，两堆之间、堆与并网线之间的
-           流速对不上。再加 0.25 的基础速度，小功率时也不会看着像卡住 */
-        const vol = (d && d.vol !== null && d.vol !== undefined && Number(d.vol) > 100) ? Number(d.vol) : 750;
-        fl.speed = .25 + Math.min(1, Math.abs(vol * cur) / 1000 / 100) * 1.6;
+        fl.speed = stSpd;
       } else if (fl.stack === -1) {
-        /* 并网线：优先按关口表功率（正 = 从电网取电）。表没上报时按工况兜底——
-           充电(①②) = 电塔往站内送电（朝站内流）；放电(③) = 关口基本不交换，不流动 */
-        const gp = GaoteService.val('meter-lems-antireflux', 'meter_tot_p');
-        const hasGp = gp !== null && gp !== undefined && isFinite(Number(gp));
-        const gv = hasGp ? Number(gp) : 0;
-        if (hasGp) {
+        const hasGp = mv !== null && isFinite(mv);
+        const gv = hasGp ? mv : 0;
+        if (fl.fac) {
+          /* 电网 → 厂房 直供线：真正送进厂房的 = 关口取电 − 储能充电吃掉的那部分。
+             两者差不多（工况②）说明厂房没负荷，这条不亮；放/待机时关口取电都进厂房 */
+          const facP = chgNow ? Math.max(0, gv - Math.abs(pNum)) : Math.max(0, gv);
+          fl.dir = (hasGp && facP > 0.5) ? -1 : 0;
+        } else if (hasGp) {
           fl.dir = gv > 0.5 ? -1 : (gv < -0.5 ? 1 : 0);
-          fl.speed = .25 + Math.min(1, Math.abs(gv) / 100) * 1.6;
         } else {
           fl.dir = pNum < -0.5 ? -1 : 0;
-          fl.speed = .25 + Math.min(1, Math.abs(pNum) / 100) * 1.6;
         }
+        fl.speed = stSpd;
       }
     }
 
@@ -1327,9 +1346,6 @@ window.GaoteScene3D = (function () {
        ③ 储能单独供厂房：储能放电、关口基本不交换
        判据：储能功率符号 + 关口表功率（表没上报时，充电按①、放电按③，不臆造）
        只有③才是"储能送厂房"；①②里厂房是电网在供，不能显示成"待机" */
-    const meterP = GaoteService.val('meter-lems-antireflux', 'meter_tot_p');
-    const mv = (meterP === null || meterP === undefined) ? null : Number(meterP);
-    const chgNow = pNum < -0.5, disNow = pNum > 0.5;
     facOn = disNow;
     let powerMode = '—', powerModeTxt = '待机', powerModeNote = '储能无充放，厂房由电网供电';
     if (chgNow) {

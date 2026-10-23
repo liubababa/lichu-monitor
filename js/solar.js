@@ -42,15 +42,31 @@ window.SolarUI = (function () {
     },
     hospital: {
       pv: 15, st: 0, load: 15, soc: 98, status: '待机',
-      note: '储能已满、待机，光伏 15kW 直接供卫生院'
+      note: '储能已满、待机，光伏 15kW 经储能柜供卫生院（不卖电，算模式②）'
+    },
+    /* 现场每天 10 多个小时就是这个形态（日升云 2026-10-21~23 实测：储能放 11~12kW、
+       负载 12~15kW、关口取 0.5~3kW），原来演示下拉里没有它 */
+    storage: {
+      pv: 0, st: 12, load: 15, soc: 62, status: '放电中',
+      note: '夜间：储能放 12kW 供卫生院，缺口 3kW 由电网补'
     },
     sell: {
       pv: 55, st: -15, load: 12, soc: 66, status: '充电中',
       note: '光伏 55kW 先给储能充 15kW、供院 12kW，余 28kW 卖电网'
     },
+    /* 现场午后的常态：储能充满转待机，光伏供卫生院、余电全上网（实测送出 40~68kW） */
+    surplus: {
+      pv: 60, st: 0, load: 12, soc: 100, status: '待机',
+      note: '储能已满、待机：光伏 60kW 供卫生院 12kW，余 48kW 上网'
+    },
     grid: {
       pv: 0, st: 0, load: 12, soc: 55, status: '待机',
       note: '光伏没出力，全站 12kW 由电网供'
+    },
+    /* ③ 现场目前不做谷电充电（三天实测一次没出现），这一档留着看"电网给储能充电"的形态 */
+    gridchg: {
+      pv: 0, st: -20, load: 12, soc: 40, status: '充电中',
+      note: '电网给储能充 20kW，同时供卫生院 12kW（现场目前不做谷电充电）'
     }
   };
 
@@ -84,13 +100,16 @@ window.SolarUI = (function () {
   const API = LOCAL ? 'http://127.0.0.1:8099' : '';
   const API_STOR = LOCAL ? 'http://127.0.0.1:8097' : '';
 
-  /* 取接口数据：带 12 秒超时 + 最多 3 次重试（现场网络经代理时偶发卡住） */
-  async function getJSON(path, root) {
+  /* 取接口数据：默认 12 秒超时 + 最多 3 次重试（后台刷新用，现场网络经代理时偶发卡住）；
+     交互式请求（切区间那种）传 { tries: 1, timeout: 8000 }，别让人干等 36 秒 */
+  async function getJSON(path, root, opt) {
+    const o = opt || {};
+    const tries = o.tries || 3, timeout = o.timeout || 12000;
     const url = (root === undefined ? API + '/solar/' : root) + path;
     let err = null;
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < tries; i++) {
       const ctl = new AbortController();
-      const to = setTimeout(function () { ctl.abort(); }, 12000);
+      const to = setTimeout(function () { ctl.abort(); }, timeout);
       try {
         const r = await fetch(url, { cache: 'no-store', signal: ctl.signal });
         clearTimeout(to);
@@ -99,7 +118,7 @@ window.SolarUI = (function () {
       } catch (e) {
         clearTimeout(to);
         err = e;
-        await new Promise(function (res) { setTimeout(res, 700); });
+        if (i < tries - 1) await new Promise(function (res) { setTimeout(res, 700); });
       }
     }
     throw err || new Error('请求失败');
@@ -167,6 +186,7 @@ window.SolarUI = (function () {
       if (d && d.data) devices = d.data;
       const t = await getJSON('trend?range=' + range);
       if (t && t.points) trend = t.points;
+      renderTrend();                          /* 曲线先画出来：后面天气/日升那几路慢，别让图表陪着等 */
       try {                                   /* 天气失败不影响其余数据 */
         const w = await getJSON('weather');
         if (w && w.data) wx = w.data;
@@ -244,6 +264,21 @@ window.SolarUI = (function () {
     renderRevenuePage();      /* 详细信息页里那两格钱也按新电价重算 */
   }
 
+  /* 只重拉当前区间的曲线：切「今日 / 昨日 / 近三日…」用。
+     原来这里走的是 refresh()，等于把汇总、设备、天气、日升四个接口全串行重拉一遍，
+     每个还带 12 秒超时 × 3 次重试；赶上后台刷新在跑还会被 busyUntil 直接吞掉 */
+  async function loadTrend() {
+    const meta = byId('slTrendMeta');
+    if (meta) meta.textContent = '读取中…';
+    try {
+      const t = await getJSON('trend?range=' + range, undefined, { tries: 1, timeout: 8000 });
+      if (t && t.points) trend = t.points;
+      renderTrend();
+    } catch (e) {
+      if (meta) meta.textContent = '读取失败：' + (e.message || e) + '（图上仍是上一次的数据）';
+    }
+  }
+
   function renderTrend() {
     const meta = byId('slTrendMeta');
     if (!chart && typeof echarts !== 'undefined') initChart();   /* echarts 是延迟加载的，第一次渲染时再初始化 */
@@ -253,7 +288,7 @@ window.SolarUI = (function () {
       const day = pts.filter(p => num(p.daily_yield_kwh) !== null).reduce((m, p) => Math.max(m, num(p.daily_yield_kwh)), 0);
       if (meta) {
         meta.textContent = pts.length
-          ? (pts.length + ' 点 · 峰值 ' + fmt(max, 2) + ' kW' + (day ? ' · 当日累计 ' + fmt(day, 1) + ' 度' : ''))
+          ? (pts.length + ' 点 · 峰值 ' + fmt(max, 2) + ' kW' + (day ? (' · ' + (range === 'today' ? '当日累计 ' : '单日最高 ') + fmt(day, 1) + ' 度') : ''))
           : '暂无数据（接入后每 5 分钟累积一个点）';
       }
       chart.setOption({
@@ -692,9 +727,12 @@ window.SolarUI = (function () {
     /* 选了演示工况就喂模拟数据，别再拿实时数据覆盖它 */
     if (demo && DEMO[demo]) { pushDemo(DEMO[demo]); return; }
     /* 电站数据没拿到时传 null（不是 0）：场景那边要区分"真的 0 kW"和"没上报"——
-       供电模式靠这个判，传 0 会被当成"光伏不发电"，直接把模式判成③/④ */
-    const pKw = sum ? (num(sum.power) || 0) / 1000 : null;
-    SolarScene.setPower(pKw, sum ? num(sum.capacity) : null, sum ? kwh(sum.daily_yield) : null);
+       供电模式靠这个判，传 0 会被当成"光伏不发电"，直接把模式判成③/④。
+       汇总拿到了、但实时功率那一点缺失（power = null）同样算"没上报"：
+       原来写成 (num(sum.power) || 0) 会把这一档折成 0，模式跟着判成③/④ */
+    const pvRaw = sum ? num(sum.power) : null;
+    SolarScene.setPower(pvRaw === null ? null : pvRaw / 1000,
+      sum ? num(sum.capacity) : null, sum ? kwh(sum.daily_yield) : null);
     if (stor) SolarScene.setStorage(stor);       /* 储能柜：SOC 光柱、充放电光纹、卖电方向 */
     if (wx) SolarScene.setWeather(wx);
     /* 同一份天气也给旭日东明（两地同源，各打各的场景效果；旭日东明不展示天气数据） */
@@ -834,7 +872,7 @@ window.SolarUI = (function () {
         if (!btn) return;
         range = btn.getAttribute('data-range');
         [].forEach.call(ranges.querySelectorAll('button'), function (x) { x.classList.toggle('on', x === btn); });
-        refresh();
+        loadTrend();                 /* 只重拉这条曲线，不走整串刷新 */
       });
     }
     /* 光伏站自己的顶栏标签页 */
