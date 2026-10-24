@@ -203,7 +203,7 @@ mosquitto ──订阅#──► lichu-history(8095) ──nginx /history,/daily
 | `portal.js` | `PortalUI` | 站点目录（进门页）+ 设备列表页；站点登记表 `STATIONS` 在这里 |
 | `screensaver.js` | `ScreenSaver` | 30 分钟无操作屏保（解析时自初始化），深底青配色、logo+品牌+大标题 |
 | `solar.js` | `SolarUI` | **洙边站控制器**：HTTP 轮询（60 秒）、储能/光伏/收益三个页面渲染、演示工况下拉、四个页签挂载 |
-| `solar-scene3d.js` | `SolarScene` | **洙边三维场景**（楼体+屋顶光伏阵列+储能柜+铁塔+四条能量流+天气） |
+| `solar-scene3d.js` | `SolarScene` | **洙边三维场景**（楼体+屋顶光伏阵列+储能柜+铁塔+五条能量流+天气） |
 | `solar-scene3d-v2.js` | `SolarSceneV2` | 只在 `solar-preview.html` 用的独立预览版，**绝不能加进 `index.html`**（顶层 `let` 会污染全局） |
 | `scene3d.js` | `Scene3D` | 晶农协议的通用储能场景（非高特协议时的兜底分支） |
 | `charts.js` | `Charts` | 两个 ECharts 图（PCS 运行情况、主要设备负载） |
@@ -275,7 +275,7 @@ mosquitto ──订阅#──► lichu-history(8095) ──nginx /history,/daily
   按射线检测**被模型遮挡时自动隐藏**（只把大件注册为遮挡体，别把细杆也加进去）；打开明细卡时隐藏其它标签。
 - **坐标与常量**（改设备位置必须连带改的东西）：
   - 洙边：`+z = 南`、`+x = 东`，原点=楼体中心；楼 13×6.2×8、屋顶阵列 5 列 ×4 排（倾角 28°）；
-    储能柜 `CAB_X=-12.5 / CAB_Z=2.7`；铁塔 `TWR_X=-22 / TWR_Z=2.7`（高 10.4）。四条能量流的**路径点列表是手调的**，
+    储能柜 `CAB_X=-12.5 / CAB_Z=2.7`；铁塔 `TWR_X=-22 / TWR_Z=2.7`（高 10.4）。五条能量流的**路径点列表是手调的**，
     挪设备就要同步改 `addFlow()` 的路径与"电缆鞍座"数组。
   - 旭日东明：`MAXN=8` 堆、`GAP=5.2`；堆电缆建在**柜体局部坐标**下，在 `layoutStacks()` 里按 `world - cabinet.x` 重建。
 - **性能预算（已被优化过，别退回去）**：光伏组件/导轨/支腿用 `InstancedMesh` 合批；雨滴一个 InstancedMesh（420 滴）；

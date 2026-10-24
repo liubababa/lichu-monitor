@@ -704,7 +704,7 @@ window.GaoteScene3D = (function () {
 
   /* 厂房门口的人气（叉车 + 工人）：都不投影，位置在 loop 里推进 */
   const YARD_Y = .18;                      /* 场地台座顶面：人和叉车站在这个高度 */
-  const facWalk = [];
+  const facWalk = [], facLimbs = [];
   let facFork = null;
 
   function buildFactory(root) {
@@ -863,38 +863,90 @@ window.GaoteScene3D = (function () {
        都刻意抽象（不做五官/手脚这类细节），也都不投影——省阴影开销，
        而且不会因为"动的东西留在静态阴影里"出现鬼影 */
     const wBodyMat = regMat(std(0x8fa6ab, { roughness: .85 }), { color: 0x9fb3b8 }, { color: 0x8e9ea3 });
+    const wLegMat = regMat(std(0x2c3a40, { roughness: .85 }), { color: 0x38464c }, { color: 0x556463 });
     const wHeadMat = regMat(std(0xb9c8cb, { roughness: .8 }), { color: 0xc8d4d6 }, { color: 0xb2c2c6 });
     function addWorker(x0, z0, x1, z1, phase, speed) {
       const p = new THREE.Group();
-      const b = new THREE.Mesh(new THREE.CylinderGeometry(.15, .185, .82, 8), wBodyMat);
-      b.position.y = .55;
-      const h = new THREE.Mesh(new THREE.SphereGeometry(.135, 10, 8), wHeadMat);
-      h.position.y = 1.06;
-      p.add(b, h);
+      /* 特斯拉车机风小人（与洙边同款）：圆润白模、四肢摆动、无五官细节 */
+      const bodyMat = regMat(std(0xe8eef0, { roughness: .55 }), { color: 0xe8eef0 }, { color: 0xdfe6e8 });
+      const limbMat = regMat(std(0xcfd8dc, { roughness: .6 }), { color: 0xcfd8dc }, { color: 0xd5dcde });
+      const headMat = regMat(std(0xf2f6f7, { roughness: .5 }), { color: 0xf2f6f7 }, { color: 0xe8eef0 });
+      function limb(r, len, mat) {
+        const gp = new THREE.Group();
+        const c = new THREE.Mesh(new THREE.CylinderGeometry(r * .8, r, len, 10), mat);
+        c.position.y = -len / 2;
+        const cap = new THREE.Mesh(new THREE.SphereGeometry(r * .8, 10, 8), mat);
+        cap.position.y = -len;
+        gp.add(c, cap);
+        return gp;
+      }
+      const torso = new THREE.Group();
+      const tc = new THREE.Mesh(new THREE.CylinderGeometry(.105, .125, .4, 12), bodyMat);
+      const t1 = new THREE.Mesh(new THREE.SphereGeometry(.125, 12, 10), bodyMat); t1.position.y = .2;
+      const t2 = new THREE.Mesh(new THREE.SphereGeometry(.125, 12, 10), bodyMat); t2.position.y = -.2;
+      torso.add(tc, t1, t2);
+      torso.scale.z = .85;
+      torso.position.y = .95;
+      const head = new THREE.Mesh(new THREE.SphereGeometry(.115, 14, 12), headMat);
+      head.position.y = 1.34;
+      const armL = limb(.042, .32, limbMat); armL.position.set(-.155, 1.06, 0);
+      const armR = limb(.042, .32, limbMat); armR.position.set(.155, 1.06, 0);
+      const legL = limb(.058, .46, limbMat); legL.position.set(-.07, .60, 0);
+      const legR = limb(.058, .46, limbMat); legR.position.set(.07, .60, 0);
+      p.add(torso, head, armL, armR, legL, legR);
+      facLimbs.push({ armL: armL, armR: armR, legL: legL, legR: legR });
       g.add(p);
       const len = Math.hypot(x1 - x0, z1 - z0);
-      facWalk.push({ g: p, a: [x0, z0], b: [x1, z1], len: len, dist: (phase || 0) * len, speed: speed || .8 });
+      facWalk.push({ g: p, a: [x0, z0], b: [x1, z1], len: len, dist: (phase || 0) * len, speed: speed || .8,
+        limbs: facLimbs[facLimbs.length - 1] });
     }
     addWorker(-3.5, 6.0, 1.6, 6.0, 0, .72);                    /* 货台前的人行道（厂房局部坐标） */
     addWorker(-1.0, 6.0, 2.4, 6.0, .55, .95);
-    /* 叉车：车身 + 门架 + 货叉 + 顶灯，在货台前那条独立车道上来回跑（不跟人重叠） */
+    /* 叉车（升级）：底盘 + 后配重 + 四轮 + 门架顶棚 + 货叉随行程升降托一板货 + 顶灯；
+       仍是抽象块面拼装、不投影，在货台前那条独立车道上来回跑（不跟人重叠） */
     const fl = new THREE.Group();
     const flBody = regMat(std(0xd9a13a, { roughness: .6, metalness: .3 }), { color: 0xb8862c }, { color: 0xd9a13a });
     const flDark = std(0x1d2a2e, { roughness: .7, metalness: .35 });
     const flSteel = std(0x9fb0b6, { roughness: .45, metalness: .6 });
-    [[1.5, .6, .95, flBody, 0, .5, 0], [1.3, .3, .82, flDark, 0, .2, 0],
-    [.12, 1.3, .12, flSteel, -.62, 1.0, -.3], [.12, 1.3, .12, flSteel, -.62, 1.0, .3],
-    [.08, .09, 1.0, flSteel, -.7, .34, 0]].forEach(function (a) {
+    const flWheel = std(0x141d21, { roughness: .9 });
+    const flCrate = regMat(std(0x8a6f4a, { roughness: .85 }), { color: 0x6e5a3e }, { color: 0x8a6f4a });
+    [[1.5, .5, .95, flBody, 0, .52, .06], [1.0, .55, .9, flDark, 0, .6, -.4],
+     [.9, .28, .84, flDark, 0, .2, .05]].forEach(function (a) {
       const m = box(a[0], a[1], a[2], a[3], a[4], a[5], a[6]);
       m.castShadow = false;
       fl.add(m);
     });
+    /* 四轮（前二后二，圆柱横置） */
+    [[-.52, .36, .40, .16, .10], [.52, .36, .40, .16, .10],
+     [-.56, .30, -.42, .13, .09], [.56, .30, -.42, .13, .09]].forEach(function (a) {
+      const w = new THREE.Mesh(new THREE.CylinderGeometry(a[4], a[4], a[3], 10), flWheel);
+      w.rotation.x = Math.PI / 2;
+      w.position.set(a[0], a[1], a[2]);
+      fl.add(w);
+    });
+    /* 门架（双立柱 + 顶梁，固定）+ 货叉升降架（随行程起落，托一板货） */
+    const mast = new THREE.Group();
+    [[-.66, .8, .12, 1.5, .12, flSteel, 1.05, -.28], [-.66, .8, .12, 1.5, .12, flSteel, 1.05, .28]].forEach(function (a) {
+      const m = box(a[0], a[1], a[2], a[3], 0, a[6], a[7]);
+      m.castShadow = false;
+      mast.add(m);
+    });
+    mast.add(box(.1, .09, .78, flSteel, 0, 1.72, 0));
+    fl.add(mast);
+    const carriage = new THREE.Group();
+    [[-.30, -.20], [-.30, .20]].forEach(function (a) {
+      const f = box(.85, .09, .09, flSteel, 0, .10, a[1]);
+      carriage.add(f);
+    });
+    carriage.add(box(.48, .40, .56, flCrate, .12, .34, 0));
+    carriage.position.set(-.52, .16, 0);
+    fl.add(carriage);
     const flLamp = new THREE.Mesh(new THREE.SphereGeometry(.075, 8, 6),
       new THREE.MeshBasicMaterial({ color: 0xffb020 }));
-    flLamp.position.set(-.5, 1.35, 0);
+    flLamp.position.set(-.35, 1.62, 0);
     fl.add(flLamp);
     g.add(fl);
-    facFork = { g: fl, x0: -6.2, x1: 2.2, dist: 0, speed: 1.35 };
+    facFork = { g: fl, car: carriage, liftBase: .2, x0: -4.9, x1: 1.3, dist: 0, speed: 1.35 };
 
     /* 落水管（正面两根，从檐口顺墙到基座） */
     [-1, 1].forEach(function (sx) {
@@ -1480,11 +1532,27 @@ window.GaoteScene3D = (function () {
       w.dist += dt * w.speed;
       const mm = w.dist % (w.len * 2);
       const k = w.len > 0 ? (mm <= w.len ? mm : w.len * 2 - mm) / w.len : 0;
-      w.g.position.set(
-        w.a[0] + (w.b[0] - w.a[0]) * k,
-        YARD_Y + Math.abs(Math.sin(w.dist * 3.6)) * .05,
-        w.a[1] + (w.b[1] - w.a[1]) * k
-      );
+      const wp = {
+        x: w.a[0] + (w.b[0] - w.a[0]) * k,
+        z: w.a[1] + (w.b[1] - w.a[1]) * k
+      };
+      w.g.position.set(wp.x, YARD_Y + Math.abs(Math.sin(w.dist * 7.5)) * .035, wp.z);
+      /* 面朝行进方向（往返折返时平滑掉头） */
+      const dirSign = (mm <= w.len) ? 1 : -1;
+      const target = Math.atan2((w.b[0] - w.a[0]) * dirSign, (w.b[1] - w.a[1]) * dirSign);
+      let diff = target - w.g.rotation.y;
+      while (diff > Math.PI) diff -= Math.PI * 2;
+      while (diff < -Math.PI) diff += Math.PI * 2;
+      w.g.rotation.y += diff * Math.min(1, dt * 6);
+      /* 四肢随行走摆动（特斯拉车机小人那种节奏） */
+      const ph = w.dist * 7.5, sw = Math.sin(ph);
+      const L = w.limbs;
+      if (L) {
+        L.legL.rotation.x = sw * .6;
+        L.legR.rotation.x = -sw * .6;
+        L.armL.rotation.x = -sw * .4;
+        L.armR.rotation.x = sw * .4;
+      }
     }
     if (facFork) {
       facFork.dist += dt * facFork.speed;
@@ -1493,6 +1561,8 @@ window.GaoteScene3D = (function () {
       const fwd = mm <= span;
       facFork.g.position.set(facFork.x0 + (fwd ? mm : span * 2 - mm), YARD_Y, 7.0);
       facFork.g.rotation.y = fwd ? Math.PI : 0;          /* 门架朝行进方向 */
+      /* 货叉随行程缓慢起落（搬运感） */
+      facFork.car.position.y = facFork.liftBase + Math.abs(Math.sin(facFork.dist / span * Math.PI)) * .38;
     }
     if (composer) composer.render(); else renderer.render(scene, camera);
     labelRenderer.render(scene, camera);
