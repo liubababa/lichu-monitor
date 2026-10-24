@@ -881,14 +881,14 @@ window.GaoteScene3D = (function () {
         return gp;
       }
       const torso = new THREE.Group();
-      const tc = new THREE.Mesh(new THREE.CylinderGeometry(.105, .125, .4, 12), bodyMat);
-      const t1 = new THREE.Mesh(new THREE.SphereGeometry(.125, 12, 10), bodyMat); t1.position.y = .2;
+      const tc = new THREE.Mesh(new THREE.CylinderGeometry(.095, .125, .4, 12), bodyMat);
+      const t1 = new THREE.Mesh(new THREE.SphereGeometry(.095, 12, 10), bodyMat); t1.position.y = .16;
       const t2 = new THREE.Mesh(new THREE.SphereGeometry(.125, 12, 10), bodyMat); t2.position.y = -.2;
       torso.add(tc, t1, t2);
       torso.scale.z = .85;
       torso.position.y = .95;
       const head = new THREE.Mesh(new THREE.SphereGeometry(.115, 14, 12), headMat);
-      head.position.y = 1.34;
+      head.position.y = 1.28;
       const armL = limb(.042, .32, limbMat); armL.position.set(-.155, 1.06, 0);
       const armR = limb(.042, .32, limbMat); armR.position.set(.155, 1.06, 0);
       const legL = limb(.058, .46, limbMat); legL.position.set(-.07, .60, 0);
