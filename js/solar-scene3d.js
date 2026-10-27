@@ -1070,6 +1070,16 @@ window.SolarScene = (function () {
     flows.push({ map: tubeMat.map, tubeMat: tubeMat, kind: kind, on: false, speed: 0, dir: 1, tint: 0 });
   }
 
+  /* ---------------- 电线一键隐藏（截图对走向用） ----------------
+     URL 带 ?nowires=1 时把电线全藏起来：实体电缆 / 电流光纹（都是 TubeGeometry 管）
+     加上塔上三跨导线、地线（Line）。女儿墙描边是 LineSegments，type 不同，不受影响 */
+  function hideWires() {
+    scene.traverse(function (o) {
+      const g = o.geometry;
+      if (o.type === 'Line' || (g && g.type === 'TubeGeometry')) o.visible = false;
+    });
+  }
+
   /* ---------------- 默认机位（构图） ----------------
      机位只固定"目标点 + 视线方向"（正南偏西 10°、抬高约 25° 俯视），距离用二分法算：
      把「铁塔 → 储能柜 → 小楼（屋顶阵列 + 浮标）」这些关键点全部收进画面
@@ -1898,6 +1908,7 @@ window.SolarScene = (function () {
     if (inited) { resize(); return; }
     if (typeof THREE === 'undefined') { setTimeout(function () { init(onReady); }, 300); return; }
     try { build(); } catch (e) { console.error('光伏 3D 场景初始化失败', e); return; }
+    if (/[?&]nowires=1(?:&|$)/.test(location.search)) hideWires();
     window.addEventListener('resize', resize);
     new MutationObserver(function () { applyTheme(); })
       .observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
