@@ -24,6 +24,7 @@
 ## 验证与交付
 
 - 改完 → `node --check` → 浏览器里真跑一遍（连真实数据/现场报文）→ 看渲染结果（截图）→ 与厂家后台或原始报文对照数值。
+  核对走线时用 `?nowires=1`（洙边）把电线全隐藏，只看建筑与线路路径。
 - **部署才算完成**：前端 `node tools/deploy-site.js`，服务用对应 `tools/deploy-<svc>.js`。
 - 本地四件套：`tools/local-broker.js`(1884/9001) + `tools/gateway.js --listen 9002` +
   `tools/ccu-simulator.js`(SN2025B3781TEST) + `python -m http.server 8080`。
