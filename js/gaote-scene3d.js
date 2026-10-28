@@ -5,7 +5,9 @@
  * 数据全部来自 GaoteService（高特协议实时值）：
  *   柜顶色条   —— 充电(蓝) / 放电(青) / 待机(灰)
  *   柜侧光柱   —— 该柜 SOC：高度从下往上按 SOC 生长，颜色随充放电状态
- *   电缆能量流 —— 每根柜线按该柜电流方向流动，并网线按全站功率方向流动；
+ *   电缆能量流 —— 每根柜线按该柜电流方向流动；并网线（站内 → 铁塔）只画余电上网（橙、上塔），
+ *                储能供电期间不亮（现场口径 2026-10-27：储能供电时电网不供电，
+ *                关口在取电也不画——那是表读数，只看并网点浮标）；充电 / 待机时按关口表方向画
  *                电流光纹沿电缆滚动，速度随数值大小，待机时停下（不挂光球）
  *   厂房       —— 工厂用电负荷：放电时进线电流流入厂房，待机/充电时停止
  *   标签 / 卡片 —— 堆号 · SOC · 状态 · 温度；点击展开明细（厂房、汇流柜同样可点）
@@ -390,6 +392,7 @@ window.GaoteScene3D = (function () {
       /* 取色分两类（和洙边口径统一）：
          · 储能电缆：放电=青绿、充电=蓝
          · 并网线 / 电网→厂房直供线（stack=-1）：送电（馈电上网）=橙、取电=蓝
+         并网线的"取电蓝"只在充电 / 待机时出现（储能放电期间不亮，见 update() 的方向判定）；
          原来两类都用青绿，卖电会被画成"放电"，和洙边的馈电橙对不上 */
       const col = fl.stack === -1
         ? (sd > 0 ? p.flowSell : (sd < 0 ? p.flowChg : p.flowIdle))
@@ -485,7 +488,7 @@ window.GaoteScene3D = (function () {
     /* 相邻柜子的浮标错开高度 + 再往两侧让一点：光靠高度错开不够，
        在扁画布上「堆 1 / 堆 2」浮标仍会横向压住（实测重叠 15×51 px） */
     const si = parseInt(String(key).replace('stack', ''), 10) || 0;
-    addLabel(key, new THREE.Vector3(si % 2 ? 1.0 : -1.0, H + .95 + (si % 2) * 1.3, 0), 'tag3d tag3d-gt');
+    addLabel(key, new THREE.Vector3(si % 2 ? 1.0 : -1.0, H + .6 + (si % 2) * .95, 0), 'tag3d tag3d-gt');
     addCard(key, new THREE.Vector3(0, H + .1, 0));
     return g;
   }
@@ -974,7 +977,7 @@ window.GaoteScene3D = (function () {
     el.className = 'tag3d tag3d-gt';
     wrap.appendChild(el);
     const o = new THREE.CSS2DObject(wrap);
-    o.position.set(0, top + H + 1.6, 0);
+    o.position.set(0, top + H + .8, 0);
     g.add(o);
     facLabelEl = el;
     labelPairs.push({ obj: o, el: el });       /* 厂房标签也要跟着相机距离缩放 */
@@ -1074,7 +1077,8 @@ window.GaoteScene3D = (function () {
     // buildPCS(root);
     buildTower(root);
 
-    /* 全站出线 → 铁塔（流向按总功率）：起点落在电缆井上。原来让管末端斜插进地面，
+    /* 全站出线 → 铁塔（充电 / 待机时按关口表方向；储能放电期间只画余电上网，见 stepFlow 前判定）：
+       起点落在电缆井上。原来让管末端斜插进地面，
        视觉模型判为"穿模/悬空断头"，改成落在井口，三条线都汇集到这里 */
     const toTower = [new THREE.Vector3(PCS_X - PCS_HW + .2, .2, PCS_Z),
       new THREE.Vector3(-11.6, 2.6, 1.6), new THREE.Vector3(-12.6, 4.2, -.8),
@@ -1366,6 +1370,13 @@ window.GaoteScene3D = (function () {
              两者差不多（工况②）说明厂房没负荷，这条不亮；待机时关口取电都进厂房 */
           const facP = chgNow ? Math.max(0, gv - Math.abs(pNum)) : Math.max(0, gv);
           fl.dir = (!disNow && hasGp && facP > 0.5) ? -1 : 0;
+        } else if (disNow) {
+          /* 并网线（全站出线 → 铁塔）：储能供电时电网不供电（现场口径 2026-10-27）——
+             储能放电期间关口就是在取电，这条也不亮（表读数只体现在并网点浮标上），
+             只有余电上网（关口在馈电）才亮橙、从站内上塔；
+             阈值跟工况③ 的"余电上网"共用同一个 tol，免得文字写"余电上网"、塔线却不亮 */
+          const tol = Math.max(1.5, Math.abs(pNum) * .08);
+          fl.dir = (hasGp && gv < -tol) ? 1 : 0;
         } else if (hasGp) {
           fl.dir = gv > 0.5 ? -1 : (gv < -0.5 ? 1 : 0);
         } else {
@@ -1441,8 +1452,12 @@ window.GaoteScene3D = (function () {
       facWinBase = wb * (day ? .3 : .55);
     }
     if (facLabelEl) {
-      facLabelEl.innerHTML = '<b>厂房（工厂用电）</b><i>'
-        + (facOn ? ('受电 ' + f(emuP, 1, ' kW')) : '电网供电') + '</i>'
+      /* 数值行固定是"受电 x kW"（版式：名称 / 受电功率 / 供电工况）：
+         储能供电时就是储能功率；充电 / 待机时是电网进线（关口取电 − 储能充电吃掉的部分），
+         正好与电网→厂房直供线"真正送进厂房的那部分"同口径（见上面 stepFlow） */
+      const facKw = facOn ? emuP : (mv === null ? null : Math.max(0, mv - (chgNow ? Math.abs(pNum) : 0)));
+      facLabelEl.innerHTML = '<b>厂房（工厂用电）</b><i>受电 '
+        + (facKw === null ? '-- kW' : f(facKw, 1, ' kW')) + '</i>'
         + (powerMode === '—' ? '' : '<em>' + powerMode + ' ' + powerModeTxt + '</em>');
     }
     if (cardEls.factory) setCard('factory', '厂房（工厂用电）', [
@@ -1695,9 +1710,9 @@ window.GaoteScene3D = (function () {
       new THREE.Vector3(23.3, 0, 4.8), new THREE.Vector3(23.3, 8.2, 4.8),
       new THREE.Vector3(23.3, 8.2, -3.2), new THREE.Vector3(10.3, 8.2, -3.2),
       new THREE.Vector3(10.3, 0, 4.8), new THREE.Vector3(7.7, 2.0, 4.8),
-      new THREE.Vector3(16.8, 10.6, .8),                                    // 厂房浮标
+      new THREE.Vector3(16.8, 9.8, .8),                                     // 厂房浮标
       new THREE.Vector3(-3.9, 0, -.8), new THREE.Vector3(3.9, 2.8, .8),
-      new THREE.Vector3(-3.9, 6.2, -.8), new THREE.Vector3(3.9, 7.0, .8),    // 两个柜顶浮标（奇数柜再高一档）
+      new THREE.Vector3(-3.9, 5.6, -.8), new THREE.Vector3(3.9, 6.3, .8),    // 两个柜顶浮标（奇数柜再高一档）
       new THREE.Vector3(-10.9, 0, 3.7), new THREE.Vector3(-10.9, 2.4, 2.3),
       new THREE.Vector3(-10.9, 5.2, 3.7),                                    // 汇流柜浮标
       new THREE.Vector3(-17, 0, -2.8), new THREE.Vector3(-17, 8.2, -2.8),

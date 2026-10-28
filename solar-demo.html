@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>洙边 · 模拟工况对照（3D）</title>
+<link rel="stylesheet" href="css/style.css" id="demo-css">
+<style>
+  html, body { margin: 0; height: 100%; background: #050b0d; overflow: hidden; }
+  #solar3d { position: absolute; inset: 0; overflow: hidden; }
+  #panel {
+    position: absolute; left: 14px; top: 14px; bottom: 14px; width: 330px; z-index: 30;
+    overflow-y: auto;
+    background: linear-gradient(160deg, rgba(7,22,24,.94), rgba(4,12,14,.92));
+    border: 1px solid rgba(46,230,200,.45); border-left: 3px solid #2ee6c8;
+    padding: 12px 14px 14px; box-shadow: 0 6px 24px rgba(0,0,0,.55);
+    font-size: 12px; color: #cfe8e4; line-height: 1.6;
+  }
+  #panel h1 { font-size: 14px; font-weight: normal; color: #2ee6c8; letter-spacing: 1px; margin: 0 0 6px; }
+  #panel .hint { font-size: 11px; color: #7fa8a2; margin: 0 0 10px; }
+  #presets { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 12px; }
+  #presets button {
+    text-align: left; padding: 6px 8px; font-size: 11.5px; color: #dfeeea;
+    border: 1px solid rgba(46,230,200,.28); background: rgba(46,230,200,.05);
+    cursor: pointer; transition: .15s; border-radius: 2px;
+  }
+  #presets button:hover { background: rgba(46,230,200,.16); border-color: rgba(46,230,200,.6); }
+  #presets button.on { background: rgba(46,230,200,.26); border-color: #2ee6c8; color: #eafffa; }
+  #presets button b { color: #2ee6c8; font-weight: normal; margin-right: 4px; }
+  .sld { display: block; margin: 7px 0; font-size: 11.5px; color: #a8c8c2; }
+  .sld input { width: 100%; margin: 2px 0 0; accent-color: #2ee6c8; }
+  .sld .val { color: #eafffa; }
+  #mode {
+    margin-top: 10px; padding: 8px 10px; font-size: 13px; color: #eafffa;
+    border: 1px solid rgba(46,230,200,.4); background: rgba(46,230,200,.08);
+  }
+  #mode b { color: #2ee6c8; }
+  #legend { margin-top: 10px; font-size: 10.5px; color: #7fa8a2; line-height: 1.7; }
+</style>
+</head>
+<body>
+<div id="solar3d"></div>
+
+<div id="panel">
+  <h1>洙边 · 模拟工况对照</h1>
+  <p class="hint">点一个工况 → 3D 立刻按这组数据跑；也可以拖下面的滑杆自己调。左键拖拽旋转 / 滚轮缩放。</p>
+  <div id="presets"></div>
+
+  <label class="sld">光伏出力 <span class="val" id="vPv"></span> kW
+    <input id="sPv" type="range" min="0" max="110" step="0.5"></label>
+  <label class="sld">储能功率 <span class="val" id="vSt"></span> kW（正=放电 / 负=充电）
+    <input id="sSt" type="range" min="-100" max="100" step="0.5"></label>
+  <label class="sld">卫生院负载 <span class="val" id="vLoad"></span> kW
+    <input id="sLoad" type="range" min="0" max="60" step="0.5"></label>
+
+  <div id="mode">—</div>
+
+  <div id="legend">
+    六种能量关系：<b>1</b> 光伏→储能 ｜ <b>2</b> 光伏→卫生院 ｜ <b>3</b> 光伏卖电上网<br>
+    <b>4</b> 电网→卫生院 ｜ <b>5</b> 电网→储能 ｜ <b>6</b> 储能→卫生院<br>
+    关口表按"负载 − 光伏 − 储能"自动算（储能不卖电，卖出只画光伏余电）。
+  </div>
+</div>
+
+<script>
+/* 依次加载场景依赖（带时间戳，避免调试时吃到旧缓存），最后初始化 */
+(function () {
+  var V = '?v=' + Date.now();
+  document.getElementById('demo-css').href += V;   /* 样式同样带时间戳，不吃缓存 */
+  var FILES = [
+    'libs/three.min.js', 'libs/OrbitControls.js', 'libs/CSS2DRenderer.js',
+    'libs/CopyShader.js', 'libs/LuminosityHighPassShader.js', 'libs/EffectComposer.js',
+    'libs/RenderPass.js', 'libs/ShaderPass.js', 'libs/UnrealBloomPass.js',
+    'js/solar-scene3d.js'
+  ];
+  var i = 0;
+  function next() {
+    if (i >= FILES.length) { start(); return; }
+    var s = document.createElement('script');
+    s.src = FILES[i++] + V;
+    s.onload = next;
+    s.onerror = function () { document.getElementById('mode').textContent = '依赖加载失败：' + s.src; };
+    document.head.appendChild(s);
+  }
+  next();
+
+  /* ---------------- 工况面板 ---------------- */
+  var PV_CAP = 110.16;
+  var st = { pv: 0, st: 15, load: 12, soc: 70 };
+
+  var PRESETS = [
+    ['1', '光伏→储能', { pv: 25, st: -25, load: 0.1 }],
+    ['2', '光伏→卫生院', { pv: 15, st: 0, load: 15 }],
+    ['3', '光伏卖电', { pv: 60, st: 0, load: 0.1 }],
+    ['4', '电网→卫生院', { pv: 0, st: 0, load: 12 }],
+    ['5', '电网→储能', { pv: 0, st: -20, load: 0.1 }],
+    ['6', '储能→卫生院', { pv: 0, st: 15, load: 12 }],
+    ['1+2', '光伏充储能 + 供院', { pv: 40, st: -25, load: 15 }],
+    ['1+2+3', '充储能 + 供院 + 卖电', { pv: 55, st: -15, load: 12 }],
+    ['2+3', '供院 + 卖电', { pv: 60, st: 0, load: 12 }],
+    ['4+5', '电网供院 + 充储能', { pv: 0, st: -20, load: 12 }],
+    ['4+6', '储能供院 + 电网补缺', { pv: 0, st: 12, load: 15 }],
+    ['待机', '全静止（夜间待机）', { pv: 0, st: 0, load: 0.1 }]
+  ];
+
+  function gridKw() { return st.load - st.pv - st.st; }   /* 正 = 取电 */
+  function meterKw() { return -gridKw(); }                /* 正 = 送电（surplus） */
+
+  function computeMode() {
+    var meter = meterKw();
+    var loadEff = Math.max(0, st.pv + st.st - meter);
+    var its = [];
+    if (st.pv > .5 && st.st < -.5) its.push('1');
+    if (st.pv > .5 && loadEff > .3) its.push('2');
+    if (st.pv > .5 && meter > .3) its.push('3');
+    if (meter < -.3 && loadEff > .3) its.push('4');
+    if (st.st < -.5 && meter < -.3) its.push('5');
+    if (st.st > .5) its.push('6');
+    return its.length ? '工况 <b>' + its.join('+') + '</b>' : '<b>全站待机</b>';
+  }
+
+  function pushData() {
+    if (!window.SolarScene) return;
+    var status = st.st > .5 ? '放电' : (st.st < -.5 ? '充电' : '待机');
+    SolarScene.setPower(st.pv, PV_CAP, 444);
+    SolarScene.setStorage({
+      realtime: { power_kw: st.st, load_kw: st.load, grid_kw: gridKw(), soc: st.soc, status_text: status },
+      today: { charge_kwh: 160, discharge_kwh: 65 },
+      device: { bcu_brand: 'SYL', pcs_brand: 'EJ' },
+      grid: { feed_today_kwh: 132, draw_today_kwh: 10 }
+    });
+    document.getElementById('mode').innerHTML = computeMode()
+      + '　<span style="color:#7fa8a2">（关口 ' + (gridKw() >= 0 ? '取电 ' : '送电 ')
+      + Math.abs(gridKw()).toFixed(1) + ' kW）</span>';
+    document.getElementById('vPv').textContent = st.pv.toFixed(1);
+    document.getElementById('vSt').textContent = st.st.toFixed(1);
+    document.getElementById('vLoad').textContent = st.load.toFixed(1);
+    document.getElementById('sPv').value = st.pv;
+    document.getElementById('sSt').value = st.st;
+    document.getElementById('sLoad').value = st.load;
+  }
+
+  function buildPanel() {
+    var box = document.getElementById('presets');
+    PRESETS.forEach(function (p) {
+      var b = document.createElement('button');
+      b.innerHTML = '<b>' + p[0] + '</b>' + p[1];
+      b.addEventListener('click', function () {
+        st.pv = p[2].pv; st.st = p[2].st; st.load = p[2].load;
+        [].forEach.call(box.querySelectorAll('button'), function (x) { x.classList.toggle('on', x === b); });
+        pushData();
+      });
+      box.appendChild(b);
+      if (p[0] === '6') b.classList.add('on');   /* 默认选"储能→卫生院" */
+    });
+    ['sPv', 'sSt', 'sLoad'].forEach(function (id) {
+      document.getElementById(id).addEventListener('input', function () {
+        st.pv = Number(document.getElementById('sPv').value);
+        st.st = Number(document.getElementById('sSt').value);
+        st.load = Number(document.getElementById('sLoad').value);
+        [].forEach.call(box.querySelectorAll('button'), function (x) { x.classList.remove('on'); });
+        pushData();
+      });
+    });
+  }
+
+  function start() {
+    if (!window.SolarScene) { document.getElementById('mode').textContent = '场景脚本未就绪'; return; }
+    buildPanel();
+    SolarScene.init(function () {
+      SolarScene.setWeather({ cloud: 10, precip: 0, is_day: 0, radiation: 0, temp: 24, text: '晴' });
+      pushData();
+    });
+    setTimeout(function () { SolarScene.resize(); }, 150);
+  }
+})();
+</script>
+</body>
+</html>

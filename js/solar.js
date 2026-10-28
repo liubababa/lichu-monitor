@@ -42,7 +42,7 @@ window.SolarUI = (function () {
     },
     hospital: {
       pv: 15, st: 0, load: 15, soc: 98, status: '待机',
-      note: '储能已满、待机，光伏 15kW 经储能柜供卫生院（不卖电，算模式②）'
+      note: '储能已满、待机，光伏 15kW 经储能柜供卫生院（不卖电，算工况 2）'
     },
     /* 现场每天 10 多个小时就是这个形态（日升云 2026-10-21~23 实测：储能放 11~12kW、
        负载 12~15kW、关口取 0.5~3kW），原来演示下拉里没有它 */
@@ -207,7 +207,11 @@ window.SolarUI = (function () {
       render();
       if (src) src.textContent = sum ? ('阳光云接入 · 更新 ' + fmtTime(sum.updated_at)) : '服务未就绪';
     } catch (e) {
-      if (src) src.textContent = '读取失败：' + (e.message || e);
+      /* 面向用户的提示用中文口径，原始错误（如 Failed to fetch）只放 title 供排查 */
+      if (src) {
+        src.textContent = sum ? '刷新失败（图上仍是上一次的数据）' : '读取失败：光伏数据暂时读不到（阳光云接入服务未就绪）';
+        src.title = String((e && e.message) || e);
+      }
     } finally { busyUntil = 0; }
   }
 
@@ -275,7 +279,10 @@ window.SolarUI = (function () {
       if (t && t.points) trend = t.points;
       renderTrend();
     } catch (e) {
-      if (meta) meta.textContent = '读取失败：' + (e.message || e) + '（图上仍是上一次的数据）';
+      if (meta) {
+        meta.textContent = '读取失败（图上仍是上一次的数据）';
+        meta.title = String((e && e.message) || e);
+      }
     }
   }
 
