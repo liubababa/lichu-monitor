@@ -19,11 +19,11 @@ window.PortalUI = (function () {
   const STATIONS = [
     {
       group: '旭日东明站', name: '旭日东明储能电站', sn: 'R250907J0038', psn: 'kp23bhcpmt91n2v8',
-      tag: '储能 · 高特 CCU', note: '液冷储能 125kW / 261kWh'
+      tag: '储能 · 高特 CCU', note: '250kW / 522kWh'
     },
     {
-      kind: 'solar', group: '洙边卫生院站', name: '洙边卫生院站', sn: '', psn: '',
-      tag: '光伏 · 阳光电源', note: '分布式光伏 110.16 kWp · iSolarCloud 已接入'
+      kind: 'solar', group: '洙边卫生院光储电站', name: '洙边卫生院光储电站', sn: '', psn: '',
+      tag: '光储 · 阳光云 + 日升云', note: '光伏 110.16kW / 100kWh；储能 100kW / 215kWh；阳光电源逆变器'
     }
   ];
   const OTHER_GROUP = '其他电站';
@@ -94,10 +94,10 @@ window.PortalUI = (function () {
     head.appendChild(el('span', 'pt-tag', st.tag || ''));
     c.appendChild(head);
     c.appendChild(el('div', 'pt-crow', '<span>' + (solar ? '电站' : '设备号') + '</span>' + (solar ? '洙边卫生院 · ps_id 2355743' : (st.sn || '—'))));
-    if (st.note) c.appendChild(el('div', 'pt-crow', '<span>说明</span>' + st.note));
+    if (st.note) c.appendChild(el('div', 'pt-crow', '<span>装机容量</span>' + st.note));
     const stat = el('div', 'pt-cstat');
     stat.innerHTML = '<i class="pt-dot ' + state + '"></i>' + stateText
-      + (solar ? '　数据源 阳光云接入服务（5 分钟一更）'
+      + (solar ? '　数据源 阳光云（5 分钟）+ 日升云（1 分钟）'
         : (dev ? '　报文 ' + dev.msgs + ' 条　最后上报 ' + fmtTime(dev.lastSeen) : ''));
     c.appendChild(stat);
     const btn = el('button', 'mq-btn primary pt-enter', (solar || st.sn) ? '进入监控' : '未接入');

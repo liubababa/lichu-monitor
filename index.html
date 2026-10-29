@@ -6,7 +6,7 @@
 <title>力储未来能源综合管理系统</title>
 <link rel="icon" type="image/png" sizes="64x64" href="libs/logo-64.png?v=20260923a"/>
 <link rel="apple-touch-icon" href="libs/logo-180.png?v=20260923a"/>
-<link rel="stylesheet" href="css/style.css?v=20261029a"/>
+<link rel="stylesheet" href="css/style.css?v=20261029d"/>
 <script>
 /* 加载期错误收集（便于排查依赖/脚本问题） */
 window.__loadErrs = [];
@@ -308,25 +308,24 @@ window.addEventListener('error', function (e) {
 
 <!-- ===== 洙边卫生院站（分布式光伏 · 阳光电源 iSolarCloud） ===== -->
 <section id="solarView" class="hidden">
+  <!-- 数据页页头条：储能 / 光伏 / 详细信息三页共用（大屏手点：刷新与返回必须是按钮） -->
+  <div id="slPageBar" class="ov-bar">
+    <div class="tv-title"><span id="slPageTitle">--</span></div>
+    <div class="ov-bar-r">
+      <button class="mq-btn" id="slRefresh" title="重新拉取阳光云 / 日升云数据">刷新</button>
+      <button class="mq-btn" id="slBack">返回站点目录</button>
+    </div>
+  </div>
+
   <!-- 电站监控：全屏场景 + 右侧滑出信息栏 -->
   <section id="slLeft">
     <div id="solar3d"></div>
     <div class="scene-head">
       <div class="sh-left">
-        <div class="scene-title"><i></i><span>洙边卫生院站 · 光伏运行监测图</span></div>
-        <div class="station-chip">电站名称：<b id="slStation">--</b></div>
+        <div class="scene-title"><i></i><span>洙边卫生院光储电站 · 光储运行监测图</span></div>
+        <div class="station-chip">电站名称：<b id="slStation">洙边卫生院光储电站</b></div>
       </div>
       <div class="sh-right">
-        <select class="ghost-btn" id="slDemo" title="演示工况：用模拟数据把几种典型形态演一遍（只影响三维场景，不动真实数据）">
-          <option value="">实时</option>
-          <option value="charge">演示：光伏充储能</option>
-          <option value="hospital">演示：光伏供卫生院</option>
-          <option value="storage">演示：储能供卫生院</option>
-          <option value="sell">演示：光伏卖电</option>
-          <option value="surplus">演示：储能满·光伏上网</option>
-          <option value="grid">演示：电网供电</option>
-          <option value="gridchg">演示：电网给储能充电</option>
-        </select>
         <button class="ghost-btn" id="slBtnLabels" title="显示 / 隐藏设备浮标">标签</button>
         <button class="ghost-btn" id="slBtnRotate" title="自动旋转开 / 关">旋转</button>
         <button class="ghost-btn" id="slBtnReset" title="重置视角">重置视角</button>
@@ -448,14 +447,14 @@ window.addEventListener('error', function (e) {
 <script src="js/gaote.js?v=20261016n"></script>
 <script src="js/gaote-view.js?v=20261016n"></script>
 <script src="js/gaote-detail.js?v=20261016q"></script>
-<script src="js/gaote-scene3d.js?v=20261028c"></script>
+<script src="js/gaote-scene3d.js?v=20261029b"></script>
 <script src="js/gaote-strategy.js?v=20261016n"></script>
 <script src="js/overview.js?v=20261016n"></script>
 <script src="js/mqtt-ui.js?v=20261029a"></script>
-<script src="js/portal.js?v=20261016n"></script>
+<script src="js/portal.js?v=20261029g"></script>
 <script src="js/screensaver.js?v=20261016n"></script>
-<script src="js/solar.js?v=20261028c"></script>
-<script src="js/solar-scene3d.js?v=20261028b"></script>
+<script src="js/solar.js?v=20261029f"></script>
+<script src="js/solar-scene3d.js?v=20261029h"></script>
 <script src="js/scene3d.js?v=20261016n"></script>
 <script src="js/charts.js?v=20261016n"></script>
 <script src="js/main.js?v=20261016o"></script>

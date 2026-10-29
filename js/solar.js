@@ -78,6 +78,11 @@ window.SolarUI = (function () {
     if (n === null) return '--';
     return n.toLocaleString('zh-CN', { minimumFractionDigits: d === undefined ? 1 : d, maximumFractionDigits: d === undefined ? 1 : d });
   }
+  /* 功率因数只可能落在 -1..1：日升云实测出现过 654.36 这类坏值，超范围显示 --（不编数） */
+  function pfText(v) {
+    const n = num(v);
+    return (n === null || Math.abs(n) > 1) ? '--' : n.toFixed(2);
+  }
   function fmtTime(iso) {
     if (!iso) return '--';
     const d = new Date(iso);
@@ -355,7 +360,7 @@ window.SolarUI = (function () {
       + row('电网 / 负载', fmt(r.grid_kw, 1) + ' / ' + fmt(r.load_kw, 1) + ' kW')
       + (pc ? arrRow('PCS 三相电压', pc.volt_v, 'V', 1) : '')
       + (pc ? arrRow('PCS 三相电流', pc.curr_a, 'A', 1) : '')
-      + (pc ? row('PCS 频率 / 功率因数', fmt(pc.freq_hz, 2) + ' Hz　' + fmt(pc.power_factor, 2)) : '')
+      + (pc ? row('PCS 频率 / 功率因数', fmt(pc.freq_hz, 2) + ' Hz　' + pfText(pc.power_factor)) : '')
       + (bt ? row('总压 / 总流', fmt(bt.voltage_v, 1) + ' V　' + fmt(bt.current_a, 1) + ' A') : '')
       + (bt ? row('单体电压 高 / 低', fmt(bt.cell_volt_max_mv, 0) + ' / ' + fmt(bt.cell_volt_min_mv, 0) + ' mV') : '')
       + '<div class="sl-green">'
@@ -474,7 +479,7 @@ window.SolarUI = (function () {
       + gvTile('无功功率', fmt(pc.reactive_kvar, 1), 'kVar')
       + gvTile('视在功率', fmt(pc.apparent_kva, 1), 'kVA')
       + gvTile('电网频率', fmt(pc.freq_hz, 2), 'Hz')
-      + gvTile('功率因数', fmt(pc.power_factor, 2), '')
+      + gvTile('功率因数', pfText(pc.power_factor), '')
       + '</div>' + kvGrid([
         ['三相电压', Array.isArray(pc.volt_v) ? pc.volt_v.map(v => fmt(v, 1)).join(' / ') + ' V' : '--'],
         ['三相电流', Array.isArray(pc.curr_a) ? pc.curr_a.map(v => fmt(v, 1)).join(' / ') + ' A' : '--'],
@@ -773,6 +778,10 @@ window.SolarUI = (function () {
     const page = !!PAGES[tab];
     const L = byId('slLeft'); if (L) L.style.display = page ? 'none' : '';
     const R = byId('slRight'); if (R) R.style.display = page ? 'none' : '';
+    /* 数据页显示页头条（刷新 / 返回站点目录），三维页隐藏 */
+    const sv = byId('solarView'); if (sv) sv.classList.toggle('page-mode', page);
+    const pt = byId('slPageTitle');
+    if (pt) pt.textContent = ({ storage: '储能 · 电池簇 / PCS / 液冷', solar: '光伏 · 发电与设备', revenue: '详细信息 · 结算与收益' })[tab] || '';
     if (!page && sceneOn) setTimeout(ensureScene, 60);
     if (tab === 'storage') renderStoragePage();
     if (tab === 'revenue') renderRevenuePage();
@@ -790,8 +799,9 @@ window.SolarUI = (function () {
 
   function renderAlarm() {
     const bar = byId('slAlarmBar'), txt = byId('slAlarmText');
+    /* 电站名称芯片：显示平台站名（阳光云厂家站名只代表数据来源，不覆盖平台命名） */
     const station = byId('slStation');
-    if (station && sum && sum.plant && sum.plant.name) station.textContent = sum.plant.name;
+    if (station) station.textContent = '洙边卫生院光储电站';
     if (!txt) return;
     const parts = [];
     if (wx) {

@@ -108,19 +108,22 @@ button{font-family:inherit;cursor:pointer;background:none;border:none;color:inhe
   font-size:18px;letter-spacing:2px;white-space:nowrap;color:var(--t1);
 }
 .site-title span{display:block;font-size:11px;color:var(--t3);letter-spacing:2px;margin-top:1px;white-space:nowrap}
-.tb-tabs{display:flex;gap:4px;margin-left:38px;flex:none;align-self:stretch}
-/* 页签：下划线式（审计 §3.1）——不斜切、无装饰箭头 */
+.tb-tabs{display:flex;gap:10px;margin-left:38px;flex:none}
+/* 页签是主导航，大屏上要显眼：保留原来的斜切方块 + 选中态实心青色发光；
+   同时命中区提到 ≥44px（大屏多为手点操作） */
 .tab{
-  display:flex;align-items:center;gap:7px;padding:0 14px;font-size:13px;color:var(--t2);
-  background:none;border:none;border-bottom:2px solid transparent;transition:color .18s,border-color .18s;
+  display:flex;align-items:center;gap:7px;padding:8px 16px;min-height:44px;font-size:15px;color:var(--dim);
+  background:var(--acc-1);border:1px solid var(--acc-2);
+  transform:skewX(-14deg);transition:.25s;
 }
+.tab>*{transform:skewX(14deg)}
 .tab span{white-space:nowrap}
 .tab svg{width:15px;height:15px}
-.tab i{display:none}
-.tab:hover{color:var(--t1)}
+.tab i{font-style:normal;font-size:11px;opacity:.7}
+.tab:hover{color:var(--teal)}
 .tab.active{
-  color:var(--t1);background:none;border-bottom-color:var(--acc);
-  font-weight:600;box-shadow:none;
+  color:#04231d;background:linear-gradient(120deg,#35f0cf,#1cc9a8);
+  border-color:transparent;font-weight:bold;box-shadow:0 0 16px var(--acc-3);
 }
 .tb-right{margin-left:auto;display:flex;align-items:center;gap:16px}
 .clock,.clock b,.clock span{white-space:nowrap}
@@ -134,11 +137,11 @@ button{font-family:inherit;cursor:pointer;background:none;border:none;color:inhe
 .clock b{display:block;font-family:var(--num);font-size:18px;color:#d9fff6;letter-spacing:1px;font-weight:normal}
 .clock span{font-size:11px;color:var(--dim)}
 .icon-btn{
-  width:32px;height:32px;display:flex;align-items:center;justify-content:center;
-  border:1px solid var(--teal-soft);border-radius:4px;color:var(--dim);transition:.2s;
+  width:44px;height:44px;display:flex;align-items:center;justify-content:center;
+  border:1px solid var(--teal-soft);border-radius:2px;color:var(--dim);transition:.2s;
 }
 .icon-btn:hover{color:var(--teal);box-shadow:0 0 10px var(--acc-2)}
-.icon-btn svg{width:15px;height:15px}
+.icon-btn svg{width:19px;height:19px}
 
 /* ---------- 主体布局 ---------- */
 #main{flex:1;position:relative;display:block;padding:0;min-height:0;overflow:hidden}
@@ -160,12 +163,12 @@ button{font-family:inherit;cursor:pointer;background:none;border:none;color:inhe
 .station-chip b{color:var(--teal);font-weight:normal}
 .sh-right{display:flex;gap:8px;align-items:center}
 .ghost-btn{
-  padding:5px 12px;font-size:12px;color:var(--dim);
+  padding:11px 16px;min-height:44px;font-size:13px;color:var(--dim);
   border:1px solid var(--acc-2);background:rgba(5,15,17,.72);transition:.2s;
 }
 .ghost-btn:hover,.ghost-btn.active{color:var(--teal);border-color:var(--acc-3);box-shadow:0 0 8px var(--acc-2)}
 /* 演示工况下拉（三维场景工具栏）：外观跟 ghost-btn 一致，选中演示时用琥珀色标出来 */
-select.ghost-btn{padding:5px 8px;font:inherit;font-size:12px;cursor:pointer;border-radius:0}
+select.ghost-btn{padding:10px 10px;min-height:44px;font:inherit;font-size:13px;cursor:pointer;border-radius:0}
 select.ghost-btn:hover,select.ghost-btn.on{color:var(--teal);border-color:var(--acc-3);box-shadow:0 0 8px var(--acc-2)}
 select.ghost-btn.on{color:#04231d;background:linear-gradient(120deg,#ffd07a,#ffb020);border-color:transparent}
 html[data-theme="day"] select.ghost-btn{background:rgba(255,255,255,.82);border-color:rgba(15,150,130,.3);color:#3c6464}
@@ -192,7 +195,7 @@ html[data-theme="day"] select.ghost-btn.on{color:#5a3a00;background:linear-gradi
 /* ---------- 右侧面板：默认收成最右边一条竖边；点一下展开（触摸屏），鼠标也可悬停滑出 ---------- */
 #right{
   --panel-w:clamp(360px,26vw,500px);
-  --strip:26px;                 /* 收起时露出的竖边宽度（触摸屏会加宽，方便手指点） */
+  --strip:34px;                 /* 收起时露出的竖边宽度（触摸屏会加宽，方便手指点） */
   position:absolute;top:12px;right:0;bottom:12px;z-index:20;
   width:var(--strip);overflow:hidden;transition:width .26s ease;
   border:1px solid var(--acc-2);border-radius:2px;
@@ -308,7 +311,8 @@ html[data-theme="day"] select.ghost-btn.on{color:#5a3a00;background:linear-gradi
   border-bottom:1px solid var(--acc-3);
 }
 .card3d .c-head span{font-size:12px;color:#8ff5df;letter-spacing:1px}
-.card3d .c-x{font-style:normal;cursor:pointer;color:var(--dim);font-size:11px;padding:0 2px}
+.card3d .c-x{font-style:normal;cursor:pointer;color:var(--dim);font-size:15px;
+  min-width:38px;min-height:38px;display:inline-flex;align-items:center;justify-content:center}
 .card3d .c-x:hover{color:#fff}
 .card3d .c-rows{padding:7px 10px 8px}
 .card3d .c-row{display:flex;justify-content:space-between;font-size:12px;line-height:1.9;color:var(--dim)}
@@ -334,7 +338,7 @@ html[data-theme="day"] select.ghost-btn.on{color:#5a3a00;background:linear-gradi
 
 /* ---------- 顶栏：数据源状态 ---------- */
 .ds-chip{
-  display:flex;align-items:center;gap:7px;padding:6px 13px;font-size:12px;border-radius:4px;
+  display:flex;align-items:center;gap:7px;padding:10px 14px;min-height:44px;font-size:13px;border-radius:2px;
   border:1px solid var(--teal-soft);background:var(--acc-1);color:var(--text);
   white-space:nowrap;transition:.2s;
 }
@@ -364,7 +368,7 @@ html[data-theme="day"] select.ghost-btn.on{color:#5a3a00;background:linear-gradi
 .dev-hint{font-size:11px;line-height:1.65;color:var(--dim);margin-bottom:10px}
 .dev-list{display:flex;flex-direction:column;gap:7px}
 .dev-row{
-  display:flex;align-items:center;gap:9px;padding:8px 10px;cursor:pointer;transition:.2s;
+  display:flex;align-items:center;gap:9px;padding:12px 12px;min-height:48px;cursor:pointer;transition:.2s;
   border:1px solid var(--acc-2);background:rgba(2,10,12,.6);
 }
 .dev-row:hover{border-color:var(--acc-3);background:var(--acc-1)}
@@ -405,7 +409,7 @@ html[data-theme="day"] select.ghost-btn.on{color:#5a3a00;background:linear-gradi
 .mq-row{display:flex;align-items:center;gap:9px;margin-bottom:7px}
 .mq-row>span{width:82px;flex:none;font-size:12px;color:var(--dim)}
 .mq-row input{
-  flex:1;min-width:0;padding:6px 9px;font-size:12px;color:#d9fff6;font-family:var(--num);
+  flex:1;min-width:0;padding:10px 10px;min-height:44px;font-size:13px;color:#d9fff6;font-family:var(--num);
   background:rgba(2,10,12,.85);border:1px solid var(--acc-2);outline:none;transition:.2s;
 }
 .mq-row input:focus{border-color:var(--acc-3);box-shadow:0 0 9px var(--acc-2)}
@@ -413,7 +417,7 @@ html[data-theme="day"] select.ghost-btn.on{color:#5a3a00;background:linear-gradi
   background:var(--acc-1);border:1px dashed var(--acc-2)}
 .mq-btns{display:flex;flex-wrap:wrap;gap:7px;margin:9px 0}
 .mq-btn{
-  padding:6px 12px;font-size:12px;color:var(--text);
+  padding:11px 16px;min-height:44px;font-size:13px;color:var(--text);
   border:1px solid var(--acc-2);background:var(--acc-1);transition:.2s;
 }
 .mq-btn:hover{color:var(--teal);border-color:var(--acc-3);box-shadow:0 0 9px var(--acc-2)}
@@ -439,7 +443,7 @@ html[data-theme="day"] select.ghost-btn.on{color:#5a3a00;background:linear-gradi
 }
 .log-head em{font-style:normal;font-size:11px;color:var(--dim)}
 .log-tools{margin-left:auto;display:flex;gap:6px}
-.log-tools .ghost-btn{padding:3px 9px;font-size:11px}
+.log-tools .ghost-btn{padding:8px 12px;min-height:38px;font-size:12px}
 .log-body{flex:1;overflow:auto;padding:6px 9px 9px;font-family:var(--num);font-size:11px}
 #logPanel.fold .log-body{display:none}
 .lg-row{margin-bottom:7px;border-left:2px solid var(--acc-2);padding-left:7px}
@@ -946,7 +950,7 @@ html[data-theme="day"] select.ghost-btn.on{color:#5a3a00;background:linear-gradi
 .dt-tf-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px 14px}
 .dt-tf{display:flex;flex-direction:column;gap:3px}
 .dt-tf span{font-size:11px;color:var(--dim)}
-.dt-tf input{background:rgba(4,12,14,.75);border:1px solid var(--acc-2);color:#eafffa;padding:4px 7px;font-size:12px;font-family:var(--num);outline:none}
+.dt-tf input{background:rgba(4,12,14,.75);border:1px solid var(--acc-2);color:#eafffa;padding:10px 8px;min-height:44px;font-size:13px;font-family:var(--num);outline:none}
 .dt-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
 .dt-kpi{border:1px solid var(--acc-2);background:linear-gradient(165deg,var(--acc-1),var(--acc-1));padding:10px 12px;position:relative}
 .dt-kpi span{display:block;font-size:11px;color:var(--dim);letter-spacing:1px}
@@ -967,7 +971,7 @@ html[data-theme="day"] select.ghost-btn.on{color:#5a3a00;background:linear-gradi
 .dt-panelops{margin-left:auto}
 .dt-chips{display:flex;gap:4px}
 .dt-chips button{
-  padding:2px 9px;font-size:11px;color:var(--dim);cursor:pointer;transition:.15s;
+  padding:10px 14px;min-height:44px;font-size:12px;color:var(--dim);cursor:pointer;transition:.15s;
   border:1px solid var(--acc-2);background:rgba(4,12,14,.5);
 }
 .dt-chips button:hover{color:var(--teal);border-color:var(--acc-3)}
@@ -1035,7 +1039,7 @@ html[data-theme="day"] select.ghost-btn.on{color:#5a3a00;background:linear-gradi
 .pt-dot.off{background:#ff6e50;box-shadow:0 0 8px rgba(255,110,80,.75)}
 .pt-dot.na{background:#8a8f6e}
 .pt-enter{align-self:flex-start;margin-top:auto;white-space:nowrap}
-#portal .pt-enter{font-size:13px;padding:clamp(5px,.45vw,11px) clamp(14px,.9vw,24px)}
+#portal .pt-enter{font-size:13px;min-height:44px;padding:11px 18px}
 .pt-empty{grid-column:1/-1;border:1px dashed var(--acc-2);padding:20px;text-align:center;
   min-height:clamp(170px,10vw,300px);display:flex;flex-direction:column;align-items:center;justify-content:center;
   font-size:12px;color:var(--dim);line-height:1.9}
@@ -1088,9 +1092,8 @@ html[data-theme="day"] #topbar{
   border-bottom-color:rgba(15,150,130,.3);
 }
 html[data-theme="day"] .site-title h1{color:#0d3b3a}
-html[data-theme="day"] .tab{color:#3d5b64}
-html[data-theme="day"] .tab:hover{color:#0d2630}
-html[data-theme="day"] .tab.active{color:#0d2630;border-bottom-color:#0b8f76}
+html[data-theme="day"] .tab{color:#4a6f6f;background:rgba(15,150,130,.06);border-color:rgba(15,150,130,.2)}
+html[data-theme="day"] .tab:hover{color:#0d8a72}
 html[data-theme="day"] .clock b{color:#0f3a3a}
 html[data-theme="day"] .icon-btn{border-color:rgba(15,150,130,.35);color:#3c6464}
 html[data-theme="day"] .icon-btn:hover{color:#0d8a72;box-shadow:0 0 10px rgba(15,150,130,.2)}
@@ -1403,11 +1406,15 @@ html[data-theme="day"] .gs-warn{color:#8a5b00}
   background:linear-gradient(165deg,rgba(8,23,26,1),rgba(4,11,13,1));
   border:1px solid var(--acc-3);box-shadow:0 16px 46px rgba(0,0,0,.66)}
 #slLeft{position:relative;flex:1;min-width:0;background:#04090c;overflow:hidden}
+/* 数据页页头条：只在储能 / 光伏 / 详细信息三页出现（触摸操作要有可点的刷新与返回） */
+#slPageBar{position:absolute;left:0;right:0;top:0;z-index:6;display:none}
+#solarView.page-mode #slPageBar{display:flex}
+#solarView.page-mode #slStorView,#solarView.page-mode #slSolarView,#solarView.page-mode #slRevView{padding-top:62px}
 #solar3d{position:absolute;inset:0}
 #solar3d canvas{display:block}
 #slRight{
   --panel-w:clamp(340px,24vw,460px);
-  --strip:26px;
+  --strip:34px;
   position:absolute;top:12px;right:0;bottom:12px;z-index:20;width:var(--strip);overflow:hidden;
   transition:width .26s ease;border:1px solid var(--acc-2);border-radius:2px;
   background:linear-gradient(165deg,rgba(10,26,30,.92),rgba(5,13,16,.94));
@@ -1461,7 +1468,8 @@ html[data-theme="day"] .gs-warn{color:#8a5b00}
 .sl-trend .cc-chart{height:330px}
 .sl-side{display:flex;flex-direction:column;gap:12px;min-width:0}
 .sl-ranges{display:inline-flex;gap:4px;margin-left:8px}
-.sl-ranges button{font:inherit;font-size:11px;color:var(--dim);background:transparent;border:1px solid var(--acc-2);padding:2px 9px;cursor:pointer}
+.sl-ranges button{font:inherit;font-size:12px;color:var(--dim);background:transparent;border:1px solid var(--acc-2);
+  padding:10px 14px;min-height:44px;cursor:pointer}
 .sl-ranges button:hover{color:var(--text);border-color:var(--acc-3)}
 .sl-ranges button.on{color:#04120f;background:var(--teal);border-color:var(--teal);font-weight:600}
 .sl-devs{display:flex;flex-direction:column;gap:7px}

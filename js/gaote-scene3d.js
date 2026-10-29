@@ -144,33 +144,34 @@ window.GaoteScene3D = (function () {
     return new THREE.CanvasTexture(c);
   }
 
-  /* 水泥地坪（按白天新设计的 Demo 改）：高频细砂眼 + 少量小色差 + 抹痕。
-     原来那版是大块软斑（远看像云/迷彩），现在远看近看都像水泥 */
+  /* 场坪网格（2026-10-29 与洙边同一口径同步）：深色底盘 + 青色细格网，每格约 3m；
+     昼 = 浅色水泥 + 淡格线。原来那版随机污渍（26 个椭圆软斑 + 划痕）近看像脏污，已移除 */
   function concreteTexture() {
     const day = theme === 'day';
     const tx = tex(function (g, w, h) {
-      g.fillStyle = day ? '#c2c5bd' : '#30383d'; g.fillRect(0, 0, w, h);
-      for (let i = 0; i < 9000; i++) {
+      g.fillStyle = day ? '#c4c7bf' : '#1b2b33'; g.fillRect(0, 0, w, h);
+      for (let i = 0; i < 2600; i++) {
         const darkk = Math.random() > .5;
         g.fillStyle = darkk
-          ? (day ? 'rgba(70,74,70,' + (.02 + Math.random() * .06) + ')' : 'rgba(0,0,0,' + (.03 + Math.random() * .08) + ')')
-          : (day ? 'rgba(255,255,255,' + (.02 + Math.random() * .05) + ')' : 'rgba(255,255,255,' + (.015 + Math.random() * .04) + ')');
+          ? (day ? 'rgba(70,74,70,' + (.02 + Math.random() * .05) + ')' : 'rgba(0,0,0,' + (.03 + Math.random() * .07) + ')')
+          : (day ? 'rgba(255,255,255,' + (.02 + Math.random() * .05) + ')' : 'rgba(255,255,255,' + (.012 + Math.random() * .03) + ')');
         const s = Math.random() < .85 ? 1 : 2;
         g.fillRect(Math.random() * w, Math.random() * h, s, s);
       }
-      for (let i = 0; i < 26; i++) {
-        g.fillStyle = day
-          ? (Math.random() > .5 ? 'rgba(90,96,92,.05)' : 'rgba(255,255,255,.05)')
-          : (Math.random() > .5 ? 'rgba(0,0,0,.07)' : 'rgba(255,255,255,.03)');
-        g.beginPath();
-        g.ellipse(Math.random() * w, Math.random() * h, 4 + Math.random() * 12, 3 + Math.random() * 8, Math.random() * 3, 0, 6.3);
-        g.fill();
+      const cells = 8, cw = w / cells;
+      g.strokeStyle = day ? 'rgba(30,90,95,.09)' : 'rgba(46,230,200,.13)';
+      g.lineWidth = 1.2;
+      for (let i = 0; i <= cells; i++) {
+        const p = Math.round(i * cw) + .5;
+        g.beginPath(); g.moveTo(p, 0); g.lineTo(p, h); g.stroke();
+        g.beginPath(); g.moveTo(0, p); g.lineTo(w, p); g.stroke();
       }
-      for (let i = 0; i < 7; i++) {
-        g.strokeStyle = day ? 'rgba(255,255,255,.05)' : 'rgba(255,255,255,.025)';
-        g.lineWidth = 1;
-        const yy = Math.random() * h;
-        g.beginPath(); g.moveTo(0, yy); g.lineTo(w, yy + (Math.random() - .5) * 10); g.stroke();
+      g.strokeStyle = day ? 'rgba(30,90,95,.14)' : 'rgba(46,230,200,.22)';
+      g.lineWidth = 2;
+      for (let i = 0; i <= cells; i += 4) {                      /* 每 4 格一条主格线 */
+        const p = Math.round(i * cw) + .5;
+        g.beginPath(); g.moveTo(p, 0); g.lineTo(p, h); g.stroke();
+        g.beginPath(); g.moveTo(0, p); g.lineTo(w, p); g.stroke();
       }
     }, 512, 512);
     tx.wrapS = tx.wrapT = THREE.RepeatWrapping;
@@ -997,7 +998,7 @@ window.GaoteScene3D = (function () {
     groundMat = new THREE.MeshStandardMaterial({
       map: concreteTexture(), roughness: .96, metalness: .02
     });
-    groundMat.map.repeat.set(47, 47);
+    groundMat.map.repeat.set(29, 29);   /* 8 格/贴图 × 29 次 = 700m 里每格约 3m，对齐洙边场坪网格 */
     const ground = new THREE.Mesh(new THREE.PlaneGeometry(700, 700), groundMat);
     ground.rotation.x = -Math.PI / 2;
     ground.receiveShadow = true;
@@ -1005,7 +1006,7 @@ window.GaoteScene3D = (function () {
     /* 场地台座：原来是 48×22 的深色小台，四周露边像"模型底座"；
        现在换成同材质混凝土并放大到 460×240 铺满画面，边缘落在雾外看不到台边 */
     slabYardMat = new THREE.MeshStandardMaterial({ map: concreteTexture(), roughness: .93, metalness: .02 });
-    slabYardMat.map.repeat.set(31, 16);
+    slabYardMat.map.repeat.set(19, 10);   /* 460×240 场坪同样 3m 网格（19×10 次 ×8 格） */
     root.add(box(460, .18, 240, slabYardMat, 0, .09, 0));
 
     /* 电缆沟盖板：储能柜前 → 汇流柜 → 厂房，放电/充电两组电缆都在沟里走，地面干净 */
@@ -1600,14 +1601,14 @@ window.GaoteScene3D = (function () {
     if (groundMat) {
       const old = groundMat.map;
       groundMat.map = concreteTexture();
-      groundMat.map.repeat.set(47, 47);
+      groundMat.map.repeat.set(29, 29);   /* 8 格/贴图 × 29 次 = 700m 里每格约 3m，对齐洙边场坪网格 */
       groundMat.needsUpdate = true;
       if (old) old.dispose();
     }
     if (slabYardMat) {
       const old = slabYardMat.map;
       slabYardMat.map = concreteTexture();
-      slabYardMat.map.repeat.set(31, 16);
+      slabYardMat.map.repeat.set(19, 10);   /* 460×240 场坪同样 3m 网格（19×10 次 ×8 格） */
       slabYardMat.needsUpdate = true;
       if (old) old.dispose();
     }

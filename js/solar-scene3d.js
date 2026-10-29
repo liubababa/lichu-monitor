@@ -597,6 +597,7 @@ window.SolarScene = (function () {
     bld.position.set(0, H2 / 2 + .3, 0);
     bld.castShadow = bld.receiveShadow = true;
     root.add(bld);
+    bld.userData.key = 'hosp';                 /* 点楼体 → 卫生院明细卡（与旭日东明厂房同款） */
     occluders.push(bld);                       /* 楼体：挡住它后面的浮标 */
     root.add(box(W2 + .2, .55, D2 + .2, bandMat, 0, .58, 0));              /* 深色基座带 */
     /* 楼层腰线（一圈） */
@@ -706,6 +707,7 @@ window.SolarScene = (function () {
     /* 卫生院浮标：版式与旭日东明那栋「厂房（工厂用电）」一致——名称 / 受电功率 / 供电工况。
        挂在入口雨棚上方、贴着自己这栋楼（不再飘在屋面上空），和屋顶阵列浮标上下分开、互不压 */
     hospLabelEl = label('<b>卫生院（医院用电）</b><i>受电 -- kW</i><em>--</em>', 'tag3d-gt', 0, H2 - .15, D2 / 2 + 1.4);
+    addCard('hosp', 0, H2 + 1.0, D2 / 2 + .8);
   }
 
   /* ---------------- 屋顶光伏阵列 ---------------- */
@@ -779,7 +781,7 @@ window.SolarScene = (function () {
       t.castShadow = true;
       arrGroup.add(t);
     });
-    addCard('array', 0, roofY + 5.6, 0);
+    addCard('array', 0, roofY + 2.4, 0);      /* 明细卡贴近屋顶阵列（原来离屋面 5.6m，太远） */
   }
 
   /* ---------------- 储能柜（光储一体柜：柜体 + 顶部空调 + 侧面 SOC 光柱） ---------------- */
@@ -1899,6 +1901,24 @@ window.SolarScene = (function () {
           ? '工况 ' + hosp.map(function (x) { return x[0]; }).join('+') + ' · '
             + hosp.map(function (x) { return x[1].replace('→卫生院', ''); }).join('/') + '供电'
           : (known ? '全站待机 · 无进线' : '--')) + '</em>';
+    }
+    /* 卫生院明细卡（版式对齐旭日东明厂房卡）：受电功率 / 供电来源 / 工况 / 关口 / 储能 SOC */
+    if (cards.hosp) {
+      const hospIts = its.filter(function (x) { return x[1].indexOf('卫生院') > -1; });
+      const feeds = [];
+      if (known && loadEff > .3 && pvOn) feeds.push('光伏支线');
+      if (known && loadEff > .3 && dis) feeds.push('储能线');
+      if (known && loadEff > .3 && surplus !== null && surplus < -.3) feeds.push('电网直供');
+      const socN = (cur.storSoc === null || cur.storSoc === undefined || isNaN(Number(cur.storSoc))) ? null : Number(cur.storSoc);
+      setCard('hosp', '卫生院（医院用电）', [
+        ['受电功率', known ? loadEff.toFixed(1) + ' kW' : '--'],
+        ['供电来源', feeds.length ? feeds.join(' + ') : '—'],
+        ['当前工况', hospIts.length ? hospIts.map(function (x) { return '工况 ' + x[0] + ' ' + x[1]; }).join(' / ') : (known ? '全站待机' : '--')],
+        ['关口', surplus === null ? '--' : (Math.abs(surplus) > .3
+          ? (surplus > 0 ? '送出 ' + surplus.toFixed(1) + ' kW' : '取电 ' + Math.abs(surplus).toFixed(1) + ' kW')
+          : '无交换')],
+        ['储能 SOC', socN === null ? '--' : Math.round(socN) + ' %']
+      ], feeds.length ? ('由 ' + feeds.join(' / ') + ' 供电') : '');
     }
     if (twrLabelEl) {
       twrLabelEl.innerHTML = '<b>并网铁塔</b><i>10kV 上网线路</i><em>' + (surplus === null ? '--' : (Math.abs(surplus) > .3
