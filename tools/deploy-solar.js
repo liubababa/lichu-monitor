@@ -22,7 +22,7 @@ try { cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8')); } catch (_) {}
 if (!cfg.appkey || !cfg.secret) {
   console.error('缺少凭据：请先创建 ' + cfgPath + '，内容形如');
   console.error(JSON.stringify({
-    appkey: '1D68B7E7…', secret: '8dqhh7bj…', appid: '2590', region: 'cn',
+    appkey: '<AppKey>', secret: '<AppSecret>', appid: '<AppId>', region: 'cn',
     psId: '', redirect: 'https://mqtt.ykdesign.top/solar/callback'
   }, null, 2));
   process.exit(1);

@@ -27,49 +27,10 @@ window.SolarUI = (function () {
   const TREE_PER_KG = 1 / 18.3;       // 每棵树每年约吸收 18.3 kg CO₂
   const REFRESH_MS = 60000;           // 汇总与设备 1 分钟刷一次（服务端 5 分钟一拉）
 
-  let chart = null, timer = null, range = 'today', busyUntil = 0, last = null;
-  let sum = null, devices = [], trend = [], wx = null, sceneOn = true;
+  let chart = null, timer = null, range = 'today', busyUntil = 0;
+  let sum = null, devices = [], trend = [], wx = null;
   let stor = null, storDevs = [], storTrend = [], revTrend = [], powTrend = [];
   let storChart = null, revChart = null, powChart = null;
-  /* 演示工况：'' = 实时；其余值见 DEMO。只替换喂给三维场景的那份数据，真实数据链路不动 */
-  let demo = '';
-
-  /* 几种典型形态的模拟数据（现场演示用；数值按日升云口径：power_kw 正=放电 / 负=充电） */
-  const DEMO = {
-    charge: {
-      pv: 40, st: -25, load: 15, soc: 72, status: '充电中',
-      note: '光伏 40kW 给储能充 25kW，余量 15kW 供卫生院，不卖电'
-    },
-    hospital: {
-      pv: 15, st: 0, load: 15, soc: 98, status: '待机',
-      note: '储能已满、待机，光伏 15kW 经储能柜供卫生院（不卖电，算工况 2）'
-    },
-    /* 现场每天 10 多个小时就是这个形态（日升云 2026-10-21~23 实测：储能放 11~12kW、
-       负载 12~15kW、关口取 0.5~3kW），原来演示下拉里没有它 */
-    storage: {
-      pv: 0, st: 12, load: 15, soc: 62, status: '放电中',
-      note: '夜间：储能放 12kW 供卫生院，缺口 3kW 由电网补'
-    },
-    sell: {
-      pv: 55, st: -15, load: 12, soc: 66, status: '充电中',
-      note: '光伏 55kW 先给储能充 15kW、供院 12kW，余 28kW 卖电网'
-    },
-    /* 现场午后的常态：储能充满转待机，光伏供卫生院、余电全上网（实测送出 40~68kW） */
-    surplus: {
-      pv: 60, st: 0, load: 12, soc: 100, status: '待机',
-      note: '储能已满、待机：光伏 60kW 供卫生院 12kW，余 48kW 上网'
-    },
-    grid: {
-      pv: 0, st: 0, load: 12, soc: 55, status: '待机',
-      note: '光伏没出力，全站 12kW 由电网供'
-    },
-    /* ③ 现场目前不做谷电充电（三天实测一次没出现），这一档留着看"电网给储能充电"的形态 */
-    gridchg: {
-      pv: 0, st: -20, load: 12, soc: 40, status: '充电中',
-      note: '电网给储能充 20kW，同时供卫生院 12kW（现场目前不做谷电充电）'
-    }
-  };
-
   /* ---------------- 小工具 ---------------- */
   const num = v => (v === null || v === undefined || v === '' || isNaN(Number(v))) ? null : Number(v);
   const kwh = v => num(v) === null ? null : num(v) / 1000;                       // Wh → kWh（度）
@@ -153,7 +114,7 @@ window.SolarUI = (function () {
     if (mt) mt.style.display = 'none';
     mountTab('monitor');
     refresh();
-    if (sceneOn) setTimeout(ensureScene, 80);
+    setTimeout(ensureScene, 80);
     if (!timer) timer = setInterval(refresh, REFRESH_MS);
     setTimeout(function () {
       if (chart) chart.resize();
@@ -186,7 +147,7 @@ window.SolarUI = (function () {
     try {
       /* 三个接口串行拉：现场网络经代理时并发连接容易被挂住，串行稳得多 */
       const s = await getJSON('summary');
-      if (s && s.data) { sum = s.data; last = new Date(); }
+      if (s && s.data) sum = s.data;
       const d = await getJSON('devices');
       if (d && d.data) devices = d.data;
       const t = await getJSON('trend?range=' + range);
@@ -705,39 +666,9 @@ window.SolarUI = (function () {
       + row('日出 / 日落', (wx.sunrise || '--') + ' / ' + (wx.sunset || '--'));
   }
 
-  /* 演示工况：把模拟数据按"日升云实时 + 天气"的口径喂给三维场景（不碰真实数据链路） */
-  function pushDemo(d) {
-    const day = isDay();
-    SolarScene.setWeather({
-      cloud: 10, precip: 0, is_day: day ? 1 : 0, radiation: day ? 820 : 0,
-      temp: 24, text: '晴'
-    });
-    SolarScene.setPower(d.pv, 110.16, 150);
-    SolarScene.setStorage({
-      realtime: {
-        power_kw: d.st, load_kw: d.load, soc: d.soc,
-        time: new Date().toISOString().slice(0, 19).replace('T', ' '),
-        status_text: d.status
-      },
-      today: { charge_kwh: 38.5, discharge_kwh: 9.2 },
-      device: { bcu_brand: 'SYL', pcs_brand: 'EJ' },
-      grid: { feed_today_kwh: 12.4, feed_total_kwh: 9820, draw_today_kwh: 3.1, draw_total_kwh: 1450 }
-    });
-    const meta = byId('slSceneMeta');
-    if (meta) meta.textContent = '演示 · ' + d.note;
-  }
-
   /* 把实时功率与天气推给三维场景 */
   function pushScene() {
-    const meta = byId('slSceneMeta');
-    if (meta) {
-      meta.textContent = wx
-        ? (wx.text + ' · 云量 ' + Math.round(num(wx.cloud) || 0) + '% · 辐照 ' + Math.round(num(wx.radiation) || 0) + ' W/㎡')
-        : '--';
-    }
-    if (!window.SolarScene || !sceneOn) return;
-    /* 选了演示工况就喂模拟数据，别再拿实时数据覆盖它 */
-    if (demo && DEMO[demo]) { pushDemo(DEMO[demo]); return; }
+    if (!window.SolarScene) return;
     /* 电站数据没拿到时传 null（不是 0）：场景那边要区分"真的 0 kW"和"没上报"——
        供电模式靠这个判，传 0 会被当成"光伏不发电"，直接把模式判成③/④。
        汇总拿到了、但实时功率那一点缺失（power = null）同样算"没上报"：
@@ -752,7 +683,7 @@ window.SolarUI = (function () {
   }
 
   function ensureScene() {
-    if (!sceneOn || !window.SolarScene || !byId('solar3d')) return;
+    if (!window.SolarScene || !byId('solar3d')) return;
     SolarScene.init(function () { pushScene(); });
     setTimeout(function () { if (window.SolarScene) SolarScene.resize(); }, 120);
   }
@@ -782,7 +713,7 @@ window.SolarUI = (function () {
     const sv = byId('solarView'); if (sv) sv.classList.toggle('page-mode', page);
     const pt = byId('slPageTitle');
     if (pt) pt.textContent = ({ storage: '储能 · 电池簇 / PCS / 液冷', solar: '光伏 · 发电与设备', revenue: '详细信息 · 结算与收益' })[tab] || '';
-    if (!page && sceneOn) setTimeout(ensureScene, 60);
+    if (!page) setTimeout(ensureScene, 60);
     if (tab === 'storage') renderStoragePage();
     if (tab === 'revenue') renderRevenuePage();
     setTimeout(function () {
@@ -918,15 +849,6 @@ window.SolarUI = (function () {
     });
     const bs = byId('slBtnReset');
     if (bs) bs.addEventListener('click', function () { if (window.SolarScene) SolarScene.resetView(); });
-    /* 演示工况下拉：选一个就用模拟数据把那种形态演出来，切回"实时"恢复真实数据 */
-    const bd = byId('slDemo');
-    if (bd) {
-      bd.addEventListener('change', function () {
-        demo = DEMO[bd.value] ? bd.value : '';
-        bd.classList.toggle('on', !!demo);
-        pushScene();
-      });
-    }
     /* 右栏滑出/收起时重算图表尺寸（否则宽度变了没重画，会和下面的板块叠在一起） */
     const right = byId('slRight');
     if (right) {
@@ -935,11 +857,10 @@ window.SolarUI = (function () {
       });
       right.addEventListener('transitionend', function () { if (chart) chart.resize(); });
     }
-    /* 主题切换时重画坐标轴颜色；演示工况下顺带按新主题重推一次（白天/夜晚的晴/夜天气） */
+    /* 主题切换时重画坐标轴颜色 */
     new MutationObserver(function () {
       setTimeout(function () {
         applyTheme(); if (chart) chart.resize();
-        if (demo) pushScene();
       }, 60);
     }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
     window.addEventListener('resize', function () { if (chart) chart.resize(); });

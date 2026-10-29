@@ -875,7 +875,6 @@ window.SolarScene = (function () {
      电网线在箱里转进塔中央（同旭日东明的进塔做法），上/下行光纹就是卖电/买电。 ---------------- */
   const TWR_X = -22, TWR_Z = 4.2, TWR_H = 10.4;
   const TBOX_X = TWR_X + 2.25;                 /* 塔基旁的电缆终端箱（电网线在这里转进塔中央） */
-  const TWR_WIRE_X = TWR_X + 2.4;              /* 地面电缆落到终端箱的那一点 */
   let twrLabelEl = null;
   function buildTower() {
     const T = THREE_();

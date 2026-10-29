@@ -167,12 +167,6 @@ button{font-family:inherit;cursor:pointer;background:none;border:none;color:inhe
   border:1px solid var(--acc-2);background:rgba(5,15,17,.72);transition:.2s;
 }
 .ghost-btn:hover,.ghost-btn.active{color:var(--teal);border-color:var(--acc-3);box-shadow:0 0 8px var(--acc-2)}
-/* 演示工况下拉（三维场景工具栏）：外观跟 ghost-btn 一致，选中演示时用琥珀色标出来 */
-select.ghost-btn{padding:10px 10px;min-height:44px;font:inherit;font-size:13px;cursor:pointer;border-radius:0}
-select.ghost-btn:hover,select.ghost-btn.on{color:var(--teal);border-color:var(--acc-3);box-shadow:0 0 8px var(--acc-2)}
-select.ghost-btn.on{color:#04231d;background:linear-gradient(120deg,#ffd07a,#ffb020);border-color:transparent}
-html[data-theme="day"] select.ghost-btn{background:rgba(255,255,255,.82);border-color:rgba(15,150,130,.3);color:#3c6464}
-html[data-theme="day"] select.ghost-btn.on{color:#5a3a00;background:linear-gradient(120deg,#ffd07a,#ffb020);border-color:transparent}
 
 .alarm{
   position:absolute;left:16px;top:66px;z-index:5;
