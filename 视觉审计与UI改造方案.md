@@ -122,8 +122,29 @@
 
 - 证据：`ui-audit/gaote-monitor-night-fhd.png` vs `ui-audit/solar-0-t0-night-fhd.png`
 - 图表同样分裂：收益柱 = 青→白渐变，充放电统计 = **蓝紫渐变**（整站色板里的外来色），SOC 曲线 = 橙 + 青
-- 改法：两套场景共用一个 preset（地面材质、雾、光位、Bloom 强度、色温）；
-  ECharts 收敛为一个主题对象：主色 + 2 中性 + 语义色，禁蓝紫
+
+**技术根因（读代码定位到的，不是猜的）**
+
+1. **旭日东明完全没有环境贴图。** `js/solar-scene3d.js:1481-1491` 用 `PMREMGenerator.fromEquirectangular`
+   从天空穹顶烘了 IBL 并赋给 `scene.environment`；而 `js/gaote-scene3d.js` 全文
+   **0 处** `environment` / `envMap` / `PMREM` —— 只有半球光 + 两盏平行光。
+   没有 IBL 的 PBR 材质一定是平、哑、塑料感，这就是两站观感差距的主因。
+2. **两个场景都没设 `renderer.toneMapping`**，默认 `NoToneMapping` → 自发光一旦超过 1.0 直接裁成纯白 255。
+   机柜顶圈灯带和电缆流光带现在就是两块纯白。
+3. **夜间没有天空穹顶**：`js/gaote-scene3d.js:48` `THEMES.night.sky = null`（白天 `:62` 有渐变穹顶），
+   所以夜里地面边缘直接淡出进纯黑，地平线消失。
+4. **地面是随机污渍**：`js/gaote-scene3d.js:161-168` 画 26 个 4–12px 随机椭圆（7% 黑），
+   近景读作水渍/脏斑；`:153` 的 9000 个 1px 随机点远距离被 mipmap 平均成噪点。
+   且贴图用 `Math.random()` 生成，每次换主题重排，不是确定性的。
+
+- 改法：抽 `js/scene-preset.js` 导出 `window.ScenePreset`（光照参数 / 天空渐变 / 地面贴图生成器 /
+  接触阴影 / 自发光上限），两个场景各自 `ScenePreset.apply(renderer, scene, theme)`。
+  **ECharts 同步收敛**为一个主题对象：主色 + 2 中性 + 语义色，禁蓝紫。
+- **可交互对照 Demo：`scene-preset-demo.html`**（仓库根目录，和 `solar-demo.html` 同级）。
+  同一套几何体、同一机位，左右两半只差 preset，中间竖线可拖动擦除，
+  六项改动（ACES / PMREM / 夜间穹顶 / 分块地面 / 接触阴影 / 自发光降明度）各有独立开关，
+  关掉后 B 侧会退回 A 侧效果 —— 所以每一项的贡献都能单独归因。
+  本地跑：`python -m http.server` 或直接 `npx serve .` 后打开 `/scene-preset-demo.html`。
 
 ### S5 · 白天主题 = 291 条写死色值的覆盖块
 
@@ -335,7 +356,10 @@ html[lang="zh-CN"] .label,html[lang="zh-CN"] .kpi-label{letter-spacing:.06em;tex
 
 ### P2 · 质感（1 周）
 
-- [ ] 两套 3D 场景合并为同一美术 preset（治 S4）
+- [ ] 抽 `js/scene-preset.js`：光照 / 天空渐变 / 地面生成器 / 接触阴影 / 自发光上限，两站共用（治 S4，参数见 `scene-preset-demo.html`）
+- [ ] 两个场景都加 `renderer.toneMapping = ACESFilmicToneMapping` + `outputEncoding = sRGBEncoding`，自发光随之整体降一档
+- [ ] 旭日东明补 `scene.environment`（照 `solar-scene3d.js:1481` 的 PMREM 写法），地面贴图生成改确定性种子
+- [ ] 夜间补天空穹顶并把雾色对齐地平线色（`THEMES.night.sky` 不再是 null）
 - [ ] 白天主题从 291 条覆盖改为令牌双值（治 S5）
 - [ ] 动效三级 + 统一缓动，数值过渡改补间
 - [ ] 电芯热力条：间隙、图例、阈值线、越限计数
@@ -397,3 +421,5 @@ node css-audit.js && node css-audit2.js && node css-audit3.js   # → CSS 令牌
 | `solar-0-t0-night-fhd.png` | 洙边 3D · 霓虹网格 —— S4 两套美术对照 |
 | `solar-2-t2-night-fhd.png` | 光伏·储能 · 90.6% 近黑，全站最空 |
 | `devices-night-fhd.png` | 设备列表 · 一行数据 + 95% 空 + 3D 轮廓透出 |
+| `demo/preset-night.png` | Preset 对照 Demo · 夜间（左半 A / 右半 B，擦除线切在 1 号柜上） |
+| `demo/preset-day.png` | Preset 对照 Demo · 白天（A 侧地面随机污渍清晰可见，B 侧为分块铺装） |

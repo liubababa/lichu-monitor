@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>3D 场景 · 材质与光照 Preset 对照 Demo</title>
+<link rel="icon" href="data:,">
+<style>
+  /* 本页面自带样式，不依赖 css/style.css —— 它是一个独立的评审工具，不是站点页面 */
+  html,body{margin:0;height:100%;background:#05080b;overflow:hidden;
+    font-family:"Inter","Segoe UI","Microsoft YaHei","PingFang SC",sans-serif;color:#e8f1f5}
+  #stage{position:absolute;left:0;top:0;bottom:0;right:330px;overflow:hidden}
+  #stage canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+  #cvB{clip-path:inset(0 0 0 50%)}
+  /* 标签层 */
+  .lbl{position:absolute;pointer-events:none;transform:translate(-50%,-100%)}
+  .lbl .box{background:rgba(9,17,22,.94);border:1px solid rgba(140,170,185,.26);
+    border-left:2px solid var(--lc,#2ee6c8);border-radius:2px;padding:6px 9px 7px;
+    backdrop-filter:blur(2px);white-space:nowrap}
+  .lbl .t{font-size:11px;letter-spacing:.06em;color:#a9bdc6}
+  .lbl .v{font-size:14px;font-weight:600;color:#e8f1f5;margin-top:2px;
+    font-family:"Bahnschrift",Consolas,monospace;font-variant-numeric:tabular-nums}
+  .lbl .s{font-size:11px;color:#6f8892;margin-top:1px}
+  /* 引线 */
+  .lead{position:absolute;pointer-events:none;stroke:rgba(140,170,185,.5);stroke-width:1;fill:none}
+  .anchor{position:absolute;width:5px;height:5px;border-radius:50%;background:var(--lc,#2ee6c8);
+    transform:translate(-50%,-50%);pointer-events:none;box-shadow:0 0 6px rgba(46,230,200,.8)}
+  /* 擦除线 */
+  #wipe{position:absolute;top:0;bottom:0;width:2px;background:#2ee6c8;cursor:ew-resize;z-index:20;
+    left:50%;box-shadow:0 0 12px rgba(46,230,200,.7)}
+  #wipe::after{content:"";position:absolute;top:50%;left:50%;width:30px;height:30px;margin:-15px 0 0 -14px;
+    border:1px solid #2ee6c8;border-radius:50%;background:rgba(6,14,18,.8)}
+  #wipe::before{content:"◀ ▶";position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+    font-size:9px;color:#2ee6c8;letter-spacing:1px}
+  .badge{position:absolute;top:14px;z-index:15;font-size:11px;letter-spacing:.1em;text-transform:uppercase;
+    padding:5px 10px;border-radius:2px;border:1px solid rgba(140,170,185,.26);
+    background:rgba(6,14,18,.78);color:#a9bdc6;font-weight:600}
+  #badgeA{left:14px}
+  #badgeB{right:14px;border-color:rgba(46,230,200,.45);color:#2ee6c8}
+  /* 右侧面板 */
+  #panel{position:absolute;right:0;top:0;bottom:0;width:330px;overflow-y:auto;
+    background:#080d11;border-left:1px solid rgba(140,170,185,.18);padding:16px 16px 22px}
+  #panel h1{font-size:13px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#2ee6c8;margin:0 0 3px}
+  #panel .sub{font-size:11px;color:#6f8892;line-height:1.6;margin-bottom:14px}
+  .grp{border-top:1px solid rgba(140,170,185,.14);padding:12px 0 4px;margin-top:6px}
+  .grp>h2{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:#a9bdc6;font-weight:600;margin:0 0 9px}
+  .row{display:flex;gap:6px;margin-bottom:10px}
+  button{flex:1;text-align:left;padding:7px 9px;font-size:11.5px;color:#c9d8de;cursor:pointer;
+    border:1px solid rgba(140,170,185,.22);background:rgba(140,170,185,.05);border-radius:2px;
+    font-family:inherit;transition:.15s cubic-bezier(.2,0,0,1)}
+  button:hover{border-color:rgba(46,230,200,.5);color:#e8f1f5}
+  button.on{background:rgba(46,230,200,.14);border-color:#2ee6c8;color:#2ee6c8;font-weight:600}
+  .sld{margin:0 0 9px}
+  .sld label{display:flex;justify-content:space-between;font-size:11px;color:#6f8892;margin-bottom:2px}
+  .sld label b{color:#a9bdc6;font-weight:400}
+  .sld label .val{color:#2ee6c8;font-family:"Bahnschrift",Consolas,monospace;font-variant-numeric:tabular-nums}
+  .sld input{width:100%;accent-color:#2ee6c8;height:16px}
+  .ck{display:flex;align-items:center;gap:7px;font-size:11.5px;color:#a9bdc6;padding:4px 0;cursor:pointer}
+  .ck input{accent-color:#2ee6c8}
+  .ck.dis{opacity:.4}
+  #note{font-size:11px;color:#6f8892;line-height:1.75;background:rgba(140,170,185,.05);
+    border:1px solid rgba(140,170,185,.16);border-radius:2px;padding:9px 10px}
+  #note b{color:#2ee6c8;font-weight:600}
+  #note code{color:#f5a524;font-family:Consolas,monospace;font-size:10.5px}
+  #err{color:#f4553d;font-size:11.5px;line-height:1.6}
+  .tag{display:inline-block;font-size:10px;letter-spacing:.06em;padding:1px 5px;border-radius:2px;
+    border:1px solid rgba(46,230,200,.4);color:#2ee6c8;margin-right:4px}
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <canvas id="cvA"></canvas>
+  <canvas id="cvB"></canvas>
+  <div id="ovA"></div>
+  <svg id="ovB" width="0" height="0" style="position:absolute;inset:0;pointer-events:none;z-index:12"></svg>
+  <div class="badge" id="badgeA">A · 现状</div>
+  <div class="badge" id="badgeB">B · 建议</div>
+  <div id="wipe"></div>
+</div>
+
+<div id="panel">
+  <h1>Scene Preset A/B</h1>
+  <div class="sub">同一套几何体、同一机位，只有 <b style="color:#2ee6c8">preset</b> 不同。<br>
+    拖动中间竖线做擦除对比；左键旋转、滚轮缩放、右键平移。<br>
+    <span style="color:#f5a524">注意：A 侧是按 <code style="color:#f5a524">gaote-scene3d.js</code> 里的常量复刻的参数化对照，
+    不是线上截图 —— 几何体是我另建的简化版，别拿它跟现场画面逐像素比。</span></div>
+
+  <div class="grp"><h2>主题</h2>
+    <div class="row">
+      <button id="bNight" class="on">夜间</button>
+      <button id="bDay">白天</button>
+    </div>
+  </div>
+
+  <div class="grp"><h2>建议 preset 的开关</h2>
+    <div class="ck"><input type="checkbox" id="kTone" checked><label for="kTone">ACES 色调映射（治自发光烧白）</label></div>
+    <div class="ck"><input type="checkbox" id="kEnv" checked><label for="kEnv">PMREM 环境贴图（IBL）</label></div>
+    <div class="ck"><input type="checkbox" id="kSky" checked><label for="kSky">夜间天空穹顶 + 雾色对齐</label></div>
+    <div class="ck"><input type="checkbox" id="kYard" checked><label for="kYard">分块混凝土地面（去随机污渍）</label></div>
+    <div class="ck"><input type="checkbox" id="kBlob" checked><label for="kBlob">接触阴影（物体不飘）</label></div>
+    <div class="ck"><input type="checkbox" id="kEm" checked><label for="kEm">自发光降明度 + 地面光池</label></div>
+    <div class="ck"><input type="checkbox" id="kLead" checked><label for="kLead">浮标引线 + 锚点</label></div>
+  </div>
+
+  <div class="grp"><h2>调参</h2>
+    <div class="sld"><label><b>曝光</b><span class="val" id="vExp">1.05</span></label><input id="sExp" type="range" min=".6" max="1.6" step=".01" value="1.05"></div>
+    <div class="sld"><label><b>Bloom 强度</b><span class="val" id="vBl">.34</span></label><input id="sBl" type="range" min="0" max="1.2" step=".01" value=".34"></div>
+    <div class="sld"><label><b>Bloom 阈值</b><span class="val" id="vBt">.95</span></label><input id="sBt" type="range" min=".5" max="1" step=".01" value=".95"></div>
+    <div class="sld"><label><b>环境贴图强度</b><span class="val" id="vEi">.85</span></label><input id="sEi" type="range" min="0" max="2" step=".05" value=".85"></div>
+    <div class="sld"><label><b>地面粗糙度</b><span class="val" id="vRr">.72</span></label><input id="sRr" type="range" min=".2" max="1" step=".01" value=".72"></div>
+    <div class="sld"><label><b>接触阴影浓度</b><span class="val" id="vCs">.55</span></label><input id="sCs" type="range" min="0" max="1" step=".01" value=".55"></div>
+  </div>
+
+  <div class="grp"><h2>改了什么</h2>
+    <div id="note">
+      <span class="tag">1</span><b>环境贴图。</b>洙边场景在 <code>solar-scene3d.js:1481</code> 用
+      PMREM 从天空穹顶烘了 IBL，而旭日东明 <code>gaote-scene3d.js</code> 全文
+      <b>0 处</b> environment / envMap —— 只有半球光 + 两盏平行光。<br>
+      这就是"两站不像同一个产品"的技术根因：没有 IBL 的 PBR 材质一定是平、哑、塑料感。<br><br>
+      <span class="tag">2</span><b>色调映射。</b>两个场景都没设 <code>renderer.toneMapping</code>，
+      默认 NoToneMapping → 自发光一旦超过 1.0 就直接裁成纯白 255。
+      机柜顶圈和电缆流光带现在就是两块纯白。<br><br>
+      <span class="tag">3</span><b>夜间没有天空。</b><code>THEMES.night.sky = null</code>
+      （<code>gaote-scene3d.js:48</code>），白天有渐变穹顶、夜里没有，
+      所以地面边缘直接淡出进纯黑，地平线消失。<br><br>
+      <span class="tag">4</span><b>地面是随机污渍。</b><code>gaote-scene3d.js:161-168</code>
+      画了 26 个 4–12px 的随机椭圆（7% 黑），在近景读作水渍/脏斑；
+      <code>:153</code> 的 9000 个 1px 随机点在远距离被 mipmap 平均成噪点。
+      换成确定性的分块混凝土板 + 板缝 + 逐板明度差。<br><br>
+      <span class="tag">5</span><b>缺接触阴影。</b>只有方向光 shadowMap，夜里光照一低
+      物体就像浮在地上。加一张软边暗斑，零成本、立刻落地。<br><br>
+      <span class="tag">6</span><b>浮标没有引线。</b>洙边的标签有引线三角，旭日东明的没有，
+      标签会跟几何体重叠、看不出指谁。
+    </div>
+  </div>
+
+  <div class="grp"><h2>落地方式</h2>
+    <div id="note" style="color:#a9bdc6">
+      建议抽一个 <code>js/scene-preset.js</code> 导出 <code>window.ScenePreset</code>：
+      光照参数、天空渐变、地面贴图生成器、接触阴影、自发光上限。<br>
+      两个场景各自 <code>ScenePreset.apply(renderer, scene, theme)</code>，
+      旭日的 preset 差异就变成配置而不是两套美术代码。<br><br>
+      <span style="color:#6f8892">注：本页浮标数值一律 <b>--</b>，不放模拟数据（红线 2）。</span>
+    </div>
+  </div>
+  <div id="err"></div>
+</div>
+
+<script>
+/* 依赖：只用仓库里已有的 libs/，不新增任何库 */
+(function () {
+  var V = '?v=' + Date.now();
+  var FILES = ['libs/three.min.js', 'libs/OrbitControls.js', 'libs/CopyShader.js',
+    'libs/LuminosityHighPassShader.js', 'libs/EffectComposer.js', 'libs/RenderPass.js',
+    'libs/ShaderPass.js', 'libs/UnrealBloomPass.js'];
+  var i = 0;
+  function next() {
+    if (i >= FILES.length) { try { start(); } catch (e) { fail(e); } return; }
+    var s = document.createElement('script');
+    s.src = FILES[i++] + V;
+    s.onload = next;
+    s.onerror = function () { fail(new Error('依赖加载失败：' + s.src)); };
+    document.head.appendChild(s);
+  }
+  function fail(e) { document.getElementById('err').textContent = e.message || String(e); }
+  next();
+})();
+
+function start() {
+  var T = THREE;
+  var stage = document.getElementById('stage');
+  var cvA = document.getElementById('cvA'), cvB = document.getElementById('cvB');
+
+  /* ---------------- 两套 preset ----------------
+     A = 现状：照抄 gaote-scene3d.js 的参数
+     B = 建议：只动环境/材质/光照，几何体完全一致                     */
+  var PRE = {
+    a: {
+      night: { bg: 0x04090c, fog: 0x04090c, fogNear: 34, fogFar: 95, sky: null,
+        hemiSky: 0xbfe9ff, hemiGround: 0x0a1a1e, hemiInt: 1.05,
+        sun: 0xffffff, sunInt: .85, fill: 0x2ee6c8, fillInt: .35,
+        cab: 0xdfe7ea, cabRough: .55, tone: false, env: 0, bloom: .62, bloomTh: .82,
+        emColor: 0xffffff, emInt: 1.0, ground: 'stain', blob: 0, pool: 0,
+        gnd: [48, 56, 61], jointA: .5 },
+      day: { bg: 0xcfe4f0, fog: 0xe9f1f4, fogNear: 58, fogFar: 165,
+        sky: { stops: [[0, '#4f9fd4'], [.36, '#7dbde3'], [.47, '#b6d9ee'], [.52, '#e6eff4'], [1, '#e6eff4']] },
+        hemiSky: 0xdfefff, hemiGround: 0xb9bdb6, hemiInt: .6,
+        sun: 0xfff0da, sunInt: .55, fill: 0xbfe6ff, fillInt: .15,
+        cab: 0xeef2f4, cabRough: .55, tone: false, env: 0, bloom: .1, bloomTh: .97,
+        emColor: 0xffffff, emInt: .8, ground: 'stain', blob: 0, pool: 0,
+        gnd: [194, 197, 189], jointA: .5 }
+    },
+    b: {
+      night: { bg: 0x070b0f, fog: 0x0b141a, fogNear: 26, fogFar: 118,
+        /* 夜间补上穹顶：天顶压黑、地平线给一条冷灰绿微光，雾色 = 地平线色 → 地面边缘融进大气 */
+        sky: { stops: [[0, '#050a0f'], [.42, '#0a131a'], [.62, '#12212a'], [.74, '#1d333c'], [.80, '#27454f'], [1, '#132029']] },
+        /* ACES 会把中间调压暗约 2 档，所以光量必须比 NoToneMapping 时代给得更高，
+           否则"建议"反而比现状还黑 —— 这是踩过的坑，别再凭线性直觉配光 */
+        hemiSky: 0x55798c, hemiGround: 0x0d161b, hemiInt: 1.4,
+        sun: 0xb9d6e8, sunInt: .62, fill: 0x2ee6c8, fillInt: .22,
+        cab: 0x77858d, cabRough: .48, tone: true, env: .85, bloom: .34, bloomTh: .95,
+        emColor: 0x2ee6c8, emInt: .55, ground: 'slab', blob: .55, pool: .2,
+        gnd: [78, 89, 96], jointA: .20 },
+      day: { bg: 0xcfe4f0, fog: 0xdfe9ee, fogNear: 40, fogFar: 190,
+        sky: { stops: [[0, '#4f9fd4'], [.36, '#7dbde3'], [.47, '#b6d9ee'], [.52, '#e6eff4'], [1, '#e6eff4']] },
+        hemiSky: 0xdfefff, hemiGround: 0xb9bdb6, hemiInt: .78,
+        sun: 0xfff0da, sunInt: .95, fill: 0xbfe6ff, fillInt: .16,
+        cab: 0xd6dee1, cabRough: .5, tone: true, env: .7, bloom: .08, bloomTh: .98,
+        emColor: 0x1f8f78, emInt: .35, ground: 'slab', blob: .38, pool: .18,
+        gnd: [200, 204, 200], jointA: .18 }
+    }
+  };
+
+  /* 可调项（只作用于 B） */
+  var K = { theme: 'night', tone: true, env: true, sky: true, yard: true, blob: true, em: true, lead: true,
+    exp: 1.05, bloom: .34, bloomTh: .95, envInt: .85, groundRough: .72, blobOp: .55 };
+
+  /* ---------------- 确定性伪随机：换主题/重绘不会重排 ---------------- */
+  function rng(seed) { var s = seed >>> 0; return function () { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; }; }
+
+  /* ---------------- 地面贴图 ----------------
+     stain = 现状（随机颗粒 + 26 个随机椭圆污渍）
+     slab  = 建议（3×3 混凝土板 + 板缝 + 逐板明度差 + 细骨料）
+     tile 物理尺寸固定 12m（3 块 4m 板），repeat 由场地实际尺寸反算 ——
+     之前按"看起来顺眼"给 repeat=14，等于把 4m 板画成 16m，板缝就成了黑色壁纸格 */
+  var TILE_M = 12, PLANE_M = 700;
+  function groundTex(mode, P) {
+    var S = 1024, c = document.createElement('canvas'); c.width = c.height = S;
+    var g = c.getContext('2d'), r = rng(20261029), day = K.theme === 'day';
+    var base = P.gnd;
+    if (mode === 'stain') {
+      g.fillStyle = 'rgb(' + base[0] + ',' + base[1] + ',' + base[2] + ')'; g.fillRect(0, 0, S, S);
+      for (var i = 0; i < 9000; i++) {
+        var dk = r() > .5;
+        g.fillStyle = dk ? 'rgba(0,0,0,' + (.03 + r() * .08) + ')' : 'rgba(255,255,255,' + (.015 + r() * .04) + ')';
+        g.fillRect(r() * S, r() * S, r() < .85 ? 1 : 2, r() < .85 ? 1 : 2);
+      }
+      /* 就是这 26 个随机椭圆在近景读作水渍/脏斑 */
+      for (var j = 0; j < 26; j++) {
+        g.fillStyle = 'rgba(0,0,0,.07)';
+        g.beginPath(); g.ellipse(r() * S, r() * S, 4 + r() * 12, 3 + r() * 8, r() * 3, 0, 6.3); g.fill();
+      }
+    } else {
+      var n = 3, cell = S / n;
+      for (var sy = 0; sy < n; sy++) for (var sx = 0; sx < n; sx++) {
+        /* 逐板明度差 ±4%：真实铺装的观感主要来自这里，而不是随机污渍 */
+        var d = (r() - .5) * 0.08;
+        g.fillStyle = 'rgb(' + Math.round(base[0] * (1 + d)) + ',' + Math.round(base[1] * (1 + d)) + ',' + Math.round(base[2] * (1 + d)) + ')';
+        g.fillRect(sx * cell, sy * cell, cell, cell);
+      }
+      /* 细骨料：密度高、alpha 低，远距离被 mipmap 平均成"质感"而不是"噪点" */
+      for (var k = 0; k < 26000; k++) {
+        var v = r() > .5 ? 255 : 0;
+        g.fillStyle = 'rgba(' + v + ',' + v + ',' + v + ',' + (r() * .035 + .005).toFixed(3) + ')';
+        g.fillRect(r() * S, r() * S, 1, 1);
+      }
+      /* 板缝：暗槽 + 下沿 1px 亮边（倒角）。5px / 1024px × 12m ≈ 6cm，真实板缝宽度 */
+      var jw = 3, ja = P.jointA;
+      for (var m = 0; m <= n; m++) {
+        var p = m * cell;
+        g.fillStyle = 'rgba(0,0,0,' + ja + ')';
+        g.fillRect(p - jw / 2, 0, jw, S); g.fillRect(0, p - jw / 2, S, jw);
+        g.fillStyle = 'rgba(190,215,225,' + (day ? .22 : .13) + ')';
+        g.fillRect(p + jw / 2, 0, 1.5, S); g.fillRect(0, p + jw / 2, S, 1.5);
+      }
+    }
+    var tx = new T.CanvasTexture(c);
+    tx.wrapS = tx.wrapT = T.RepeatWrapping;
+    tx.anisotropy = 8;
+    tx.encoding = T.sRGBEncoding;   /* 颜色贴图必须标 sRGB，否则在 sRGB 输出下会整体偏亮发灰 */
+    return tx;
+  }
+
+  /* ---------------- 接触阴影暗斑 ---------------- */
+  function blobTex() {
+    var S = 256, c = document.createElement('canvas'); c.width = c.height = S;
+    var g = c.getContext('2d');
+    var gr = g.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
+    gr.addColorStop(0, 'rgba(0,0,0,.95)'); gr.addColorStop(.45, 'rgba(0,0,0,.6)');
+    gr.addColorStop(.78, 'rgba(0,0,0,.18)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = gr; g.fillRect(0, 0, S, S);
+    return new T.CanvasTexture(c);
+  }
+  var BLOB = null;
+
+  /* ---------------- 地面光池（自发光要有落点） ---------------- */
+  function poolTex() {
+    var S = 256, c = document.createElement('canvas'); c.width = c.height = S;
+    var g = c.getContext('2d');
+    var gr = g.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
+    gr.addColorStop(0, 'rgba(46,230,200,.85)'); gr.addColorStop(.4, 'rgba(46,230,200,.28)');
+    gr.addColorStop(1, 'rgba(46,230,200,0)');
+    g.fillStyle = gr; g.fillRect(0, 0, S, S);
+    return new T.CanvasTexture(c);
+  }
+
+  /* ---------------- 几何体（A/B 共用同一份构造） ---------------- */
+  function makeCabinet(P, mats) {
+    var grp = new T.Group();
+    var W = 2.6, H = 2.9, D = 1.5;
+    /* 柜体：略微倒角 + 深色框架条，避免"纸盒"感 */
+    var body = new T.Mesh(new T.BoxGeometry(W, H, D), mats.cab);
+    body.position.y = H / 2 + .12; body.castShadow = true; body.receiveShadow = true; grp.add(body);
+    /* 底座（深色），没有底座物体一定显飘 */
+    var plinth = new T.Mesh(new T.BoxGeometry(W + .12, .12, D + .12), mats.dark);
+    plinth.position.y = .06; plinth.castShadow = true; grp.add(plinth);
+    /* 四角框架立柱 */
+    [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(function (s) {
+      var post = new T.Mesh(new T.BoxGeometry(.13, H, .13), mats.dark);
+      post.position.set(s[0] * (W / 2 - .04), H / 2 + .12, s[1] * (D / 2 - .04));
+      post.castShadow = true; grp.add(post);
+    });
+    /* 顶板 + 百叶风机箱（现状是纯黑剪影，这里给一点明度和真实百叶片） */
+    var roof = new T.Mesh(new T.BoxGeometry(W + .06, .1, D + .06), mats.dark);
+    roof.position.y = H + .17; roof.castShadow = true; grp.add(roof);
+    var box = new T.Mesh(new T.BoxGeometry(W * .62, .34, D * .72), mats.roofUnit);
+    box.position.set(0, H + .4, 0); box.castShadow = true; grp.add(box);
+    for (var l = 0; l < 7; l++) {
+      var slat = new T.Mesh(new T.BoxGeometry(W * .58, .022, .05), mats.slat);
+      slat.position.set(0, H + .27 + l * .045, D * .36 + .005);
+      slat.rotation.x = -.5; grp.add(slat);
+    }
+    /* 门缝 + 把手 + 通风栅 */
+    var seam = new T.Mesh(new T.BoxGeometry(.016, H - .5, .02), mats.dark);
+    seam.position.set(0, H / 2 + .12, D / 2 + .005); grp.add(seam);
+    [-.62, .62].forEach(function (x) {
+      var h = new T.Mesh(new T.BoxGeometry(.06, .34, .05), mats.dark);
+      h.position.set(x, H / 2 + .1, D / 2 + .02); grp.add(h);
+    });
+    for (var v = 0; v < 5; v++) {
+      var vent = new T.Mesh(new T.BoxGeometry(W * .34, .026, .02), mats.dark);
+      vent.position.set(-W * .28, .55 + v * .07, D / 2 + .006); grp.add(vent);
+    }
+    /* 状态灯带：现状是纯白 255 溢出，建议是带色相的低明度自发光 */
+    var band = new T.Mesh(new T.BoxGeometry(W - .3, .085, .03), mats.emiss);
+    band.position.set(0, H - .12, D / 2 + .012); grp.add(band);
+    var rim = new T.Mesh(new T.BoxGeometry(W + .02, .04, D + .02), mats.emiss);
+    rim.position.set(0, H + .2, 0); grp.add(rim);
+    /* 编号牌（琥珀） */
+    var tagm = new T.Mesh(new T.BoxGeometry(.34, .17, .02), mats.tag);
+    tagm.position.set(-W * .3, H * .62, D / 2 + .012); grp.add(tagm);
+    return { grp: grp, W: W, H: H, D: D };
+  }
+
+  function makePylon(P, mats) {
+    /* 铁塔：现状是纯线框（和实心机柜材质语言不一致）。
+       建议保留格构感，但用实体细杆 —— 有明暗、有阴影，就不像"没做完" */
+    var grp = new T.Group();
+    var wire = P.ground === 'stain';
+    var H = 9.5, b0 = 1.9, b1 = .55;
+    function bar(a, c, th) {
+      var d = c.clone().sub(a); var len = d.length();
+      var g = new T.CylinderGeometry(th, th, len, 6);
+      var m = new T.Mesh(g, mats[wire ? 'wire' : 'steel']);
+      m.position.copy(a).add(c).multiplyScalar(.5);
+      m.lookAt(c); m.rotateX(Math.PI / 2);
+      if (!wire) m.castShadow = true;
+      return m;
+    }
+    var V3 = T.Vector3, legs = [[-1, -1], [1, -1], [-1, 1], [1, 1]];
+    var lv = legs.map(function (s) { return new V3(s[0] * b0, 0, s[1] * b0); });
+    var tv = legs.map(function (s) { return new V3(s[0] * b1, H, s[1] * b1); });
+    for (var i = 0; i < 4; i++) {
+      grp.add(bar(lv[i], tv[i], .07));
+      var j = (i + 1) % 4;
+      grp.add(bar(lv[i], lv[j], .05)); grp.add(bar(tv[i], tv[j], .05));
+      for (var k = 1; k < 6; k++) {
+        var t0 = k / 6, t1 = (k + 1) / 6;
+        var p0 = lv[i].clone().lerp(tv[i], t0), p1 = lv[j].clone().lerp(tv[j], t1);
+        var p2 = lv[i].clone().lerp(tv[i], t1), p3 = lv[j].clone().lerp(tv[j], t0);
+        grp.add(bar(p0, p1, .032)); grp.add(bar(p2, p3, .032));
+      }
+    }
+    [2.6, 3.7].forEach(function (y, n) {
+      var w = 2.6 - n * .5;
+      [-1, 1].forEach(function (s) {
+        var arm = new T.Mesh(new T.BoxGeometry(w, .09, .09), mats[wire ? 'wire' : 'steel']);
+        arm.position.set(s * (w / 2 * .9), H - y, 0); grp.add(arm);
+        var ins = new T.Mesh(new T.CylinderGeometry(.05, .07, .4, 6), mats.ceramic);
+        ins.position.set(s * (w * .82), H - y - .2, 0); grp.add(ins);
+      });
+    });
+    return { grp: grp, top: new V3(0, H, 0) };
+  }
+
+  function makeFlowLine(P, mats, pts) {
+    /* 电缆流光带：现状是纯白 255，建议是带色相 + 低明度 + 有地面光池 */
+    var curve = new T.CatmullRomCurve3(pts);
+    var geo = new T.TubeGeometry(curve, 120, .055, 6, false);
+    var m = new T.Mesh(geo, mats.flow);
+    m.position.y = .1;
+    var grp = new T.Group(); grp.add(m);
+    if (P.pool) {
+      /* 沿路径密排小光池并压低浓度：稀+亮会画成一串漂浮的亮斑，密+淡才像"被照亮的地面" */
+      for (var i = 0; i <= 26; i++) {
+        var p = curve.getPoint(i / 26);
+        var pl = new T.Mesh(new T.PlaneGeometry(1.5, 1.5), mats.pool);
+        pl.rotation.x = -Math.PI / 2; pl.position.set(p.x, .018, p.z); grp.add(pl);
+      }
+    }
+    return grp;
+  }
+
+  /* ---------------- 建一个完整场景 ---------------- */
+  function buildScene(which) {
+    var P = PRE[which][K.theme];
+    var scene = new T.Scene();
+    var useSky = which === 'b' ? (K.sky && P.sky) : P.sky;
+    scene.background = new T.Color(useSky ? P.fog : P.bg);
+    if (P.fogNear) scene.fog = new T.Fog(P.fog, P.fogNear, P.fogFar);
+
+    var skyDome = null, envRT = null;
+    if (useSky) {
+      var c = document.createElement('canvas'); c.width = 8; c.height = 256;
+      var g = c.getContext('2d'), gr = g.createLinearGradient(0, 0, 0, 256);
+      P.sky.stops.forEach(function (s) { gr.addColorStop(s[0], s[1]); });
+      g.fillStyle = gr; g.fillRect(0, 0, 8, 256);
+      var tx = new T.CanvasTexture(c);
+      tx.mapping = T.EquirectangularReflectionMapping;
+      skyDome = new T.Mesh(new T.SphereGeometry(260, 32, 16),
+        new T.MeshBasicMaterial({ map: tx, side: T.BackSide, fog: false, depthWrite: false }));
+      scene.add(skyDome);
+      if (which === 'b' && K.env) {
+        try {
+          var pm = new T.PMREMGenerator(renderer);
+          envRT = pm.fromEquirectangular(tx);
+          scene.environment = envRT.texture;
+          pm.dispose();
+        } catch (e) { /* 环境图失败不影响渲染 */ }
+      }
+    }
+
+    /* 材质表 */
+    var gmode = which === 'a' ? 'stain' : (K.yard ? 'slab' : 'stain');
+    var gtex = groundTex(gmode, P);
+    var tileM = gmode === 'slab' ? TILE_M : (gmode === 'stain' ? 24 : TILE_M);
+    gtex.repeat.set(PLANE_M / tileM, PLANE_M / tileM);
+    var mats = {
+      ground: new T.MeshStandardMaterial({ map: gtex, roughness: which === 'a' ? .95 : K.groundRough, metalness: which === 'a' ? .02 : .06 }),
+      cab: new T.MeshStandardMaterial({ color: P.cab, roughness: P.cabRough, metalness: which === 'a' ? .35 : .5, envMapIntensity: P.env }),
+      dark: new T.MeshStandardMaterial({ color: which === 'a' ? 0x10181c : 0x1b262c, roughness: .55, metalness: .6, envMapIntensity: P.env }),
+      steel: new T.MeshStandardMaterial({ color: which === 'a' ? 0x8d9aa0 : 0x7b8a92, roughness: .42, metalness: .85, envMapIntensity: P.env }),
+      wire: new T.LineBasicMaterial({ color: 0x4a686d }),
+      ceramic: new T.MeshStandardMaterial({ color: 0xa8b0a6, roughness: .35, metalness: .05, envMapIntensity: P.env }),
+      roofUnit: new T.MeshStandardMaterial({ color: which === 'a' ? 0x0a0f12 : 0x39454c, roughness: .6, metalness: .45, envMapIntensity: P.env }),
+      slat: new T.MeshStandardMaterial({ color: which === 'a' ? 0x05080a : 0x232c32, roughness: .5, metalness: .5, envMapIntensity: P.env }),
+      emCol: new T.MeshStandardMaterial({ color: 0x0b1013, emissive: P.emColor, emissiveIntensity: P.emInt, roughness: .4, envMapIntensity: P.env }),
+      tag: new T.MeshStandardMaterial({ color: 0x1a1206, emissive: 0xffb020, emissiveIntensity: which === 'a' ? .85 : .5, roughness: .5 }),
+      flow: new T.MeshStandardMaterial({ color: 0x081014,
+        /* 关掉"自发光降明度"时必须退回纯白溢出，否则这个开关就是假的 */
+        emissive: (which === 'a' || !K.em) ? 0xffffff : 0x2ee6c8,
+        emissiveIntensity: (which === 'a' || !K.em) ? 1.0 : .6, roughness: .4 })
+    };
+    mats.emiss = (which === 'a' || !K.em)
+      ? new T.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 1.0, roughness: .3 })
+      : mats.emCol;
+
+    var poolMat = new T.MeshBasicMaterial({ map: poolTex(), transparent: true, opacity: P.pool, blending: T.AdditiveBlending, depthWrite: false });
+    mats.pool = poolMat;
+
+    /* 地面 */
+    var ground = new T.Mesh(new T.PlaneGeometry(700, 700), mats.ground);
+    ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
+
+    /* 建议：场地外圈沥青带，让地面有"边界"而不是无限平面 */
+    if (which === 'b' && K.yard) {
+      var apronG = new T.RingGeometry(26, 62, 64, 1);
+      var am = new T.MeshStandardMaterial({ color: K.theme === 'day' ? 0x8f9694 : 0x1c2429, roughness: .95, metalness: .02, envMapIntensity: P.env });
+      var apron = new T.Mesh(apronG, am); apron.rotation.x = -Math.PI / 2; apron.position.y = -.01;
+      apron.receiveShadow = true; scene.add(apron);
+    }
+
+    /* 灯光 */
+    var hemi = new T.HemisphereLight(P.hemiSky, P.hemiGround, P.hemiInt); scene.add(hemi);
+    var sun = new T.DirectionalLight(P.sun, P.sunInt);
+    sun.position.set(18, 26, 14); sun.castShadow = true;
+    sun.shadow.mapSize.set(2048, 2048);
+    var sc = sun.shadow.camera; sc.left = -34; sc.right = 34; sc.top = 34; sc.bottom = -34; sc.near = 1; sc.far = 90;
+    sun.shadow.bias = -.0004; sun.shadow.normalBias = .02;
+    scene.add(sun);
+    var fill = new T.DirectionalLight(P.fill, P.fillInt); fill.position.set(-16, 9, -12); scene.add(fill);
+
+    /* 内容：两台储能柜 + 铁塔 + 电缆 */
+    var c1 = makeCabinet(P, mats); c1.grp.position.set(-3.4, 0, .6); c1.grp.rotation.y = .12; scene.add(c1.grp);
+    var c2 = makeCabinet(P, mats); c2.grp.position.set(1.6, 0, -.4); c2.grp.rotation.y = -.08; scene.add(c2.grp);
+    var py = makePylon(P, mats); py.grp.position.set(-15, 0, -2.4); scene.add(py.grp);
+    scene.add(makeFlowLine(P, mats, [
+      new T.Vector3(-15, 0, -2.4), new T.Vector3(-9.5, 0, -.4), new T.Vector3(-3.4, 0, 1.6),
+      new T.Vector3(1.6, 0, .7), new T.Vector3(7.5, 0, 1.8), new T.Vector3(12.5, 0, 5)
+    ]));
+
+    /* 接触阴影：让物体落地。方向光阴影在夜里很弱，单靠它会飘 */
+    if (which === 'b' && K.blob) {
+      BLOB = BLOB || blobTex();
+      [[c1.grp, 4.6], [c2.grp, 4.6], [py.grp, 6.2]].forEach(function (o) {
+        var m = new T.Mesh(new T.PlaneGeometry(o[1], o[1]),
+          new T.MeshBasicMaterial({ map: BLOB, transparent: true, opacity: K.blobOp, depthWrite: false }));
+        m.rotation.x = -Math.PI / 2;
+        m.position.set(o[0].position.x, .015, o[0].position.z);
+        scene.add(m);
+      });
+    }
+
+    return { scene: scene, mats: mats, anchors: { cab1: new T.Vector3(-3.4, 3.3, .6), cab2: new T.Vector3(1.6, 3.3, -.4) } };
+  }
+
+  /* ---------------- 渲染器：A/B 各一台，才能各自开关色调映射 ---------------- */
+  var renderer = new T.WebGLRenderer({ canvas: cvA, antialias: true, alpha: false });
+  var rendererB = new T.WebGLRenderer({ canvas: cvB, antialias: true, alpha: false });
+  [renderer, rendererB].forEach(function (r) {
+    r.shadowMap.enabled = true;
+    r.shadowMap.type = T.PCFSoftShadowMap;
+    r.outputEncoding = T.sRGBEncoding;
+  });
+  rendererB.toneMapping = T.ACESFilmicToneMapping;   /* B 才开，A 保持现状做真对照 */
+
+  var camera = new T.PerspectiveCamera(46, 1, .1, 400);
+  camera.position.set(13, 8.4, 20);
+  var controls = new T.OrbitControls(camera, stage);
+  controls.target.set(-3.4, 1.9, .6);   /* 对准 1 号柜：50% 擦除线正好把同一台柜子切成左右两半，比的才是同一个东西 */
+  controls.enableDamping = true; controls.dampingFactor = .08;
+  controls.maxPolarAngle = Math.PI * .49;
+  controls.minDistance = 6; controls.maxDistance = 70;
+
+  var compA = null, compB = null, S = null;
+  function compose(r, scene, cam, P) {
+    var w = stage.clientWidth, h = stage.clientHeight;
+    var c = new T.EffectComposer(r);
+    c.addPass(new T.RenderPass(scene, cam));
+    var b = new T.UnrealBloomPass(new T.Vector2(w, h), P.bloom, .8, P.bloomTh);
+    c.addPass(b);
+    c.addPass(new T.ShaderPass(THREE.CopyShader));
+    c.setSize(w, h);
+    c.PASS = b;
+    return c;
+  }
+
+  function rebuild() {
+    var Pa = PRE.a[K.theme], Pb = PRE.b[K.theme];
+    S = { a: buildScene('a'), b: buildScene('b'), Pa: Pa, Pb: Pb };
+    rendererB.toneMapping = K.tone ? T.ACESFilmicToneMapping : T.NoToneMapping;
+    rendererB.toneMappingExposure = K.exp;
+    renderer.toneMapping = T.NoToneMapping;
+    compA = compose(renderer, S.a.scene, camera, Pa);
+    compB = compose(rendererB, S.b.scene, camera, Pb);
+    if (!K.env) { S.b.scene.environment = null; }
+    resize();
+  }
+
+  function resize() {
+    var w = stage.clientWidth, h = stage.clientHeight;
+    if (!w || !h) return;
+    camera.aspect = w / h; camera.updateProjectionMatrix();
+    [renderer, rendererB].forEach(function (r) { r.setPixelRatio(Math.min(2, window.devicePixelRatio || 1)); r.setSize(w, h, false); });
+    if (compA) compA.setSize(w, h);
+    if (compB) compB.setSize(w, h);
+  }
+  window.addEventListener('resize', resize);
+
+  /* ---------------- 浮标（建议侧带引线 + 锚点） ---------------- */
+  var ovA = document.getElementById('ovA'), ovB = document.getElementById('ovB');
+  var labels = [
+    { key: 'cab1', t: '储能柜 1堆', v: '--', s: 'SOC --% · 充电中' },
+    { key: 'cab2', t: '储能柜 2堆', v: '--', s: 'SOC --% · 待机' }
+  ];
+  labels.forEach(function (L, i) {
+    var d = document.createElement('div');
+    d.className = 'lbl'; d.style.setProperty('--lc', i ? '#6f8892' : '#2ee6c8');
+    d.innerHTML = '<div class="box"><div class="t">' + L.t + '</div><div class="v">' + L.v + '</div><div class="s">' + L.s + '</div></div>';
+    ovA.appendChild(d); L.elA = d;
+    var e = d.cloneNode(true); ovB.appendChild(e); L.elB = e;
+    var ln = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+    ln.setAttribute('class', 'lead'); ovB.appendChild(ln); L.line = ln;
+    var an = document.createElement('div'); an.className = 'anchor'; an.style.setProperty('--lc', i ? '#6f8892' : '#2ee6c8');
+    ovB.appendChild(an); L.anchor = an;
+  });
+  function placeLabels() {
+    if (!S) return;
+    var w = stage.clientWidth, h = stage.clientHeight, v = new T.Vector3();
+    labels.forEach(function (L) {
+      var a = S.b.anchors[L.key];
+      v.copy(a).project(camera);
+      var x = (v.x * .5 + .5) * w, y = (-v.y * .5 + .5) * h;
+      L.elA.style.left = x + 'px'; L.elA.style.top = y + 'px';
+      L.elB.style.left = x + 'px'; L.elB.style.top = y + 'px';
+      var off = K.lead ? 34 : 0;
+      L.elB.style.transform = 'translate(-50%,-100%)';
+      var ax = x, ay = y;
+      var bx = x + (L.key === 'cab1' ? -26 : 26), by = y - off;
+      L.line.setAttribute('points', bx + ',' + (by) + ' ' + (bx * .96 + ax * .04) + ',' + (by + 12) + ' ' + ax + ',' + ay);
+      L.elB.style.left = bx + 'px'; L.elB.style.top = by + 'px';
+      L.anchor.style.left = ax + 'px'; L.anchor.style.top = ay + 'px';
+      var vis = v.z < 1;
+      L.elA.style.display = vis ? '' : 'none';
+      L.elB.style.display = (vis && K.lead) ? '' : 'none';
+      L.line.style.display = (vis && K.lead) ? '' : 'none';
+      L.anchor.style.display = (vis && K.lead) ? '' : 'none';
+      if (!K.lead) { L.elB.style.left = x + 'px'; L.elB.style.top = y + 'px'; }
+    });
+  }
+
+  /* ---------------- 擦除线 ---------------- */
+  var wipe = document.getElementById('wipe'), pos = 50, dragging = false;
+  function setWipe(p) {
+    pos = Math.max(4, Math.min(96, p));
+    wipe.style.left = pos + '%';
+    cvB.style.clipPath = 'inset(0 0 0 ' + pos + '%)';
+    ovB.style.clipPath = 'inset(0 0 0 ' + pos + '%)';
+  }
+  wipe.addEventListener('pointerdown', function (e) { dragging = true; wipe.setPointerCapture(e.pointerId); controls.enabled = false; });
+  wipe.addEventListener('pointermove', function (e) {
+    if (!dragging) return;
+    var r = stage.getBoundingClientRect(); setWipe((e.clientX - r.left) / r.width * 100);
+  });
+  wipe.addEventListener('pointerup', function () { dragging = false; controls.enabled = true; });
+  setWipe(50);
+
+  /* ---------------- 控件绑定 ---------------- */
+  function bindCk(id, key, rebuildNeeded) {
+    var e = document.getElementById(id);
+    e.addEventListener('change', function () { K[key] = e.checked; rebuildNeeded ? rebuild() : tune(); });
+  }
+  function bindSld(id, valId, key, fmt, cb) {
+    var e = document.getElementById(id), v = document.getElementById(valId);
+    e.addEventListener('input', function () {
+      K[key] = parseFloat(e.value); v.textContent = fmt(K[key]); cb();
+    });
+  }
+  var f2 = function (n) { return n.toFixed(2); };
+  bindCk('kTone', 'tone', false); bindCk('kEnv', 'env', true); bindCk('kSky', 'sky', true);
+  bindCk('kYard', 'yard', true); bindCk('kBlob', 'blob', true); bindCk('kEm', 'em', true);
+  bindCk('kLead', 'lead', false);
+  bindSld('sExp', 'vExp', 'exp', f2, tune); bindSld('sBl', 'vBl', 'bloom', f2, tune);
+  bindSld('sBt', 'vBt', 'bloomTh', f2, tune); bindSld('sEi', 'vEi', 'envInt', f2, tune);
+  bindSld('sRr', 'vRr', 'groundRough', f2, function () { if (S) { S.b.mats.ground.roughness = K.groundRough; S.b.mats.ground.needsUpdate = true; } });
+  bindSld('sCs', 'vCs', 'blobOp', f2, tune);
+
+  function tune() {
+    if (!S) return;
+    rendererB.toneMapping = K.tone ? T.ACESFilmicToneMapping : T.NoToneMapping;
+    rendererB.toneMappingExposure = K.exp;
+    if (compB && compB.PASS) { compB.PASS.strength = K.bloom; compB.PASS.threshold = K.bloomTh; }
+    Object.keys(S.b.mats).forEach(function (k) {
+      var m = S.b.mats[k];
+      if (m && 'envMapIntensity' in m) { m.envMapIntensity = K.env ? K.envInt : 0; m.needsUpdate = true; }
+    });
+    if (!K.blob && S.b) { /* 关接触阴影靠 rebuild，这里仅调浓度 */ }
+    S.b.scene.traverse(function (o) {
+      if (o.material && o.material.map && o.geometry && o.geometry.type === 'PlaneGeometry' &&
+        o.geometry.parameters && Math.abs(o.rotation.x + Math.PI / 2) < .01 && o.position.y < .03 && o.position.y > .01) {
+        o.material.opacity = K.blobOp;
+      }
+    });
+  }
+
+  document.getElementById('bNight').addEventListener('click', function () { setTheme('night'); });
+  document.getElementById('bDay').addEventListener('click', function () { setTheme('day'); });
+  function setTheme(t) {
+    K.theme = t;
+    document.getElementById('bNight').classList.toggle('on', t === 'night');
+    document.getElementById('bDay').classList.toggle('on', t === 'day');
+    document.body.style.background = t === 'day' ? '#cfe4f0' : '#05080b';
+    rebuild();
+  }
+
+  rebuild();
+
+  (function loop() {
+    requestAnimationFrame(loop);
+    controls.update();
+    if (compA) compA.render();
+    if (compB) compB.render();
+    placeLabels();
+  })();
+}
+</script>
+</body>
+</html>
