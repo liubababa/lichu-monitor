@@ -1,0 +1,465 @@
+<style>
+  .uiq{--bg0:#070c10;--bg1:#0d141a;--bg2:#121b22;--bg3:#1a252d;
+    --line:rgba(140,170,185,.14);--line2:rgba(140,170,185,.26);
+    --t1:#e8f1f5;--t2:#a9bdc6;--t3:#6f8892;--t4:#4a5f68;
+    --acc:#2ee6c8;--info:#4aa8ff;--warn:#f5a524;--crit:#f4553d;--idle:#6b8189;
+    --n:11px;--s:12px;--m:13px;--l:15px;--xl:18px;--2xl:24px;
+    font-family:"Inter","Segoe UI","Microsoft YaHei","PingFang SC",sans-serif;
+    background:var(--bg0);color:var(--t1);border-radius:6px;overflow:hidden;
+    font-size:var(--m);line-height:1.5;-webkit-font-smoothing:antialiased}
+  .uiq *{box-sizing:border-box;margin:0;padding:0}
+  .uiq .num{font-family:"Bahnschrift","DIN Alternate","Roboto Mono",Consolas,monospace;font-variant-numeric:tabular-nums}
+  .uiq header{padding:22px 26px 18px;border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg,#0b1319,#070c10)}
+  .uiq .eyebrow{font-size:var(--n);letter-spacing:.14em;text-transform:uppercase;color:var(--acc)}
+  .uiq h1{font-size:var(--2xl);font-weight:600;letter-spacing:-.01em;margin-top:6px}
+  .uiq .sub{color:var(--t3);font-size:var(--s);margin-top:4px}
+  .uiq section{padding:22px 26px;border-bottom:1px solid var(--line)}
+  .uiq h2{font-size:var(--l);font-weight:600;letter-spacing:.01em;display:flex;align-items:center;gap:9px}
+  .uiq h2::before{content:"";width:3px;height:14px;background:var(--acc);border-radius:2px}
+  .uiq .lede{color:var(--t3);font-size:var(--s);margin:5px 0 16px 12px}
+  .uiq .grid{display:grid;gap:12px}
+  .uiq .g4{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .uiq .g3{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .uiq .g2{grid-template-columns:repeat(2,minmax(0,1fr))}
+  @media(max-width:1080px){.uiq .g4{grid-template-columns:repeat(2,1fr)}.uiq .g3{grid-template-columns:1fr}}
+  @media(max-width:720px){.uiq .g4,.uiq .g2{grid-template-columns:1fr}}
+  .uiq .stat{background:var(--bg1);border:1px solid var(--line);border-radius:4px;padding:13px 15px}
+  .uiq .stat .k{font-size:var(--n);letter-spacing:.09em;text-transform:uppercase;color:var(--t3)}
+  .uiq .stat .v{font-size:var(--2xl);font-weight:600;margin-top:5px;letter-spacing:-.02em}
+  .uiq .stat .n{font-size:var(--s);color:var(--t4);margin-top:2px}
+  .uiq .bad{color:var(--crit)}.uiq .ok{color:var(--acc)}.uiq .wr{color:var(--warn)}
+  .uiq .bar{height:5px;border-radius:3px;background:var(--bg3);margin-top:9px;overflow:hidden}
+  .uiq .bar i{display:block;height:100%;background:var(--crit);border-radius:3px}
+  .uiq .bar.t i{background:var(--acc)}
+  .uiq .sw{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+  .uiq .chip{font-size:var(--n);padding:3px 8px;border-radius:2px;border:1px solid var(--line2);color:var(--t2);
+    font-variant-numeric:tabular-nums}
+  .uiq .cmp{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media(max-width:860px){.uiq .cmp{grid-template-columns:1fr}}
+  .uiq .pane{border:1px solid var(--line);border-radius:4px;overflow:hidden}
+  .uiq .pane>h3{font-size:var(--n);letter-spacing:.1em;text-transform:uppercase;padding:8px 12px;
+    border-bottom:1px solid var(--line);background:var(--bg1);color:var(--t3);font-weight:600}
+  .uiq .pane>div{padding:14px 12px}
+  .uiq .now{background:#04090c}
+  .uiq .then{background:var(--bg0)}
+  /* --- "current" mock, deliberately reproducing the shipped look --- */
+  .uiq .n-tab{display:inline-block;transform:skewX(-14deg);background:linear-gradient(120deg,#2ee6c8,#0d8a72);
+    color:#04231d;font-weight:700;font-size:14px;padding:5px 16px;margin-right:8px}
+  .uiq .n-tab.o{background:rgba(15,150,130,.06);border:1px solid rgba(46,230,200,.2);color:#4a6f6f}
+  .uiq .n-kpi{border:1px solid rgba(46,230,200,.18);border-radius:8px;padding:10px 12px;margin-bottom:8px;
+    background:linear-gradient(160deg,rgba(46,230,200,.05),rgba(46,230,200,.01))}
+  .uiq .n-kpi .l{font-size:11px;color:#87aca5;letter-spacing:1px}
+  .uiq .n-kpi .v{font-size:26px;color:#eafffa;font-weight:700}
+  .uiq .n-kpi .u{font-size:9px;color:#6f9a94}
+  .uiq .n-row{display:flex;justify-content:space-between;font-size:11px;color:#87aca5;margin-top:6px}
+  .uiq .n-row b{color:#eafffa;font-weight:700}
+  .uiq .n-bracket{position:relative;border:1px solid rgba(46,230,200,.25);padding:10px}
+  .uiq .n-bracket::before,.uiq .n-bracket::after{content:"";position:absolute;width:12px;height:12px;
+    border:2px solid #2ee6c8}
+  .uiq .n-bracket::before{left:-1px;top:-1px;border-right:0;border-bottom:0}
+  .uiq .n-bracket::after{right:-1px;bottom:-1px;border-left:0;border-top:0}
+  /* --- "target" components --- */
+  .uiq .t-tabs{display:flex;gap:2px;border-bottom:1px solid var(--line)}
+  .uiq .t-tab{font-size:var(--s);color:var(--t2);padding:8px 14px;border-bottom:2px solid transparent;
+    letter-spacing:.02em;cursor:default}
+  .uiq .t-tab.on{color:var(--t1);border-bottom-color:var(--acc);font-weight:600}
+  .uiq .t-card{background:var(--bg1);border:1px solid var(--line);border-radius:4px;padding:12px 14px}
+  .uiq .t-card .k{font-size:var(--n);letter-spacing:.09em;text-transform:uppercase;color:var(--t3)}
+  .uiq .t-card .v{font-size:var(--xl);font-weight:600;margin-top:6px;display:flex;align-items:baseline;gap:4px}
+  .uiq .t-card .u{font-size:var(--n);color:var(--t4);font-weight:400}
+  .uiq .t-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line);
+    border:1px solid var(--line);border-radius:4px;overflow:hidden}
+  @media(max-width:640px){.uiq .t-kpis{grid-template-columns:repeat(2,1fr)}}
+  .uiq .t-kpis>div{background:var(--bg1);padding:11px 13px}
+  .uiq .tl{display:grid;grid-template-columns:minmax(0,1fr) 76px;align-items:baseline;gap:10px;
+    padding:7px 0;border-bottom:1px dashed var(--line);font-size:var(--s)}
+  .uiq .tl:last-child{border-bottom:0}
+  .uiq .tl span{color:var(--t2)}
+  .uiq .tl b{text-align:right;font-weight:600;color:var(--t1);font-variant-numeric:tabular-nums;
+    font-family:"Bahnschrift",Consolas,monospace}
+  .uiq .tl.total{border-top:1px solid var(--line2);border-bottom:0;margin-top:4px;padding-top:8px}
+  .uiq .tl.total span,.uiq .tl.total b{color:var(--t1);font-weight:600}
+  .uiq .pill{display:inline-flex;align-items:center;gap:5px;font-size:var(--n);letter-spacing:.06em;
+    text-transform:uppercase;padding:2px 7px;border-radius:2px;font-weight:600}
+  .uiq .pill i{width:5px;height:5px;border-radius:50%;background:currentColor}
+  .uiq .p-run{color:var(--acc);background:rgba(46,230,200,.1);border:1px solid rgba(46,230,200,.28)}
+  .uiq .p-warn{color:var(--warn);background:rgba(245,165,36,.1);border:1px solid rgba(245,165,36,.3)}
+  .uiq .p-crit{color:var(--crit);background:rgba(244,85,61,.12);border:1px solid rgba(244,85,61,.34)}
+  .uiq .p-idle{color:var(--idle);background:rgba(107,129,137,.12);border:1px solid rgba(107,129,137,.3)}
+  .uiq .sec{border:1px solid var(--line);border-radius:4px;background:var(--bg1);overflow:hidden}
+  .uiq .sec>h4{font-size:var(--s);font-weight:600;padding:9px 13px;background:var(--bg2);
+    border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;color:var(--t1)}
+  .uiq .sec>h4 em{font-style:normal;font-size:var(--n);color:var(--t4);letter-spacing:.06em;text-transform:uppercase}
+  .uiq .sec>div{padding:12px 13px}
+  .uiq table.m{width:100%;border-collapse:collapse;font-size:var(--s)}
+  .uiq table.m th{text-align:left;font-size:var(--n);letter-spacing:.08em;text-transform:uppercase;
+    color:var(--t3);font-weight:600;padding:6px 8px;border-bottom:1px solid var(--line2);white-space:nowrap}
+  .uiq table.m th.r,.uiq table.m td.r{text-align:right}
+  .uiq table.m td{padding:7px 8px;border-bottom:1px solid var(--line);color:var(--t1);
+    font-variant-numeric:tabular-nums;font-family:"Bahnschrift",Consolas,monospace}
+  .uiq table.m td:first-child{font-family:inherit;color:var(--t2)}
+  .uiq table.m tr:last-child td{border-bottom:0}
+  .uiq .heat{display:flex;gap:2px}
+  .uiq .heat i{flex:1;height:26px;border-radius:1px}
+  .uiq .legend{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:var(--n);color:var(--t3)}
+  .uiq .legend .r{flex:1;height:5px;border-radius:3px;
+    background:linear-gradient(90deg,#1f6f5c,#2ee6c8,#f5a524,#f4553d)}
+  .uiq .scale{display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap}
+  .uiq .scale div{text-align:center}
+  .uiq .scale span{display:block;color:var(--t4);font-size:10px;margin-top:4px;letter-spacing:.06em}
+  .uiq .tok{display:flex;gap:8px;flex-wrap:wrap}
+  .uiq .tok figure{width:74px}
+  .uiq .tok .sw-b{height:44px;border-radius:3px;border:1px solid var(--line2)}
+  .uiq .tok figcaption{font-size:10px;color:var(--t3);margin-top:5px;line-height:1.35;font-family:Consolas,monospace}
+  .uiq ol.r{list-style:none;counter-reset:x}
+  .uiq ol.r li{counter-increment:x;display:grid;grid-template-columns:26px 1fr;gap:10px;padding:9px 0;
+    border-bottom:1px solid var(--line);font-size:var(--s);color:var(--t2)}
+  .uiq ol.r li::before{content:counter(x,decimal-leading-zero);color:var(--acc);
+    font-family:"Bahnschrift",monospace;font-size:var(--m);font-weight:600}
+  .uiq ol.r b{color:var(--t1);font-weight:600}
+  .uiq .ph{font-size:var(--n);letter-spacing:.12em;text-transform:uppercase;color:var(--t4);
+    padding:14px 26px;background:var(--bg1);border-bottom:1px solid var(--line)}
+  .uiq .road{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+  @media(max-width:900px){.uiq .road{grid-template-columns:1fr}}
+  .uiq .ph-card{border:1px solid var(--line);border-radius:4px;background:var(--bg1);padding:14px}
+  .uiq .ph-card h5{font-size:var(--s);letter-spacing:.08em;text-transform:uppercase;margin-bottom:9px}
+  .uiq .ph-card.p0 h5{color:var(--crit)}.uiq .ph-card.p1 h5{color:var(--warn)}.uiq .ph-card.p2 h5{color:var(--acc)}
+  .uiq .ph-card ul{list-style:none;font-size:var(--s);color:var(--t2)}
+  .uiq .ph-card li{padding:4px 0 4px 12px;position:relative;border-bottom:1px solid var(--line)}
+  .uiq .ph-card li:last-child{border-bottom:0}
+  .uiq .ph-card li::before{content:"";position:absolute;left:0;top:11px;width:4px;height:4px;
+    border-radius:50%;background:var(--t4)}
+  .uiq .void{border:1px dashed var(--line2);border-radius:4px;height:88px;display:flex;align-items:center;
+    justify-content:center;color:var(--t4);font-size:var(--n);letter-spacing:.1em;text-transform:uppercase}
+  .uiq footer{padding:16px 26px 20px;color:var(--t4);font-size:var(--n);background:var(--bg1)}
+</style>
+
+<div class="uiq">
+  <header>
+    <div class="eyebrow">Visual &amp; Layout Audit — 力储未来能源综合管理系统</div>
+    <h1>全站视觉诊断与工业级改造方案</h1>
+    <div class="sub">实测 20 个页面 × 昼夜双主题 × 1920 / 2560 / 1366 / 390 四档分辨率 · 数据取自渲染像素与 computed style，非主观判断</div>
+  </header>
+
+  <section>
+    <h2>一、量化诊断：问题不在"不够炫"，在于没有系统</h2>
+    <div class="lede">同一屏内出现的取值种类 —— 数字越大说明越靠肉眼逐条调，没有令牌约束</div>
+    <div class="grid g4">
+      <div class="stat"><div class="k">同屏字号种类</div><div class="v bad num">29</div><div class="n">其中 8.5 / 9 / 9.5 / 10 / 10.224 / 10.5px 六档挤在 11px 以下</div><div class="bar"><i style="width:88%"></i></div></div>
+      <div class="stat"><div class="k">同屏圆角种类</div><div class="v bad num">9</div><div class="n">1 / 2 / 6 / 8 / 9 / 10 / 12 / 14 / 16px + 50% 混用</div><div class="bar"><i style="width:70%"></i></div></div>
+      <div class="stat"><div class="k">同屏字距种类</div><div class="v bad num">8</div><div class="n">0.4 / 0.5 / 0.6 / 1 / 1.5 / 2 / 3 / 3.5px 无规律</div><div class="bar"><i style="width:62%"></i></div></div>
+      <div class="stat"><div class="k">同屏文字色</div><div class="v bad num">17</div><div class="n">全站 106 个 hex + 164 个 rgba，仅 8 个 CSS 变量</div><div class="bar"><i style="width:76%"></i></div></div>
+    </div>
+    <div class="grid g4" style="margin-top:12px">
+      <div class="stat"><div class="k">主色透明度变体</div><div class="v bad num">41</div><div class="n">rgba(46,230,200,α) 用了 241 次，α 从 .01 到 .85 全谱随机取值</div></div>
+      <div class="stat"><div class="k">非整数字号元素</div><div class="v bad num">107</div><div class="n">门户单屏 · 11.224px / 13.333px / 17.64px 在 Windows 上直接发虚</div></div>
+      <div class="stat"><div class="k">数字等宽对齐</div><div class="v bad num">0</div><div class="n">全站无 tabular-nums，实时刷新的数值会左右抖动</div></div>
+      <div class="stat"><div class="k">白天主题补丁</div><div class="v bad num">291</div><div class="n">条 data-theme 覆盖规则，全部写死色值 = 全站 31% 的 CSS</div></div>
+    </div>
+
+    <div class="lede" style="margin-top:20px">渲染像素统计 —— 这才是"没有科技感"的真正原因：不是太暗，是暗得没有层次</div>
+    <div class="cmp">
+      <div class="pane"><h3>夜间主题 · 数据页近黑像素占比</h3><div>
+        <div class="tl"><span>电芯健康</span><b class="bad">87.9%</b></div>
+        <div class="tl"><span>详细信息（站点运行与收益）</span><b class="bad">83.4%</b></div>
+        <div class="tl"><span>设备列表</span><b class="bad">86.9%</b></div>
+        <div class="tl"><span>光伏 · 储能页</span><b class="bad">74.0%</b></div>
+        <div class="tl"><span>设备总览（信息量最高的一页）</span><b class="wr">55.8%</b></div>
+        <div class="tl total"><span>健康工业 HMI 参考区间</span><b class="ok">25–45%</b></div>
+      </div></div>
+      <div class="pane"><h3>白天主题 · 纯白像素占比</h3><div>
+        <div class="tl"><span>电芯健康</span><b class="bad">84.7%</b></div>
+        <div class="tl"><span>详细信息</span><b class="bad">79.4%</b></div>
+        <div class="tl"><span>设备总览</span><b class="bad">67.3%</b></div>
+        <div class="tl"><span>光伏 · 详细信息</span><b class="bad">64.0%</b></div>
+        <div class="tl"><span>饱和度 &gt; 40 的像素（数据页）</span><b class="bad">&lt; 6%</b></div>
+        <div class="tl total"><span>结论：夜间=黑底空洞，白天=白底表格</span><b>无表面层级</b></div>
+      </div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>二、排版：三个结构性缺陷</h2>
+    <div class="lede">这三条决定了"看起来像不像一个成熟产品"，比配色更致命</div>
+    <div class="grid g3">
+      <div class="stat"><div class="k">缺陷 01 · 标签与数值被拉开</div><div class="v wr" style="font-size:16px">space-between 滥用</div>
+        <div class="n" style="margin-top:7px">"电压 ……… 837.8V" 在 2560 宽下相距约 700px，眼睛无法配对。应改为固定两列栅格 + 右对齐等宽数字。</div></div>
+      <div class="stat"><div class="k">缺陷 02 · 底部死区</div><div class="v wr" style="font-size:16px">内容止于 70% 视口</div>
+        <div class="n" style="margin-top:7px">详细信息页 1920×1080 下约 300px、2560 下约 260px 全空。栅格未做行高分配，也没有内容补位。</div></div>
+      <div class="stat"><div class="k">缺陷 03 · 面板套面板</div><div class="v wr" style="font-size:16px">最多 4 层 1px 边框</div>
+        <div class="n" style="margin-top:7px">视图框 → 分区框 → 卡片框 → 内层框。层级靠"再套一个盒子"表达，而不是靠表面明度与间距。</div></div>
+    </div>
+    <div style="margin-top:14px" class="void">整页 30% 高度为纯黑死区 —— 大屏观感的第一杀手</div>
+  </section>
+
+  <section>
+    <h2>三、逐组件：现状 vs 目标</h2>
+    <div class="lede">左边按线上真实样式复刻，右边是建议落地样式</div>
+    <div class="cmp">
+      <div class="pane"><h3>现状 · 导航与 KPI</h3><div class="now">
+        <div style="margin-bottom:14px">
+          <span class="n-tab o">设备总览 ▾</span><span class="n-tab">电站监控 ▾</span><span class="n-tab o">详细信息 ▾</span>
+        </div>
+        <div class="n-kpi"><div class="l">总充电量</div><div class="v num">207443.0<span class="u"> kWh</span></div></div>
+        <div class="n-row"><span>电压</span><b class="num">834.1V</b></div>
+        <div class="n-row"><span>SOH</span><b class="num">97%</b></div>
+        <div class="n-bracket" style="margin-top:12px"><span style="font-size:11px;color:#8ff5df;letter-spacing:2px">当前无告警</span></div>
+        <div style="font-size:10px;color:#6f9a94;margin-top:10px;line-height:1.7">
+          ▸ 斜切平行四边形 + 下拉箭头（无下拉功能）<br>
+          ▸ 渐变裁切标题文字、四角括号装饰 —— 游戏 HUD 语言<br>
+          ▸ 标签 11px / 数值 26px / 单位 9px，三档都在标准之外<br>
+          ▸ 数值无等宽对齐，刷新时整行左右抖动
+        </div>
+      </div></div>
+      <div class="pane"><h3>目标 · 导航与 KPI</h3><div class="then">
+        <div class="t-tabs" style="margin-bottom:14px">
+          <span class="t-tab">设备总览</span><span class="t-tab on">电站监控</span><span class="t-tab">详细信息</span><span class="t-tab">电芯健康</span>
+        </div>
+        <div class="t-kpis" style="margin-bottom:10px">
+          <div><div class="k">总充电量</div><div class="v num">207,443.0<span class="u">kWh</span></div></div>
+          <div><div class="k">总放电量</div><div class="v num">198,872.9<span class="u">kWh</span></div></div>
+          <div><div class="k">今日充电</div><div class="v num">2.00<span class="u">kWh</span></div></div>
+          <div><div class="k">累计收益</div><div class="v num" style="color:var(--warn)">151,555.47<span class="u">元</span></div></div>
+        </div>
+        <div class="t-card">
+          <div class="tl"><span>直流侧电压</span><b>834.1 V</b></div>
+          <div class="tl"><span>电池健康 SOH</span><b>97 %</b></div>
+        </div>
+        <div style="margin-top:10px;display:flex;gap:6px;align-items:center">
+          <span class="pill p-run"><i></i>Running</span>
+          <span class="pill p-idle"><i></i>Standby</span>
+          <span class="pill p-warn"><i></i>Derating</span>
+          <span class="pill p-crit"><i></i>Fault</span>
+        </div>
+        <div style="font-size:11px;color:var(--t4);margin-top:10px;line-height:1.7">
+          ▸ 下划线式页签，不斜切、不装饰箭头，文字不形变<br>
+          ▸ KPI 用 1px 分隔线拼成一张表，而不是 7 个孤立盒子<br>
+          ▸ 标签 11px 大写宽字距 / 数值 18px 等宽 / 单位 11px 三级固定<br>
+          ▸ 状态色只出现在状态上，正文永远只用 4 级灰
+        </div>
+      </div></div>
+    </div>
+
+    <div class="cmp" style="margin-top:12px">
+      <div class="pane"><h3>现状 · 分区与表格</h3><div class="now">
+        <div style="border:1px solid rgba(46,230,200,.18);border-radius:8px;padding:10px">
+          <div style="font-size:14px;color:#eafffa;letter-spacing:2px;margin-bottom:8px">▎系统总览 <span style="font-size:9px;border:1px solid rgba(46,230,200,.3);border-radius:9px;padding:1px 6px;color:#8ff5df">EMU / EMS</span></div>
+          <div style="border:1px dashed rgba(46,230,200,.2);border-radius:6px;padding:8px">
+            <div class="n-row"><span>允许充电功率</span><b class="num">0.0 kW</b></div>
+            <div class="n-row"><span>允许放电功率</span><b class="num">0.0 kW</b></div>
+            <div class="n-row"><span>最高单体</span><b class="num">3.212 V</b></div>
+          </div>
+        </div>
+        <div style="font-size:10px;color:#6f9a94;margin-top:10px;line-height:1.7">
+          ▸ 虚线 + 实线 + 圆角 6/8 混用，两层盒子嵌套<br>
+          ▸ 协议标签用 9px 胶囊，比正文还小一档<br>
+          ▸ 合计行与数据行完全同权重，读不出层级
+        </div>
+      </div></div>
+      <div class="pane"><h3>目标 · 分区与表格</h3><div class="then">
+        <div class="sec">
+          <h4>系统总览 <em>EMU / EMS · 17 实例</em></h4>
+          <div>
+            <table class="m">
+              <tr><th>指标</th><th class="r">数值</th><th class="r">额定</th><th class="r">状态</th></tr>
+              <tr><td>储能功率</td><td class="r">-35.5 kW</td><td class="r">250 kW</td><td class="r"><span class="pill p-run" style="padding:1px 6px"><i></i>Chg</span></td></tr>
+              <tr><td>允许充电功率</td><td class="r">0.0 kW</td><td class="r">250 kW</td><td class="r"><span class="pill p-idle" style="padding:1px 6px"><i></i>Limit</span></td></tr>
+              <tr><td>最高单体电压</td><td class="r">3.212 V</td><td class="r">3.650 V</td><td class="r"><span class="pill p-run" style="padding:1px 6px"><i></i>Ok</span></td></tr>
+              <tr class="total"><td>合计</td><td class="r">2,074,443 kWh</td><td class="r">—</td><td class="r">—</td></tr>
+            </table>
+          </div>
+        </div>
+        <div style="font-size:11px;color:var(--t4);margin-top:10px;line-height:1.7">
+          ▸ 一层容器 + 表头底色，不再套盒；分隔靠 1px 横线<br>
+          ▸ 数值列右对齐 + 等宽，小数点天然成线<br>
+          ▸ 合计行上边框加重 + 提亮，与数据行拉开权重
+        </div>
+      </div></div>
+    </div>
+
+    <div class="cmp" style="margin-top:12px">
+      <div class="pane"><h3>现状 · 电芯热力条</h3><div class="now">
+        <div style="display:flex;gap:0">
+          <div id="heatNow" style="display:flex;gap:0;flex:1"></div>
+        </div>
+        <div style="font-size:10px;color:#6f9a94;margin-top:10px;line-height:1.7">
+          ▸ 260 格无缝相连，读不出"单体"粒度<br>
+          ▸ 绿黄渐变无图例、无量纲、无阈值线<br>
+          ▸ 与页面主色同族 → 异常格混在正常格里看不见
+        </div>
+      </div></div>
+      <div class="pane"><h3>目标 · 电芯热力条</h3><div class="then">
+        <div class="heat" id="heatNew"></div>
+        <div class="legend"><span>2.80 V</span><div class="r"></div><span>3.65 V</span><span style="color:var(--crit)">▲ 越限 3</span></div>
+        <div style="font-size:11px;color:var(--t4);margin-top:10px;line-height:1.7">
+          ▸ 2px 间隙 + 1px 圆角，粒度可读<br>
+          ▸ 色标从"正常绿"到"越限红"跨色相，异常一眼可见<br>
+          ▸ 图例给出量纲与阈值，越限数单独计数
+        </div>
+      </div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>四、设计令牌：把 270 个色值收敛成 24 个</h2>
+    <div class="lede">核心思路 —— 表面去掉青色调，把青色只留给"能量/激活"。这是国内霓虹风与海外工业风最本质的区别</div>
+    <div class="tok">
+      <figure><div class="sw-b" style="background:#070c10"></div><figcaption>--bg-0<br>app 底</figcaption></figure>
+      <figure><div class="sw-b" style="background:#0d141a"></div><figcaption>--bg-1<br>面板</figcaption></figure>
+      <figure><div class="sw-b" style="background:#121b22"></div><figcaption>--bg-2<br>卡片</figcaption></figure>
+      <figure><div class="sw-b" style="background:#1a252d"></div><figcaption>--bg-3<br>悬停</figcaption></figure>
+      <figure><div class="sw-b" style="background:rgba(140,170,185,.14)"></div><figcaption>--line<br>发丝线</figcaption></figure>
+      <figure><div class="sw-b" style="background:#2ee6c8"></div><figcaption>--acc<br>能量/激活</figcaption></figure>
+      <figure><div class="sw-b" style="background:#4aa8ff"></div><figcaption>--info<br>信息</figcaption></figure>
+      <figure><div class="sw-b" style="background:#f5a524"></div><figcaption>--warn<br>告警</figcaption></figure>
+      <figure><div class="sw-b" style="background:#f4553d"></div><figcaption>--crit<br>故障</figcaption></figure>
+      <figure><div class="sw-b" style="background:#e8f1f5"></div><figcaption>--t1<br>数值</figcaption></figure>
+      <figure><div class="sw-b" style="background:#a9bdc6"></div><figcaption>--t2<br>标签</figcaption></figure>
+      <figure><div class="sw-b" style="background:#6f8892"></div><figcaption>--t3<br>次要</figcaption></figure>
+    </div>
+    <div class="grid g2" style="margin-top:18px">
+      <div class="pane"><h3>字阶 · 8 档，全部整数</h3><div class="then">
+        <div class="scale">
+          <div><span style="font-size:44px;font-weight:600" class="num">44</span><span>display</span></div>
+          <div><span style="font-size:32px;font-weight:600" class="num">32</span><span>h1</span></div>
+          <div><span style="font-size:24px;font-weight:600" class="num">24</span><span>h2</span></div>
+          <div><span style="font-size:18px;font-weight:600" class="num">18</span><span>kpi</span></div>
+          <div><span style="font-size:15px" class="num">15</span><span>h3</span></div>
+          <div><span style="font-size:13px">13</span><span>body</span></div>
+          <div><span style="font-size:12px">12</span><span>table</span></div>
+          <div><span style="font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--t3)">11</span><span>label</span></div>
+        </div>
+        <div style="font-size:11px;color:var(--t4);margin-top:12px;line-height:1.7">
+          最小 11px（现在 8.5px 起）· 数字一律 tabular-nums<br>
+          拉丁标签 uppercase + .08em，中文标签 .06em，不做大写变换<br>
+          删除 clamp() 产生的 11.224 / 13.333 / 17.64px 非整数值
+        </div>
+      </div></div>
+      <div class="pane"><h3>间距 · 4px 基准 / 圆角 · 3 档</h3><div class="then">
+        <div style="display:flex;gap:14px;align-items:flex-end;margin-bottom:14px">
+          <div style="width:4px;height:26px;background:var(--acc)"></div>
+          <div style="width:8px;height:26px;background:var(--acc)"></div>
+          <div style="width:12px;height:26px;background:var(--acc)"></div>
+          <div style="width:16px;height:26px;background:var(--acc)"></div>
+          <div style="width:24px;height:26px;background:var(--acc)"></div>
+          <div style="width:32px;height:26px;background:var(--acc)"></div>
+          <div style="width:48px;height:26px;background:var(--acc)"></div>
+          <div style="width:64px;height:26px;background:var(--acc)"></div>
+        </div>
+        <div style="font-size:11px;color:var(--t3);letter-spacing:.06em;margin-bottom:10px">4 · 8 · 12 · 16 · 24 · 32 · 48 · 64（现有 47 个间距值中约 6 成为非 4 倍数）</div>
+        <div style="display:flex;gap:10px;align-items:center">
+          <div style="width:46px;height:32px;border:1px solid var(--line2);border-radius:2px"></div>
+          <div style="width:64px;height:32px;border:1px solid var(--line2);border-radius:4px"></div>
+          <div style="width:64px;height:32px;border:1px solid var(--line2);border-radius:999px"></div>
+          <div style="font-size:11px;color:var(--t4)">2 胶囊 / 4 卡片 / 999 药丸<br>删掉 6 8 9 10 12 14 16</div>
+        </div>
+      </div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>五、"科技质感"从哪来 —— 该加的和不该加的</h2>
+    <div class="lede">现在的问题是把预算花在了装饰上，而工业感真正依赖的几件事一件都没做</div>
+    <div class="grid g2">
+      <div class="pane"><h3>停止投入 · 装饰性元素</h3><div class="then">
+        <ol class="r">
+          <li><b>斜切页签</b> — <span class="num">.tab</span> 带 skewX(-14deg)（子元素再反向斜切补偿），平行四边形是游戏 HUD 语言，不是电力 SCADA 语言</li>
+          <li><b>四角括号</b> — 卡片四角的 L 形亮块，是游戏 HUD 语言，不是电力 SCADA 语言</li>
+          <li><b>渐变裁切标题</b> — background-clip:text 做标题渐变，白天主题下几乎糊成一片</li>
+          <li><b>全彩霓虹外发光</b> — box-shadow 0 0 8px 主色 用了 7 处，发光应只属于"活的"数据</li>
+          <li><b>扫描线动画</b> — scanline keyframes 与 25s/26s 超长过渡，只增加视觉噪声</li>
+          <li><b>页签上的 ▾ 箭头</b> — 无下拉功能，纯装饰，反而误导可点</li>
+        </ol>
+      </div></div>
+      <div class="pane"><h3>开始投入 · 质感来源</h3><div class="then">
+        <ol class="r">
+          <li><b>表面层级</b> — 4 级明度 + 1px 发丝线代替外发光，一眼看出谁在谁之上</li>
+          <li><b>等宽数字</b> — tabular-nums + 千分位，实时刷新时数值不位移，这是"仪表"感的底线</li>
+          <li><b>数值微图表</b> — 每个 KPI 带 24h 迷你趋势线（sparkline），空黑区域立刻变成信息</li>
+          <li><b>状态语言统一</b> — 运行/待机/限功率/故障四态，颜色+图标+文字三重编码，色盲也可读</li>
+          <li><b>数据密度节奏</b> — 主指标 18px、次级 13px、说明 11px 三档交替，形成扫描节奏</li>
+          <li><b>克制的动效</b> — 120/180/240ms 三级 + 统一缓动，只用于状态切换与数值过渡</li>
+          <li><b>空态设计</b> — "暂无数据"要有原因和下一步动作，而不是留一块黑</li>
+        </ol>
+      </div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>六、两个电站不像同一个产品</h2>
+    <div class="lede">同一套系统内的视觉分裂，比单页不好看更伤专业度</div>
+    <div class="grid g3">
+      <div class="stat"><div class="k">3D 场景</div><div class="v wr" style="font-size:16px">两套美术</div><div class="n" style="margin-top:7px">高特站：哑光灰地面 + 随机暗斑 + 线框铁塔；洙边站：霓虹网格地面。材质、光照、地平面完全不同。应统一为一套 preset（地面、雾、光照、辉光强度）。</div></div>
+      <div class="stat"><div class="k">图表配色</div><div class="v wr" style="font-size:16px">三套色族</div><div class="n" style="margin-top:7px">收益柱用青→白渐变，充放电统计用蓝紫渐变，SOC 曲线用橙 + 青。蓝紫在整站色板里是外来色。应收敛为主色 + 2 中性 + 语义色。</div></div>
+      <div class="stat"><div class="k">透视穿帮</div><div class="v wr" style="font-size:16px">3D 透出面板</div><div class="n" style="margin-top:7px">设备列表、详细信息页下方能看见 3D 场景的轮廓在动。数据页要么不渲染场景，要么容器改为不透明。</div></div>
+    </div>
+    <div class="grid g3" style="margin-top:12px">
+      <div class="stat"><div class="k">内部点位名外露</div><div class="v bad" style="font-size:16px">RackMaxVoltage</div><div class="n" style="margin-top:7px">电芯健康页把寄存器点位名以 10px 青色等宽字直接印在卡片第三行。产品界面不应出现内部标识符。</div></div>
+      <div class="stat"><div class="k">坐标轴失控</div><div class="v bad" style="font-size:16px">SOC 轴 3 – 9</div><div class="n" style="margin-top:7px">只有 1–2 个采样点时 ECharts 自动缩放，SOC=6 画出一条居中直线，看起来像坏了。应固定量程 + 显式"数据不足"态。</div></div>
+      <div class="stat"><div class="k">右侧竖条被裁切</div><div class="v bad" style="font-size:16px">数据面板</div><div class="n" style="margin-top:7px">24px 宽的竖排把手在 1920 / 1366 / 390 下都出现文字截断（scrollWidth 525 vs clientWidth 24）。</div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>七、响应式与可达性实测</h2>
+    <div class="grid g4">
+      <div class="stat"><div class="k">断点数量</div><div class="v bad num">11</div><div class="n">820 / 1000 / 1100 / 1180×3 / 1200 / 1400 / 1420 / 1500，同值重复且无规律；2560 以上完全无处理</div></div>
+      <div class="stat"><div class="k">1366×768 顶栏</div><div class="v bad" style="font-size:16px">文字换行溢出</div><div class="n">顶栏固定 62px 且不换行，"当前电站：旭日东明储能电站"与日期被挤成两行压到页签上</div></div>
+      <div class="stat"><div class="k">390×844 溢出元素</div><div class="v bad num">11</div><div class="n">设备总览页 11 个元素右边界超出视口；最小断点 820px 只处理了 .sl-kpis</div></div>
+      <div class="stat"><div class="k">正文最小字号</div><div class="v bad num">8.5px</div><div class="n">9px / 9.5px / 10px 大量用于单位与说明；低于 11px 的文本元素单屏最多 142 个</div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>八、落地路线</h2>
+    <div class="road">
+      <div class="ph-card p0"><h5>P0 · 止血（1–2 天）</h5><ul>
+        <li>建立 :root 令牌层，把 24 个色值写成变量；先不改视觉，只替换引用</li>
+        <li>字号收敛到 8 档整数，最小 11px；全站数字加 tabular-nums</li>
+        <li>圆角统一 2 / 4 / 999 三档</li>
+        <li>删掉 .tab 的 skewX、四角括号、标题渐变裁字、scanline</li>
+        <li>标签-数值改固定两列栅格，禁止整行 space-between</li>
+        <li>数据页容器改不透明，或数据页不挂载 3D</li>
+        <li>电芯健康页去掉 RackVoltage 等点位名，补空态文案</li>
+      </ul></div>
+      <div class="ph-card p1"><h5>P1 · 结构（3–5 天）</h5><ul>
+        <li>12 列栅格 + 4px 间距体系，分区容器统一为"单层 + 表头底色"</li>
+        <li>每页用 grid-template-rows 做满高分配，消灭底部死区</li>
+        <li>KPI 合并为分隔线式指标条，加入 24h sparkline</li>
+        <li>四态状态语言（色 + 图标 + 文字）全站替换</li>
+        <li>ECharts 统一主题对象：固定量程、整数刻度、主色族、空数据态</li>
+        <li>断点重做为 3 档：≤900 / ≤1280 / ≥1600，去掉重复规则</li>
+        <li>顶栏改可换行 + 溢出收纳进"更多"，62px 改 min-height</li>
+      </ul></div>
+      <div class="ph-card p2"><h5>P2 · 质感（1 周）</h5><ul>
+        <li>两套 3D 场景合并为同一美术 preset，统一地平面/雾/辉光</li>
+        <li>白天主题从"291 条覆盖"改为令牌双值，随 :root 一起切换</li>
+        <li>动效三级 120/180/240ms + 统一缓动，数值过渡用补间</li>
+        <li>电芯热力条：间隙、图例、阈值线、越限计数</li>
+        <li>空态 / 加载 / 断连三态统一插画与文案规范</li>
+        <li>暗光控制室与日光挂墙两种可读性场景各做一次校验</li>
+      </ul></div>
+    </div>
+  </section>
+
+  <footer>
+    测量方式：headless Edge 驱动线上站点，逐页采集 getComputedStyle 与渲染像素；色板/圆角/字号/字距统计来自 css/style.css（92,333 字节 / 925 条规则）全量解析。
+    本页所有"目标"样式即为建议落地后的实际渲染效果，可直接作为规范参考。
+  </footer>
+</div>
+
+<script>
+(function(){
+  var n=document.getElementById('heatNow');
+  if(n){for(var i=0;i<70;i++){var d=document.createElement('i');
+    var v=3.2+Math.random()*.06;var g=Math.round(120+(v-3.2)*900);
+    d.style.background='rgb('+Math.max(20,180-g)+','+Math.min(230,g+40)+',120)';
+    d.style.height='26px';d.style.flex='1';n.appendChild(d);}}
+  var m=document.getElementById('heatNew');
+  if(m){for(var i=0;i<70;i++){var d=document.createElement('i');
+    var r=Math.random();
+    var c=r>.96?'#f4553d':r>.9?'#f5a524':r>.35?'#2ee6c8':'#1f8f78';
+    d.style.background=c;m.appendChild(d);}}
+})();
+</script>

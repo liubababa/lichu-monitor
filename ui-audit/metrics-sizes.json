@@ -1,0 +1,206 @@
+{
+ "gaote-overview-qhd": {
+  "sw": 2560,
+  "iw": 2560,
+  "topbarH": 62,
+  "topbarOverflow": {},
+  "tabsWrapped": false,
+  "docH": 1440,
+  "vh": 1440,
+  "clippedRight": 0,
+  "offLeft": 0
+ },
+ "gaote-monitor-qhd": {
+  "sw": 2560,
+  "iw": 2560,
+  "topbarH": 62,
+  "topbarOverflow": {},
+  "tabsWrapped": false,
+  "docH": 1440,
+  "vh": 1440,
+  "clippedRight": 0,
+  "offLeft": 0
+ },
+ "gaote-detail-qhd": {
+  "sw": 2560,
+  "iw": 2560,
+  "topbarH": 62,
+  "topbarOverflow": {},
+  "tabsWrapped": false,
+  "docH": 1440,
+  "vh": 1440,
+  "clippedRight": 0,
+  "offLeft": 0
+ },
+ "gaote-health-qhd": {
+  "sw": 2560,
+  "iw": 2560,
+  "topbarH": 62,
+  "topbarOverflow": {},
+  "tabsWrapped": false,
+  "docH": 1440,
+  "vh": 1440,
+  "clippedRight": 0,
+  "offLeft": 0
+ },
+ "solar-0-qhd": {
+  "sw": 2560,
+  "iw": 2560,
+  "docH": 1440,
+  "vh": 1440
+ },
+ "solar-1-qhd": {
+  "sw": 2560,
+  "iw": 2560,
+  "docH": 1440,
+  "vh": 1440
+ },
+ "solar-2-qhd": {
+  "sw": 2560,
+  "iw": 2560,
+  "docH": 1440,
+  "vh": 1440
+ },
+ "solar-3-qhd": {
+  "sw": 2560,
+  "iw": 2560,
+  "docH": 1440,
+  "vh": 1440
+ },
+ "gaote-overview-hd": {
+  "sw": 1366,
+  "iw": 1366,
+  "topbarH": 62,
+  "topbarOverflow": {},
+  "tabsWrapped": false,
+  "docH": 768,
+  "vh": 768,
+  "clippedRight": 0,
+  "offLeft": 0
+ },
+ "gaote-monitor-hd": {
+  "sw": 1366,
+  "iw": 1366,
+  "topbarH": 62,
+  "topbarOverflow": {},
+  "tabsWrapped": false,
+  "docH": 768,
+  "vh": 768,
+  "clippedRight": 0,
+  "offLeft": 0
+ },
+ "gaote-detail-hd": {
+  "sw": 1366,
+  "iw": 1366,
+  "topbarH": 62,
+  "topbarOverflow": {},
+  "tabsWrapped": false,
+  "docH": 768,
+  "vh": 768,
+  "clippedRight": 0,
+  "offLeft": 0
+ },
+ "gaote-health-hd": {
+  "sw": 1366,
+  "iw": 1366,
+  "topbarH": 62,
+  "topbarOverflow": {},
+  "tabsWrapped": false,
+  "docH": 768,
+  "vh": 768,
+  "clippedRight": 0,
+  "offLeft": 0
+ },
+ "solar-0-hd": {
+  "sw": 1366,
+  "iw": 1366,
+  "docH": 768,
+  "vh": 768
+ },
+ "solar-1-hd": {
+  "sw": 1366,
+  "iw": 1366,
+  "docH": 768,
+  "vh": 768
+ },
+ "solar-2-hd": {
+  "sw": 1366,
+  "iw": 1366,
+  "docH": 768,
+  "vh": 768
+ },
+ "solar-3-hd": {
+  "sw": 1366,
+  "iw": 1366,
+  "docH": 768,
+  "vh": 768
+ },
+ "gaote-overview-mob": {
+  "sw": 390,
+  "iw": 390,
+  "topbarH": 62,
+  "topbarOverflow": {},
+  "tabsWrapped": false,
+  "docH": 844,
+  "vh": 844,
+  "clippedRight": 11,
+  "offLeft": 0
+ },
+ "gaote-monitor-mob": {
+  "sw": 390,
+  "iw": 390,
+  "topbarH": 62,
+  "topbarOverflow": {},
+  "tabsWrapped": false,
+  "docH": 844,
+  "vh": 844,
+  "clippedRight": 3,
+  "offLeft": 0
+ },
+ "gaote-detail-mob": {
+  "sw": 390,
+  "iw": 390,
+  "topbarH": 62,
+  "topbarOverflow": {},
+  "tabsWrapped": false,
+  "docH": 844,
+  "vh": 844,
+  "clippedRight": 3,
+  "offLeft": 0
+ },
+ "gaote-health-mob": {
+  "sw": 390,
+  "iw": 390,
+  "topbarH": 62,
+  "topbarOverflow": {},
+  "tabsWrapped": false,
+  "docH": 844,
+  "vh": 844,
+  "clippedRight": 3,
+  "offLeft": 0
+ },
+ "solar-0-mob": {
+  "sw": 390,
+  "iw": 390,
+  "docH": 844,
+  "vh": 844
+ },
+ "solar-1-mob": {
+  "sw": 390,
+  "iw": 390,
+  "docH": 844,
+  "vh": 844
+ },
+ "solar-2-mob": {
+  "sw": 390,
+  "iw": 390,
+  "docH": 844,
+  "vh": 844
+ },
+ "solar-3-mob": {
+  "sw": 390,
+  "iw": 390,
+  "docH": 844,
+  "vh": 844
+ }
+}
