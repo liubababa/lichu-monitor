@@ -23,7 +23,13 @@ window.PortalUI = (function () {
     },
     {
       kind: 'solar', group: '洙边卫生院光储电站', name: '洙边卫生院光储电站', sn: '', psn: '',
+      line: '洙边卫生院 · ps_id 2355743',
       tag: '光储 · 阳光云 + 日升云', note: '光伏 110.16kW / 100kWh；储能 100kW / 215kWh；阳光电源逆变器'
+    },
+    {
+      kind: 'junyong', group: '山东峻涌光储电站', name: '山东峻涌光储电站', sn: '', psn: '',
+      line: '三群品字围合 · 共用中心铁塔 · 每群各自关口',
+      tag: '光储 · 阳光电源逆变器', note: '光伏 972.4kWp / 820kW；储能 625kW / 1305kWh；阳光电源逆变器'
     }
   ];
   const OTHER_GROUP = '其他电站';
@@ -56,6 +62,7 @@ window.PortalUI = (function () {
   function enter(opt) {
     /* opt = { sn, psn, name, protocol } */
     if (window.SolarUI) SolarUI.hide();                 /* 从光伏站切回储能站视图 */
+    if (window.JunyongUI) JunyongUI.hide();
     const c = cfgOf();
     if (window.MqttUI && MqttUI.selectStation) {
       MqttUI.selectStation({
@@ -80,37 +87,53 @@ window.PortalUI = (function () {
     if (window.SolarScene && SolarScene.resetView) SolarScene.resetView();
   }
 
+  /* 峻涌站：三群品字 + 中心铁塔的独立整站视图（数据源待接入，页面先上线） */
+  function enterJunyong(st) {
+    try { localStorage.setItem(LS_KEY, JSON.stringify({ name: st.name, sn: '', at: Date.now() })); } catch (_) {}
+    setCurStation(st.name);
+    const p = byId('portal');
+    if (p) p.classList.add('hidden');
+    if (window.JunyongUI) JunyongUI.open();
+  }
+
   /* ---------------- 目录页 ---------------- */
   function card(st) {
-    const solar = st.kind === 'solar';
+    const hosted = st.kind === 'solar' || st.kind === 'junyong';   /* 独立整站视图（不走 MQTT 设备号） */
     const dev = st.sn ? findDev(st.sn) : null;
     const online = !!(dev && dev.online);
-    const state = solar ? 'on' : (!st.sn ? 'off' : (online ? 'on' : (dev ? 'off' : 'na')));
-    const stateText = solar ? '已接入' : (!st.sn ? '未接入' : (online ? '在线' : (dev ? '离线' : '未上报')));
+    const state = st.kind === 'solar' ? 'on'
+      : (st.kind === 'junyong' ? 'na' : (!st.sn ? 'off' : (online ? 'on' : (dev ? 'off' : 'na'))));
+    const stateText = st.kind === 'solar' ? '已接入'
+      : (st.kind === 'junyong' ? '页面已上线 · 数据源待接入'
+        : (!st.sn ? '未接入' : (online ? '在线' : (dev ? '离线' : '未上报'))));
 
     const c = el('div', 'pt-card pt-' + state);
     const head = el('div', 'pt-chead');
     head.appendChild(el('b', '', st.name));
     head.appendChild(el('span', 'pt-tag', st.tag || ''));
     c.appendChild(head);
-    c.appendChild(el('div', 'pt-crow', '<span>' + (solar ? '电站' : '设备号') + '</span>' + (solar ? '洙边卫生院 · ps_id 2355743' : (st.sn || '—'))));
+    c.appendChild(el('div', 'pt-crow', '<span>' + (hosted ? '电站' : '设备号') + '</span>'
+      + (st.line || (hosted ? st.name : (st.sn || '—')))));
     if (st.note) c.appendChild(el('div', 'pt-crow', '<span>装机容量</span>' + st.note));
     const stat = el('div', 'pt-cstat');
     stat.innerHTML = '<i class="pt-dot ' + state + '"></i>' + stateText
-      + (solar ? '　数据源 阳光云（5 分钟）+ 日升云（1 分钟）'
-        : (dev ? '　报文 ' + dev.msgs + ' 条　最后上报 ' + fmtTime(dev.lastSeen) : ''));
+      + (st.kind === 'solar' ? '　数据源 阳光云（5 分钟）+ 日升云（1 分钟）'
+        : (st.kind === 'junyong' ? '　数据源 阳光云 + 储能（待配置）'
+          : (dev ? '　报文 ' + dev.msgs + ' 条　最后上报 ' + fmtTime(dev.lastSeen) : '')));
     c.appendChild(stat);
-    const btn = el('button', 'mq-btn primary pt-enter', (solar || st.sn) ? '进入监控' : '未接入');
-    btn.disabled = !solar && !st.sn;
+    const btn = el('button', 'mq-btn primary pt-enter', (hosted || st.sn) ? '进入监控' : '未接入');
+    btn.disabled = !hosted && !st.sn;
     btn.addEventListener('click', function (e) {
       e.stopPropagation();
-      if (solar) { enterSolar(st); return; }
+      if (st.kind === 'solar') { enterSolar(st); return; }
+      if (st.kind === 'junyong') { enterJunyong(st); return; }
       if (!st.sn) return;
       enter({ sn: st.sn, psn: st.psn, name: st.name });
     });
     c.appendChild(btn);
     c.addEventListener('click', function () {
-      if (solar) { enterSolar(st); return; }
+      if (st.kind === 'solar') { enterSolar(st); return; }
+      if (st.kind === 'junyong') { enterJunyong(st); return; }
       if (st.sn) enter({ sn: st.sn, psn: st.psn, name: st.name });
     });
     return c;
@@ -184,41 +207,13 @@ window.PortalUI = (function () {
   }
 
   /* ---------------- 设备列表页（原侧边弹窗改成整页） ---------------- */
-  function renderDevicePage() {
-    const box = byId('dvBody');
-    if (!box) return;
-    const list = devList();
-    const stats = byId('dvStats');
-    if (stats) stats.textContent = list.length ? ('发现 ' + list.length + ' 台设备') : '尚未发现设备';
-    box.innerHTML = '';
-    if (!list.length) {
-      box.appendChild(el('div', 'pt-empty', '还没有发现设备。<br/>连接 MQTT 并等设备上报后，这里会自动列出（2 分钟内有报文算在线）。'));
-      return;
-    }
-    list.forEach(function (d) {
-      const row = el('div', 'pt-devrow' + (d.active ? ' on' : '') + (d.online ? ' online' : ''));
-      const main = el('div', 'pt-dmain');
-      main.appendChild(el('b', '', d.dsn));
-      main.appendChild(el('span', '', '报文 ' + d.msgs + ' 条　最后上报 ' + fmtTime(d.lastSeen) + '　产品号 ' + (d.psn || '—')));
-      row.appendChild(main);
-      row.appendChild(el('span', 'pt-dbadge' + (d.online ? '' : ' off'), d.online ? '在线' : '离线'));
-      const btn = el('button', 'mq-btn' + (d.active ? '' : ' primary'), d.active ? '当前查看' : '查看');
-      btn.disabled = !!d.active;
-      btn.addEventListener('click', function () {
-        if (window.MqttUI && MqttUI.selectStation) {
-          MqttUI.selectStation({ sn: d.dsn, psn: d.psn, stationName: d.dsn, protocol: 'gaote', connect: false });
-        }
-        openMonitor();
-      });
-      row.appendChild(btn);
-      box.appendChild(row);
-    });
-  }
+  
 
   /* ---------------- 视图切换 ---------------- */
   function openPortal() {
     const p = byId('portal');
     if (!p) return;
+    if (window.JunyongUI) JunyongUI.hide();
     if (window.SolarUI) SolarUI.hide();          /* 光伏站视图收起，别和目录叠在一起 */
     p.classList.remove('hidden');
     renderPortal();
@@ -229,9 +224,8 @@ window.PortalUI = (function () {
     openMonitor();
   }
   function openMonitor() {
+    if (window.JunyongUI) JunyongUI.hide();
     if (window.SolarUI) SolarUI.hide();
-    const dev = byId('deviceView');
-    if (dev) dev.classList.add('hidden');
     if (window.MqttUI && MqttUI.openTab) MqttUI.openTab('monitor');
     /* 进站把三维视角归位：这个场景对象是复用的，上次在这里转过 / 缩放过，
        再进来看到的就不是默认构图（用户："进去的时候相机要再调整一下"） */
@@ -240,17 +234,6 @@ window.PortalUI = (function () {
       if (sc && sc.resetView) sc.resetView();
     }
   }
-  function openDevices() {
-    const p = byId('portal'); if (p) p.classList.add('hidden');
-    const dv = byId('deviceView');
-    if (dv) dv.classList.remove('hidden');
-    if (window.GaoteView) GaoteView.hide();
-    if (window.GaoteDetail) GaoteDetail.hide();
-    const ov = byId('overviewView'); if (ov) ov.classList.add('hidden');
-    const tv = byId('tabView'); if (tv) tv.classList.add('hidden');
-    renderDevicePage();
-  }
-
   /* ---------------- 顶栏「当前电站」提示 ----------------
      设备总览 / 详细信息 / 电芯健康 / 光伏页都不带站名，看的人不知道在看哪个站。
      这里统一在顶栏挂一个常驻提示：进站时写入，刷新后沿用上次选择。 */
@@ -270,24 +253,31 @@ window.PortalUI = (function () {
     if (!byId('portal')) return;
     const b = byId('btnPortal');
     if (b) b.addEventListener('click', openPortal);
-    const b2 = byId('dvBack');
-    if (b2) b2.addEventListener('click', openMonitor);
-    const b3 = byId('dvRefresh');
-    if (b3) b3.addEventListener('click', renderDevicePage);
     const b4 = byId('ptEnterLast');
     if (b4) b4.addEventListener('click', function () {
       const sel = savedSel();
       if (!sel || !sel.name) return;
-      const st = STATIONS.filter(function (s) { return s.name === sel.name && s.kind === 'solar'; })[0];
+      var st = STATIONS.filter(function (s) { return s.name === sel.name && s.kind === 'solar'; })[0];
       if (st) { enterSolar(st); return; }
+      st = STATIONS.filter(function (s) { return s.name === sel.name && s.kind === 'junyong'; })[0];
+      if (st) { enterJunyong(st); return; }
       if (sel.sn) enter({ sn: sel.sn, name: sel.name });
     });
     openPortal();                       /* 打开网站先看目录 */
     paintStation();                     /* 顶栏电站提示：沿用上次选择 */
+    /* ?station=峻涌|junyong 直达某个站（大屏值班 / 截图对图用，不在界面上加任何控件） */
+    var deep = (new URLSearchParams(location.search).get('station') || '').trim();
+    if (deep) {
+      const hit = STATIONS.filter(function (s) {
+        return s.name === deep || s.kind === deep || s.name.indexOf(deep) >= 0;
+      })[0];
+      if (hit && hit.kind === 'junyong') { enterJunyong(hit); return; }
+      if (hit && hit.kind === 'solar') { enterSolar(hit); return; }
+      if (hit && hit.sn) { enter({ sn: hit.sn, psn: hit.psn, name: hit.name }); return; }
+    }
     /* 登录后第一个界面是屏保（优先于电站选择页）：目录先备好，屏保盖在上面，一唤醒就是目录 */
     if (window.ScreenSaver && ScreenSaver.show) ScreenSaver.show();
     setInterval(function () { if (!byId('portal').classList.contains('hidden')) renderPortal(); }, 3000);
-    setInterval(function () { if (!byId('deviceView').classList.contains('hidden')) renderDevicePage(); }, 2000);
   }
-  return { init, openPortal, closePortal, openDevices, openMonitor, renderDevicePage, stations: STATIONS };
+  return { init, openPortal, closePortal, openMonitor, stations: STATIONS };
 })();

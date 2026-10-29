@@ -186,7 +186,7 @@
   /* ---------- 右侧数据面板：点一下展开 / 收起 ----------
      触摸屏没有鼠标悬停，原来只靠 CSS 的 :hover 滑出，触摸屏上点不开 */
   function initSidePanels() {
-    ['right', 'slRight'].forEach(function (id) {
+    ['right', 'slRight', 'jyRight'].forEach(function (id) {
       const panel = byId(id);
       if (!panel) return;
       const handle = panel.querySelector('.side-handle');
@@ -231,6 +231,7 @@
     try { if (window.OverviewUI) OverviewUI.init(); } catch (e) { console.error(e); }
     try { if (window.PortalUI) PortalUI.init(); } catch (e) { console.error(e); }
     try { if (window.SolarUI) SolarUI.init(); } catch (e) { console.error(e); }
+    try { if (window.JunyongUI) JunyongUI.init(); } catch (e) { console.error(e); }
     DataService.start(onData);
   }
 

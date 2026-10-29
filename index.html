@@ -6,7 +6,7 @@
 <title>力储未来能源综合管理系统</title>
 <link rel="icon" type="image/png" sizes="64x64" href="libs/logo-64.png?v=20260923a"/>
 <link rel="apple-touch-icon" href="libs/logo-180.png?v=20260923a"/>
-<link rel="stylesheet" href="css/style.css?v=20261029i"/>
+<link rel="stylesheet" href="css/style.css?v=20261029k"/>
 <script>
 /* 加载期错误收集（便于排查依赖/脚本问题） */
 window.__loadErrs = [];
@@ -100,13 +100,29 @@ window.addEventListener('error', function (e) {
       </button>
     </nav>
 
+    <nav class="tb-tabs" id="jyTabs" style="display:none">
+      <button class="tab active" data-jtab="monitor">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="13" rx="1"/><path d="M8 21h8M12 17v4"/></svg>
+        <span>电站监控</span>
+      </button>
+      <button class="tab" data-jtab="storage">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="8" width="17" height="9" rx="1.5"/><path d="M22 11v3M6 11.5v2M9.5 11.5v2M13 11.5v2"/></svg>
+        <span>储能</span>
+      </button>
+      <button class="tab" data-jtab="solar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19V5M4 19h16"/><path d="M8 16V9M12 16v-4M16 16v-7"/></svg>
+        <span>光伏</span>
+      </button>
+      <button class="tab" data-jtab="revenue">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19V5M4 19h16"/><path d="M8 16V9M12 16v-4M16 16v-7"/></svg>
+        <span>详细信息</span>
+      </button>
+    </nav>
+
     <div class="tb-right">
       <!-- 数据源状态指示 -->
       <button class="ds-chip idle" id="dsChip" title="数据源状态（点击打开 MQTT 接入配置）">
         <span>未连接</span>
-      </button>
-      <button class="ds-chip dev hidden" id="devChip" title="设备列表（点击切换查看的设备）">
-        <span id="devChipText">设备</span>
       </button>
       <button class="ghost-btn" data-theme-toggle title="切换白天 / 夜晚主题">夜晚</button>
       <div class="clock"><b id="clockTime">--:--:--</b><span id="clockDate"></span></div>
@@ -245,16 +261,6 @@ window.addEventListener('error', function (e) {
 </aside>
 
 <!-- ===== 设备列表 ===== -->
-<aside id="devPanel" class="hidden">
-  <div class="mq-head">
-    <b>设备列表 · 自动发现</b>
-    <button class="mq-x" id="devPanelClose" title="关闭">×</button>
-  </div>
-  <div class="mq-body">
-    <div class="dev-hint" id="devHint">连上 MQTT 后自动列出正在上报的设备，点一行切换查看（2 分钟内有报文算在线）。</div>
-    <div class="dev-list" id="devList"></div>
-  </div>
-</aside>
 
 <!-- ===== MQTT 收发报文日志 ===== -->
 <section id="logPanel" class="hidden">
@@ -360,8 +366,6 @@ window.addEventListener('error', function (e) {
           <button data-range="today" class="on">今日</button>
           <button data-range="yesterday">昨日</button>
           <button data-range="days3">近三日</button>
-          <button data-range="days7">近七日</button>
-          <button data-range="days30">近三十日</button>
         </span>
       </div>
       <div class="chart" id="slTrendChart"></div>
@@ -389,17 +393,48 @@ window.addEventListener('error', function (e) {
   </div>
 </section>
 
-<!-- ===== 设备列表页（自动发现，原侧边弹窗改成整页） ===== -->
-<section id="deviceView" class="hidden">
-  <div class="ov-bar">
-    <div class="tv-title">设备列表 <em>· 自动发现</em></div>
+<!-- ===== 山东峻涌光储电站（三群品字围合 + 中心铁塔，走线同洙边） ===== -->
+<section id="jyView" class="hidden">
+  <!-- 数据页页头条：储能 / 光伏 / 详细信息三页共用（大屏手点：刷新与返回必须是按钮） -->
+  <div id="jyPageBar" class="ov-bar">
+    <div class="tv-title"><span id="jyPageTitle">--</span></div>
     <div class="ov-bar-r">
-      <span class="ov-src" id="dvStats">—</span>
-      <button class="mq-btn" id="dvRefresh">刷新</button>
-      <button class="mq-btn" id="dvBack">返回监控</button>
+      <button class="mq-btn" id="jyRefresh" title="重新拉取数据源">刷新</button>
+      <button class="mq-btn" id="jyBack">返回站点目录</button>
     </div>
   </div>
-  <div class="ov-body"><div class="pt-cards pt-devpage" id="dvBody"></div></div>
+
+  <!-- 电站监控：全屏场景 + 右侧滑出信息栏 -->
+  <section id="jyLeft">
+    <div id="jy3d"></div>
+    <div class="scene-head">
+      <div class="sh-left">
+        <div class="scene-title"><i></i><span>山东峻涌光储电站 · 光储运行监测图</span></div>
+        <div class="station-chip">电站名称：<b id="jyStation">山东峻涌光储电站</b></div>
+      </div>
+      <div class="sh-right">
+        <button class="ghost-btn active" id="jyBtnLabels" title="显示 / 隐藏设备浮标">标签</button>
+        <button class="ghost-btn" id="jyBtnRotate" title="自动旋转开 / 关">旋转</button>
+        <button class="ghost-btn" id="jyBtnReset" title="重置视角">重置视角</button>
+        <button class="ghost-btn" data-screensaver title="立即进入屏保（30 分钟无操作也会自动进入）">屏保</button>
+      </div>
+    </div>
+    <div id="jyAlarmBar" class="alarm warn"><span class="dot"></span><span id="jyAlarmText">数据源未接入</span></div>
+    <div class="scene-tip">拖拽旋转 · 双指 / 滚轮缩放 · 点机组 / 铁塔看明细 · 点右侧竖边看数据面板</div>
+  </section>
+
+  <aside id="jyRight">
+    <div class="side-handle"><span>◀ 数据面板</span></div>
+    <div class="side-inner" id="jyPanel"></div>
+  </aside>
+
+  <!-- 储能 / 光伏 / 详细信息（整页） -->
+  <section id="jyStorView" class="hidden"><div class="ov-body sl-body" id="jyStorBody"></div></section>
+  <section id="jySolarView" class="hidden"><div class="ov-body sl-body" id="jySolarBody"></div></section>
+  <section id="jyInfoView" class="hidden"><div class="ov-body sl-body" id="jyInfoBody"></div></section>
+</section>
+
+<!-- ===== 设备列表页（自动发现，原侧边弹窗改成整页） ===== -->
 </section>
 
 <!-- ===== Tab 视图：充放电策略 / 电芯健康 ===== -->
@@ -450,13 +485,15 @@ window.addEventListener('error', function (e) {
 <script src="js/gaote-scene3d.js?v=20261029b"></script>
 <script src="js/gaote-strategy.js?v=20261016n"></script>
 <script src="js/overview.js?v=20261016n"></script>
-<script src="js/mqtt-ui.js?v=20261029a"></script>
-<script src="js/portal.js?v=20261029g"></script>
+<script src="js/mqtt-ui.js?v=20261029j"></script>
+<script src="js/portal.js?v=20261029k"></script>
 <script src="js/screensaver.js?v=20261016n"></script>
-<script src="js/solar.js?v=20261029i"></script>
+<script src="js/solar.js?v=20261029j"></script>
 <script src="js/solar-scene3d.js?v=20261029i"></script>
+<script src="js/junyong.js?v=20261029a"></script>
+<script src="js/junyong-scene3d.js?v=20261029a"></script>
 <script src="js/scene3d.js?v=20261016n"></script>
 <script src="js/charts.js?v=20261016n"></script>
-<script src="js/main.js?v=20261016o"></script>
+<script src="js/main.js?v=20261029k"></script>
 </body>
 </html>

@@ -350,32 +350,6 @@ button{font-family:inherit;cursor:pointer;background:none;border:none;color:inhe
 .ds-chip.dev.online::before{background:var(--teal);box-shadow:0 0 8px var(--teal)}
 @media (max-width:1420px){ .site-title span{display:none} }
 
-/* ---------- 设备列表面板 ---------- */
-#devPanel{
-  position:fixed;top:72px;right:14px;width:320px;z-index:70;
-  background:linear-gradient(165deg,rgba(9,25,29,.986),rgba(4,12,14,.988));
-  border:1px solid var(--acc-3);
-  box-shadow:0 14px 40px rgba(0,0,0,.66),0 0 26px var(--acc-2);
-}
-#devPanel::before{content:"";position:absolute;top:-1px;left:-1px;width:16px;height:16px;
-  border-top:2px solid var(--teal);border-left:2px solid var(--teal)}
-.dev-hint{font-size:11px;line-height:1.65;color:var(--dim);margin-bottom:10px}
-.dev-list{display:flex;flex-direction:column;gap:7px}
-.dev-row{
-  display:flex;align-items:center;gap:9px;padding:12px 12px;min-height:48px;cursor:pointer;transition:.2s;
-  border:1px solid var(--acc-2);background:rgba(2,10,12,.6);
-}
-.dev-row:hover{border-color:var(--acc-3);background:var(--acc-1)}
-.dev-row.on{border-color:var(--acc-3);background:var(--acc-1);box-shadow:0 0 10px var(--acc-2)}
-.dev-dot{width:8px;height:8px;border-radius:50%;background:#5b7d78;flex:none}
-.dev-row.online .dev-dot{background:var(--teal);box-shadow:0 0 8px var(--teal)}
-.dev-main{flex:1;min-width:0}
-.dev-sn{font-family:var(--num);font-size:13px;color:#d9fff6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.dev-meta{font-size:11px;color:var(--dim);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.dev-badge{font-size:11px;padding:1px 7px;border-radius:4px;border:1px solid var(--acc-3);color:#6ff2d4;flex:none}
-.dev-badge.off{color:#9fb8b3;border-color:rgba(159,184,179,.4)}
-.dev-empty{font-size:12px;line-height:1.7;color:var(--dim);padding:6px 2px}
-
 /* ---------- MQTT 接入配置面板 ---------- */
 #mqttPanel{
   position:fixed;top:72px;right:14px;width:392px;z-index:70;
@@ -989,12 +963,6 @@ button{font-family:inherit;cursor:pointer;background:none;border:none;color:inhe
 .dt-kv.money b{color:#ffd79a}
 .dt-money{display:grid;grid-template-columns:1fr 1fr;gap:4px 14px}
 
-/* ==================== 设备列表页（与其它视图同一层叠方式） ==================== */
-#deviceView{
-  position:fixed;left:12px;right:12px;top:74px;bottom:12px;z-index:60;display:flex;flex-direction:column;
-  background:linear-gradient(165deg,rgba(8,23,26,1),rgba(4,11,13,1));
-  border:1px solid var(--acc-3);box-shadow:0 16px 46px rgba(0,0,0,.66)}
-
 /* ==================== 站点目录（进门页） + 设备列表页 ==================== */
 #portal{position:fixed;inset:0;z-index:200;display:flex;flex-direction:column;
   padding:clamp(18px,1.3vw,44px) clamp(20px,1.7vw,56px) clamp(14px,1vw,30px);
@@ -1049,16 +1017,6 @@ button{font-family:inherit;cursor:pointer;background:none;border:none;color:inhe
   #portal .pt-enter{font-size:18px}
 }
 .pt-foot b{color:var(--teal);font-weight:normal}
-.pt-devpage{grid-template-columns:1fr;gap:10px}
-.pt-devrow{display:flex;align-items:center;gap:14px;padding:12px 16px;border:1px solid var(--acc-2);background:rgba(8,32,34,.5);transition:.18s}
-.pt-devrow::before{content:"";width:8px;height:8px;border-radius:50%;background:#4a6b68;flex:0 0 auto}
-.pt-devrow.online::before{background:var(--teal);box-shadow:0 0 8px var(--teal)}
-.pt-devrow.on{border-color:var(--acc-3);background:rgba(12,48,50,.62)}
-.pt-dmain{display:flex;flex-direction:column;gap:4px;flex:1;min-width:0}
-.pt-dmain b{font-size:15px;color:#e7fffa;font-weight:500;letter-spacing:1px}
-.pt-dmain span{font-size:11px;color:var(--dim);font-family:var(--num)}
-.pt-dbadge{font-size:11px;color:var(--teal);border:1px solid var(--teal-soft);border-radius:4px;padding:3px 10px;white-space:nowrap}
-.pt-dbadge.off{color:#ff8b70;border-color:rgba(255,110,80,.4)}
 
 /* ============================================================
    白天主题（html[data-theme="day"]）
@@ -1112,7 +1070,6 @@ html[data-theme="day"] .scene-tip{color:rgba(46,78,80,.95)}
 html[data-theme="day"] #right,
 html[data-theme="day"] .panel,
 html[data-theme="day"] #logPanel,
-html[data-theme="day"] #devPanel,
 html[data-theme="day"] #mqttPanel,
 html[data-theme="day"] .dm-box{
   background:linear-gradient(165deg,rgba(255,255,255,.97),rgba(238,246,247,.98));
@@ -1184,9 +1141,6 @@ html[data-theme="day"] .mq-hint{background:rgba(15,150,130,.05);border-color:rgb
 html[data-theme="day"] .mq-foot{color:#7a6a44;border-top-color:rgba(15,150,130,.2)}
 html[data-theme="day"] .lg-head{color:#2f6660}
 html[data-theme="day"] .lg-text{color:#33565a;background:#f7fbfb;border-color:rgba(15,150,130,.15)}
-html[data-theme="day"] .dev-sn{color:#123c3c}
-html[data-theme="day"] .dev-row{background:rgba(255,255,255,.6);border-color:rgba(15,150,130,.22)}
-html[data-theme="day"] .dev-row:hover{background:rgba(15,150,130,.08)}
 html[data-theme="day"] .dm-table th{background:#f2f8f9}
 html[data-theme="day"] .dm-table td{color:#1d3b41}
 
@@ -1195,8 +1149,7 @@ html[data-theme="day"] #overviewView,
 html[data-theme="day"] #gaoteView,
 html[data-theme="day"] #tabView,
 html[data-theme="day"] #detailView,
-html[data-theme="day"] #solarView,
-html[data-theme="day"] #deviceView{
+html[data-theme="day"] #solarView{
   background:linear-gradient(165deg,rgba(255,255,255,.98),rgba(238,246,247,.99));
   border-color:rgba(15,150,130,.3);
   box-shadow:0 14px 36px rgba(24,66,66,.14);
@@ -1490,8 +1443,7 @@ html[data-theme="day"] .gs-warn{color:#8a5b00}
 
 /* 光伏站页面里不显示储能专属的顶栏入口 */
 body.solar-mode #mainTabs,
-body.solar-mode #dsChip,
-body.solar-mode #devChip{display:none}
+body.solar-mode #dsChip{display:none}
 
 html[data-theme="day"] .sl-kpi{background:rgba(255,255,255,.72);border-color:rgba(15,150,130,.2)}
 html[data-theme="day"] .sl-kpi.hi{background:linear-gradient(180deg,rgba(192,122,0,.1),rgba(255,255,255,.8));border-color:rgba(192,122,0,.3)}
@@ -1521,3 +1473,47 @@ html[data-theme="day"] #slRight{
   background:linear-gradient(165deg,rgba(255,255,255,.96),rgba(240,246,247,.97));
   border-color:rgba(15,150,130,.25);box-shadow:-6px 0 18px rgba(24,66,66,.12)}
 html[data-theme="day"] #slRight .side-handle{color:#0b8f76;background:linear-gradient(180deg,rgba(15,150,130,.16),rgba(15,150,130,.04))}
+
+/* ============================================================
+   山东峻涌光储电站视图（#jyView）
+   版式与洙边站（#solarView）一致：整站独立页 + 三维 + 右侧滑出数据栏 +
+   储能 / 光伏 / 详细信息三个整页。选择器另起一组，不动现有站点的规则。
+   ============================================================ */
+#jyView{
+  position:fixed;left:12px;right:12px;top:74px;bottom:12px;z-index:60;display:flex;flex-direction:row;overflow:hidden;
+  background:linear-gradient(165deg,rgba(8,23,26,1),rgba(4,11,13,1));
+  border:1px solid var(--acc-3);box-shadow:0 16px 46px rgba(0,0,0,.66)}
+#jyLeft{position:relative;flex:1;min-width:0;background:#04090c;overflow:hidden}
+#jy3d{position:absolute;inset:0}
+#jy3d canvas{display:block;touch-action:none}
+/* 数据页页头条：只在储能 / 光伏 / 详细信息三页出现（触摸操作要有可点的刷新与返回） */
+#jyPageBar{position:absolute;left:0;right:0;top:0;z-index:6;display:none}
+#jyView.page-mode #jyPageBar{display:flex}
+#jyRight{
+  --panel-w:clamp(340px,24vw,460px);
+  --strip:34px;
+  position:absolute;top:12px;right:0;bottom:12px;z-index:20;width:var(--strip);overflow:hidden;
+  transition:width .26s ease;border:1px solid var(--acc-2);border-radius:2px;
+  background:linear-gradient(165deg,rgba(10,26,30,.92),rgba(5,13,16,.94));
+  box-shadow:-6px 0 18px rgba(0,0,0,.35)}
+#jyRight:hover,#jyRight.pinned{width:calc(var(--panel-w) + var(--strip))}
+#jyRight:hover:not(.pinned) .side-handle{opacity:0}
+#jyRight.pinned .side-handle{opacity:.8}
+#jyRight .side-inner{
+  position:absolute;left:var(--strip,26px);top:0;bottom:0;width:var(--panel-w);
+  padding:10px;display:flex;flex-direction:column;gap:12px;min-height:0;overflow-y:auto;overflow-x:hidden}
+#jyPanel .panel.grow{flex:none}
+#jyPanel .panel-title{flex-wrap:wrap;row-gap:3px;letter-spacing:1px}
+#jyPanel .panel-title em{order:9;flex:1 1 100%;letter-spacing:0}
+#jyStorView,#jySolarView,#jyInfoView{flex:1;min-width:0;display:flex;flex-direction:column;padding:12px;gap:12px}
+#jyView.page-mode #jyStorView,#jyView.page-mode #jySolarView,#jyView.page-mode #jyInfoView{padding-top:62px}
+#jyStorView .kpi-grid,#jySolarView .kpi-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
+#jyStorView .panel,#jySolarView .panel,#jyInfoView .panel{backdrop-filter:none}
+.jy-note{font-size:12px;line-height:1.85;color:var(--dim);padding:10px 12px;margin-top:10px;
+  border:1px dashed var(--acc-2);border-radius:2px;background:rgba(46,230,200,.04)}
+body.jy-mode #mainTabs,body.jy-mode #dsChip{display:none}
+@media (max-width:1500px){#jyStorView .kpi-grid,#jySolarView .kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+html[data-theme="day"] #jyView{background:linear-gradient(165deg,rgba(240,246,247,1),rgba(224,234,237,1))}
+html[data-theme="day"] #jyLeft{background:#e8eef0}
+html[data-theme="day"] #jyRight{background:linear-gradient(165deg,rgba(255,255,255,.94),rgba(236,243,245,.96))}
+html[data-theme="day"] #jyRight .side-handle{color:#0b8f76;background:linear-gradient(180deg,rgba(15,150,130,.16),rgba(15,150,130,.04))}

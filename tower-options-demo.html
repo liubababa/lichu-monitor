@@ -1,0 +1,1576 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>新站 · 洙边整套 ×3 机组 · 铁塔拓扑方案对照（本地演示页，未部署）</title>
+<link rel="icon" href="data:,">
+<style>
+  /* 本地评审页自带样式，不依赖 css/style.css；按 4K 大屏手点设计：可点元素 min-height 46px */
+  :root { --cy: #2ee6c8; --line: rgba(140,170,185,.24); --txt: #cfe8e4; --dim: #7fa8a2; --pw: 400px; }
+  html, body { margin: 0; height: 100%; background: #050b0d; overflow: hidden; color: var(--txt);
+    font-family: "Inter", "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif; }
+  #stage { position: absolute; left: 0; top: 0; bottom: 0; right: var(--pw); }
+  body.off #stage { right: 0; }
+  #stage canvas { display: block; width: 100%; height: 100%; }
+  #labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+
+  .tag3d { position: absolute; transform: translate(-50%, -100%); white-space: nowrap;
+    background: rgba(6,16,20,.9); border: 1px solid var(--line); border-left: 2px solid var(--cy);
+    padding: 5px 9px 6px; font-size: 12px; line-height: 1.4; color: var(--txt); }
+  .tag3d b { display: block; color: #eafffa; font-size: 12.5px; letter-spacing: .04em; }
+  .tag3d i { display: block; font-style: normal; color: var(--dim); font-size: 11px; margin-top: 1px; }
+  .tag3d em { display: block; font-style: normal; color: #a8d8cd; font-size: 11px;
+    font-family: "Bahnschrift", Consolas, monospace; }
+  .tag3d.pole { border-left-color: #8fd8ff; }
+  .tag3d.pv { border-left-color: #ffb020; }
+
+  #panel { position: absolute; right: 0; top: 0; bottom: 0; width: var(--pw); z-index: 20; overflow-y: auto;
+    background: linear-gradient(165deg, rgba(7,22,24,.96), rgba(4,11,13,.94));
+    border-left: 1px solid rgba(46,230,200,.4); padding: 14px 16px 20px; }
+  body.off #panel { display: none; }
+  #panel h1 { font-size: 15px; color: var(--cy); margin: 0 0 4px; letter-spacing: .04em; font-weight: 600; }
+  .hint { font-size: 11.5px; color: var(--dim); line-height: 1.65; margin: 0 0 10px; }
+  .grp { border-top: 1px solid rgba(140,170,185,.16); padding: 11px 0 2px; }
+  .grp > h2 { font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; color: #a9bdc6;
+    margin: 0 0 8px; font-weight: 600; }
+  .rows { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+  .rows.c3 { grid-template-columns: repeat(3, 1fr); }
+  .rows.c4 { grid-template-columns: repeat(4, 1fr); }
+  button { min-height: 46px; padding: 6px 8px; font: inherit; font-size: 12px; color: #dfeeea; cursor: pointer;
+    background: rgba(46,230,200,.05); border: 1px solid rgba(46,230,200,.26); border-radius: 2px;
+    text-align: left; transition: .14s; line-height: 1.3; }
+  button small { display: block; color: var(--dim); font-size: 10.5px; margin-top: 2px; }
+  button:hover { background: rgba(46,230,200,.15); border-color: rgba(46,230,200,.6); }
+  button.on { background: rgba(46,230,200,.28); border-color: var(--cy); color: #eafffa; font-weight: 600; }
+  button.on small { color: #a8d8cd; }
+  #info { margin-top: 12px; border: 1px solid rgba(46,230,200,.35); background: rgba(46,230,200,.07);
+    padding: 11px 12px; font-size: 12px; line-height: 1.7; }
+  #info h3 { margin: 0 0 5px; font-size: 14px; color: var(--cy); font-weight: 600; }
+  #info .st { display: flex; gap: 10px; flex-wrap: wrap; margin: 7px 0 3px; font-size: 11.5px; color: #a8d8cd; }
+  #info .st b { color: #eafffa; font-family: "Bahnschrift", Consolas, monospace; }
+  #info .gd { margin-top: 8px; color: var(--dim); font-size: 11px; border-top: 1px dashed rgba(140,170,185,.3); padding-top: 7px; }
+  #info .gd b { color: #f5a524; font-weight: 600; }
+  #legend { margin-top: 10px; font-size: 11px; color: var(--dim); line-height: 1.75; }
+  #legend i { display: inline-block; width: 16px; height: 3px; vertical-align: middle; margin-right: 6px; border-radius: 2px; }
+  #err { color: #f4553d; font-size: 13px; line-height: 1.6; padding: 10px; }
+
+  #quad { position: absolute; inset: 0; pointer-events: none; display: none; }
+  body.grid #quad { display: block; }
+  #quad .ln { position: absolute; background: rgba(46,230,200,.22); }
+  #quad .q { position: absolute; background: rgba(6,14,18,.86); border: 1px solid var(--line);
+    border-left: 3px solid var(--cy); padding: 7px 11px; font-size: 13px; line-height: 1.5; max-width: 42%; }
+  #quad .q b { color: #eafffa; }
+  #quad .q span { display: block; color: var(--dim); font-size: 11.5px; }
+
+  #topbadge { position: absolute; left: 14px; top: 14px; z-index: 15; font-size: 12.5px; letter-spacing: .05em;
+    padding: 8px 12px; border: 1px solid rgba(46,230,200,.45); background: rgba(6,14,18,.8); color: var(--cy); }
+  body.grid #topbadge { display: none; }
+  #panelBtn { position: absolute; right: var(--pw); top: 50%; margin-top: -24px; z-index: 22; width: 48px;
+    height: 48px; min-height: 48px; padding: 0; text-align: center; font-size: 16px;
+    border-right: none; border-radius: 2px 0 0 2px; }
+  body.off #panelBtn { right: 0; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="labels"></div>
+  <div id="quad"></div>
+  <div id="topbadge"></div>
+</div>
+<button id="panelBtn" title="显示/隐藏控制面板">≡</button>
+
+<div id="panel">
+  <h1>新站 · 洙边整套 ×3 机组</h1>
+  <p class="hint">每群 = 一栋厂房 + 屋面光伏（规格同洙边）+ 储能柜 + <b>洙边那九条线</b>；一号 1 柜、二号 1 柜、三号 3 柜。
+    走线亮灭按洙边六工况判据算，本页只比拓扑、不接真实数据。<br>左键旋转 / 滚轮缩放 / 右键平移。</p>
+
+  <div class="grp"><h2>铁塔拓扑（要定的事）</h2><div class="rows" id="optBtns"></div></div>
+  <div class="grp"><h2>机组形态（柜放哪 / 三号厂房）</h2><div class="rows c3" id="formBtns"></div></div>
+  <div class="grp"><h2>三群排布</h2><div class="rows c3" id="layBtns"></div></div>
+  <div class="grp"><h2>工况（洙边口径，点一下三群一起走）</h2><div class="rows c4" id="flowBtns"></div></div>
+  <div class="grp"><h2>走线巡显（点一条只看这一条）</h2><div class="rows c3" id="lineBtns"></div></div>
+  <div class="grp"><h2>机位</h2><div class="rows c4" id="camBtns"></div></div>
+  <div class="grp"><h2>画面</h2><div class="rows c4" id="viewBtns"></div></div>
+
+  <div id="info"></div>
+
+  <div id="legend">
+    <div><i style="background:#ffb020"></i>黄 = 光伏（干线 / 进楼 / 进柜充电 / 卖电上行）</div>
+    <div><i style="background:#8fd8ff"></i>蓝 = 电网（国网→储能 / 电网直供 / 受电下行）</div>
+    <div><i style="background:#3df0a0"></i>青绿 = 储能放电 → 本群厂房</div>
+    <div style="margin-top:5px;color:#6f8892">不亮 = 暗青 idle；柜体 SOC 光柱随工况换色（同洙边）。</div>
+  </div>
+  <div id="err"></div>
+</div>
+
+<script>
+/* 依赖：仓库里已有的 libs/，不新增库。按顺序加载后启动（带时间戳，不吃缓存） */
+(function () {
+  var V = '?v=' + Date.now();
+  var FILES = ['libs/three.min.js', 'libs/OrbitControls.js', 'libs/CSS2DRenderer.js',
+    'libs/CopyShader.js', 'libs/LuminosityHighPassShader.js', 'libs/EffectComposer.js',
+    'libs/RenderPass.js', 'libs/ShaderPass.js', 'libs/UnrealBloomPass.js'];
+  var i = 0;
+  function next() {
+    if (i >= FILES.length) { try { start(); } catch (e) {
+      document.getElementById('err').textContent = '启动出错：' + e.message; throw e; } return; }
+    var s = document.createElement('script');
+    s.src = FILES[i++] + V;
+    s.onload = next;
+    s.onerror = function () { document.getElementById('err').textContent = '依赖加载失败：' + s.src; };
+    document.head.appendChild(s);
+  }
+  next();
+
+  /* ================================================================== */
+  function start() {
+    var T = window.THREE;
+    if (!T) { document.getElementById('err').textContent = 'THREE 未就绪'; return; }
+
+    /* ---------------- 洙边原始尺寸（js/solar-scene3d.js 同一套数） ---------------- */
+    var W2 = 13, H2 = 6.2, D2 = 8, FLOOR_Y = H2 / 2, roofY = H2 + .3;
+    var CAB = { w: 2.7, h: 2.6, d: 1.7 }, CABX = -(W2 / 2 + 6), CABZ = 1.55, PITCH = 3.15;
+    var TWRX = -22, TWRZ = 4.2, TWRH = 10.4, TBOXX = TWRX + 2.25;
+    var NLO = [-6.94, 1.2, .55], NHI = [-6.94, 3.9, .55];      /* 低位分岔节点 / 二楼分岔点 */
+    var LN = { gsto: 3.15, grid: 3.60, stoh: 2.95, gl: 5.45 }; /* 四条贴地车道 */
+    var COLS = 5, MW = 2.28, MD = 1.13, MT = .045, TILT = .49, ROW_Y = .62;
+    var ROWZ = [-2.55, -1.05, 1.05, 2.55], rowW = COLS * MW + (COLS - 1) * .06;
+
+    var THEMES = {
+      night: {
+        sky: [[0, '#04080c'], [.42, '#071219'], [.66, '#0d2530'], [.84, '#123743'], [1, '#17505f']],
+        bg: 0x050b0d, fog: { c: 0x0b1c24, near: 150, far: 420 }, bloom: { s: .42, r: .6, t: .84 },
+        key: { c: 0xcfe8ff, i: .62 }, hemi: { s: 0xbfe9ff, g: 0x0a1518, i: .6 }, fill: { c: 0x2ee6c8, i: .26 },
+        steel: 0x46565d, dark: 0x1b272c, top: 0x2b3a42, pad: 0x2a3a40, panel: 0x142a33, frame: 0x5a6a70,
+        leg: 0x6d8b93, brace: 0x54737b, arm: 0x2ee6c8, ins: 0xd8e6e4, win: 0xffd9a0, winI: .5, wall: '#cdd4d6'
+      },
+      day: {
+        sky: [[0, '#2f74b8'], [.45, '#5fa6d8'], [.62, '#9ccbe4'], [.78, '#cfe2ec'], [1, '#dbe9f0']],
+        bg: 0xdbe9f0, fog: { c: 0xd3e3ec, near: 170, far: 460 }, bloom: { s: .1, r: .6, t: .96 },
+        key: { c: 0xfff2d0, i: .78 }, hemi: { s: 0xdff0ff, g: 0x76815f, i: .55 }, fill: { c: 0xbfe0ff, i: .1 },
+        steel: 0xc6ccce, dark: 0x3c4a50, top: 0xd6dbdc, pad: 0x9aa3a6, panel: 0x1b3a4a, frame: 0xb9c1c3,
+        leg: 0x93a3a8, brace: 0x7d8f94, arm: 0x18b39a, ins: 0xf2f6f5, win: 0x2b4a52, winI: .12, wall: '#eef1f1'
+      }
+    };
+    var FLOWC = {
+      night: { ac: 0xffb020, idle: 0x24444a, dis: 0x3df0a0, buy: 0x8fd8ff },
+      day: { ac: 0xd97700, idle: 0x6f8a86, dis: 0x159a63, buy: 0x1f7fd0 }
+    };
+
+    /* ---------------- 方案定义 ---------------- */
+    var OPTS = [
+      { id: 'A', name: '方案A 单塔集中', short: '1 座铁塔',
+        desc: '三群各自有终端箱（关口），但上塔线全拉到西侧一座铁塔。',
+        plus: ['只 1 座塔、占地最少、造价最低', '画面最干净，塔在端头不压机组', '运维点最少'],
+        minus: ['二/三号上塔线最长（站外联络线）', '单塔故障 = 三群都上不了网', '后期扩容只能再补塔'],
+        fit: '电网只给一个上网点、或三群同期投产容量不大时。' },
+      { id: 'B', name: '方案B 三塔分列', short: '3 座铁塔',
+        desc: '每群一座塔，塔位就在自己机组的洙边原位（西南侧），各引各的。',
+        plus: ['每群独立上网、独立检修，故障不扩散', '上塔线最短（就是洙边那一段原样）', '分期投产最顺，一期先立一座'],
+        minus: ['三座塔 = 三份造价 + 三次报装', '画面里三塔压顶、导线很密', '占地和通道都要三套'],
+        fit: '三群分属不同主体、或电网要求一群一套接入时。' },
+      { id: 'C', name: '方案C 双塔分组', short: '2 座铁塔',
+        desc: '三号（3 柜、容量最大）单独立塔，一号+二号共用一座。',
+        plus: ['容量最大的三号独立，检修互不影响', '比三塔省一座', '引线长度适中'],
+        minus: ['二号要拉到一号那侧的塔', '仍是两路上网通道'],
+        fit: '三号是后扩或单独结算时。' },
+      { id: 'D', name: '方案D 主塔 + 分支杆', short: '1 塔 + 3 杆',
+        desc: '一座主塔进线，每群机组前立一根水泥分支杆作本群关口，主干在杆间跨过。',
+        plus: ['每群有自己的上塔点，又能分路切', '造价接近单塔', '最像现场真实农网走廊（塔+杆混合）', '以后加机组只加一根杆'],
+        minus: ['分支杆要耐张杆位、要占通道', '主塔仍是单一路口'],
+        fit: '想要"每群都能单独切"但又不想立三座塔——先看这个。' },
+      { id: 'E', name: '方案E 中央单塔', short: '1 座塔在中心',
+        desc: '三群品字围合（前两后一），铁塔立在场地正中；三群的卖电/受电线各自拉到中心塔上塔，三个挂点错开不打结。',
+        plus: ['三条上塔线都最短（塔在几何中心，平均运距最小）', '一个路口、一套计量，造价低', '画面重心稳，三群围着塔一眼看清能量关系', '占地比把塔甩到端头更省通道'],
+        minus: ['塔在三群中间，检修吊车要进场内、和柜前通道交叉', '三回路上同一塔，塔头和横担要按三回做（比单回塔贵、比三座塔便宜）', '导线跨在群间空档上，塔高和净空要按跨路核'],
+        fit: '三群紧凑布置、又希望"三条线都看得见上同一座塔"时——配「品字围塔」排布最好看。' }
+    ];
+    var FORMS = [
+      { id: 'gable', name: '柜在山墙外', note: '洙边原口径', desc: '柜独立站在厂房西（山墙）外场坪，光伏进东面 / 国网进西面 / 储能出南面；三号 3 柜并排挂山墙外。' },
+      { id: 'front', name: '柜在楼前一排', note: '正面朝南院', desc: '柜沿厂房南墙前排开，柜门正对院子，三面接线改成端头进线、正面出线。' },
+      { id: 'dup', name: '三号拆三栋', note: '每柜一栋厂房', desc: '一号、二号各一栋；三号位置放三栋并排小厂房，每栋配 1 柜、各带一套关口。' }
+    ];
+    var LAYS = [
+      { id: 'row', name: '一字排开', note: '三群同一横线' },
+      { id: 'stagger', name: '前后错列', note: '二号往后' },
+      { id: 'arc', name: '弧形围合', note: '两翼朝前' },
+      { id: 'pin', name: '品字围塔', note: '前两后一，塔在中心' }
+    ];
+    var PRESETS = [
+      { id: '1', name: '1 光→储', pv: 25, st: -25, load: .1 },
+      { id: '2', name: '2 光→楼', pv: 15, st: 0, load: 15 },
+      { id: '3', name: '3 光卖电', pv: 60, st: 0, load: .1 },
+      { id: '4', name: '4 电→楼', pv: 0, st: 0, load: 12 },
+      { id: '5', name: '5 电→储', pv: 0, st: -20, load: .1 },
+      { id: '6', name: '6 储→楼', pv: 0, st: 15, load: 12 },
+      { id: '1+2', name: '1+2', pv: 40, st: -25, load: 15 },
+      { id: '1+2+3', name: '1+2+3', pv: 55, st: -15, load: 12 },
+      { id: '2+3', name: '2+3', pv: 60, st: 0, load: 12 },
+      { id: '4+5', name: '4+5', pv: 0, st: -20, load: 12 },
+      { id: '4+6', name: '4+6', pv: 0, st: 12, load: 15 },
+      { id: 'idle', name: '待机', pv: 0, st: 0, load: .1 }
+    ];
+    /* 三群各异：一组卖电、一组电网受电（把国网→储能 / 直供 / 铁塔下行三条蓝线跑出来）、一组放电供院 */
+    var MIX = [PRESETS[7], PRESETS[9], PRESETS[5]];
+    /* 巡显：单看某一条线时用的颜色（按洙边线色口径） */
+    var SOLO_C = { pv: 'ac', pvlow: 'ac', pvh: 'ac', sto: 'ac', grid: 'ac',
+      gsto: 'buy', gl: 'buy', lead: 'buy', trunk: 'buy', stoh: 'dis', tower: 'ac' };
+    var SOLO_N = [
+      ['pv', '① 光伏干线'], ['pvlow', '② 光伏下段'], ['pvh', '③ 光伏→厂房'],
+      ['sto', '④ 光伏→储能'], ['gsto', '⑤ 国网→储能'], ['grid', '⑥ 并网段'],
+      ['tower', '⑦ 铁塔段'], ['stoh', '⑧ 储能→厂房'], ['gl', '⑨ 电网直供'],
+      ['lead', '⑩ 站外联络线'], ['trunk', '⑪ 塔间主干']
+    ];
+
+    /* ---------------- 渲染器 ---------------- */
+    var stage = document.getElementById('stage');
+    var renderer = new T.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = T.PCFSoftShadowMap;
+    /* 不设 outputEncoding：与 js/solar-scene3d.js 一致（画布贴图按线性直出，设了 sRGB 会整体发白） */
+    stage.insertBefore(renderer.domElement, stage.firstChild);
+    var labelR = typeof T.CSS2DRenderer === 'function' ? new T.CSS2DRenderer() : null;
+    if (labelR) {
+      labelR.domElement.style.position = 'absolute'; labelR.domElement.style.top = '0';
+      labelR.domElement.style.pointerEvents = 'none'; document.getElementById('labels').appendChild(labelR.domElement);
+    }
+
+    var W = 1, H = 1;
+    var state = { opt: 'E', form: 'gable', lay: 'pin', preset: '1+2+3', mix: false, solo: null, tour: false,
+      theme: 'night', cam: 'home', wires: true, tags: true, duis: true, grid: false };
+    try {
+      var q = new URLSearchParams(location.search);
+      ['opt', 'form', 'lay', 'preset', 'theme', 'cam', 'solo'].forEach(function (k) {
+        if (q.get(k)) state[k] = k === 'opt' ? q.get(k).toUpperCase() : q.get(k);
+      });
+      if (q.get('mix') === '1') state.mix = true;
+      if (q.get('nowires') === '1') state.wires = false;
+      if (q.get('grid') === '1') state.grid = true;
+    } catch (e) {}
+
+    /* ---------------- 贴图 ---------------- */
+    function tex(fn, w, h, sc) {
+      var s = sc || 1, c = document.createElement('canvas');
+      c.width = (w || 256) * s; c.height = (h || 256) * s;
+      var g = c.getContext('2d'); if (s > 1) g.scale(s, s);
+      fn(g, w || 256, h || 256);
+      var t = new T.CanvasTexture(c); t.anisotropy = 4; return t;
+    }
+    function speck(g, w, h, day, n) {
+      for (var k = 0; k < n; k++) {
+        var dk = Math.random() > .5;
+        g.fillStyle = dk
+          ? (day ? 'rgba(70,74,70,' + (.02 + Math.random() * .06) + ')' : 'rgba(0,0,0,' + (.03 + Math.random() * .08) + ')')
+          : (day ? 'rgba(255,255,255,' + (.02 + Math.random() * .05) + ')' : 'rgba(255,255,255,' + (.015 + Math.random() * .04) + ')');
+        var s = Math.random() < .85 ? 1 : 2;
+        g.fillRect(Math.random() * w, Math.random() * h, s, s);
+      }
+    }
+    function concreteTex(day) {
+      var t = tex(function (g, w, h) {
+        g.fillStyle = day ? '#c2c5bd' : '#1d2a31'; g.fillRect(0, 0, w, h); speck(g, w, h, day, 9000);
+        for (var k = 0; k < 7; k++) {
+          g.strokeStyle = day ? 'rgba(255,255,255,.05)' : 'rgba(255,255,255,.025)'; g.lineWidth = 1;
+          var yy = Math.random() * h; g.beginPath(); g.moveTo(0, yy); g.lineTo(w, yy + (Math.random() - .5) * 10); g.stroke();
+        }
+      }, 512, 512);
+      t.wrapS = t.wrapT = T.RepeatWrapping; t.repeat.set(47, 47); return t;
+    }
+    function slabTex(day) {
+      var t = tex(function (g, w, h) {
+        g.fillStyle = day ? '#c4c7bf' : '#1b2b33'; g.fillRect(0, 0, w, h); speck(g, w, h, day, 2600);
+        var cells = 8, cw = w / cells, k, p;
+        g.strokeStyle = day ? 'rgba(30,90,95,.09)' : 'rgba(46,230,200,.13)'; g.lineWidth = 1.2;
+        for (k = 0; k <= cells; k++) { p = Math.round(k * cw) + .5;
+          g.beginPath(); g.moveTo(p, 0); g.lineTo(p, h); g.stroke();
+          g.beginPath(); g.moveTo(0, p); g.lineTo(w, p); g.stroke(); }
+        g.strokeStyle = day ? 'rgba(30,90,95,.16)' : 'rgba(46,230,200,.24)'; g.lineWidth = 2;
+        for (k = 0; k <= cells; k += 4) { p = Math.round(k * cw) + .5;
+          g.beginPath(); g.moveTo(p, 0); g.lineTo(p, h); g.stroke();
+          g.beginPath(); g.moveTo(0, p); g.lineTo(w, p); g.stroke(); }
+      }, 512, 512);
+      t.wrapS = t.wrapT = T.RepeatWrapping; return t;
+    }
+    /* ↓↓↓ 以下四张贴图逐条照搬 js/solar-scene3d.js（wallTexture / panelTexture /
+       cabFrontTexture / cabSideTexture / 窗格 winPaneTex），不要自己另画一版 ↓↓↓ */
+    function wallTex() {                                   /* buildBuilding 两个主题都用白天这套白墙 */
+      return tex(function (g, w, h) {
+        g.fillStyle = '#dfe3e3'; g.fillRect(0, 0, w, h);
+        g.fillStyle = 'rgba(120,138,140,.10)'; g.fillRect(0, 0, w, 10);
+      }, 512, 256);
+    }
+    function panelTex() {
+      return tex(function (g, w, h) {
+        g.fillStyle = '#07182c'; g.fillRect(0, 0, w, h);
+        var bx = 8, by = 8, bw = w - 16, bh = h - 16, cw = bw / 10, ch = bh / 6, r, c, x, y;
+        for (r = 0; r < 6; r++) {
+          for (c = 0; c < 10; c++) {
+            x = bx + c * cw; y = by + r * ch;
+            g.fillStyle = (r + c) % 2 ? '#0a2240' : '#0c2947';
+            g.fillRect(x + 1.2, y + 1.2, cw - 2.4, ch - 2.4);
+            g.strokeStyle = 'rgba(170,205,235,.20)'; g.lineWidth = .8;
+            g.beginPath(); g.moveTo(x + cw / 3, y + 2); g.lineTo(x + cw / 3, y + ch - 2); g.stroke();
+            g.beginPath(); g.moveTo(x + cw * 2 / 3, y + 2); g.lineTo(x + cw * 2 / 3, y + ch - 2); g.stroke();
+          }
+        }
+        var lg = g.createLinearGradient(0, 0, w, h);
+        lg.addColorStop(0, 'rgba(190,225,255,.10)'); lg.addColorStop(.42, 'rgba(190,225,255,.03)');
+        lg.addColorStop(.58, 'rgba(255,255,255,0)'); lg.addColorStop(1, 'rgba(255,255,255,.03)');
+        g.fillStyle = lg; g.fillRect(0, 0, w, h);
+        g.strokeStyle = '#c3ced4'; g.lineWidth = 9; g.strokeRect(4.5, 4.5, w - 9, h - 9);
+        g.strokeStyle = 'rgba(20,40,60,.5)'; g.lineWidth = 2; g.strokeRect(11, 11, w - 22, h - 22);
+      }, 320, 160, 2);
+    }
+    function winPaneTex() {
+      return tex(function (g, w, h) {
+        g.fillStyle = '#3a2f22'; g.fillRect(0, 0, w, h);
+        var m = 4, cw = (w - m * 2) / 2, ch = (h - m * 2) / 3, r, c, x, y;
+        for (r = 0; r < 3; r++) {
+          for (c = 0; c < 2; c++) {
+            x = m + c * cw; y = m + r * ch;
+            var grd = g.createLinearGradient(0, y, 0, y + ch);
+            grd.addColorStop(0, '#fff2d8'); grd.addColorStop(.55, '#f6d9a4'); grd.addColorStop(1, '#c9a271');
+            g.fillStyle = grd; g.fillRect(x + 1.5, y + 1.5, cw - 3, ch - 3);
+          }
+        }
+        g.fillStyle = 'rgba(30,24,18,.55)';
+        g.fillRect(w / 2 - 2, 0, 4, h);
+        for (r = 1; r < 3; r++) g.fillRect(0, m + r * ch - 2, w, 4);
+      }, 64, 96, 2);
+    }
+    function cabFrontTex(night) {
+      return tex(function (g, w, h) {
+        g.fillStyle = night ? '#dfe5e6' : '#e9edee'; g.fillRect(0, 0, w, h);
+        g.strokeStyle = night ? 'rgba(46,230,200,.34)' : 'rgba(96,116,120,.45)'; g.lineWidth = 3; g.strokeRect(8, 8, w - 16, h - 16);
+        g.fillStyle = night ? 'rgba(198,208,210,.95)' : 'rgba(206,216,218,.95)'; g.fillRect(16, 16, w - 32, 54);
+        g.strokeStyle = night ? 'rgba(46,230,200,.24)' : 'rgba(96,116,120,.35)'; g.strokeRect(16, 16, w - 32, 54);
+        for (var i = 0; i < 5; i++) { g.fillStyle = night ? 'rgba(46,230,200,.13)' : 'rgba(96,116,120,.25)'; g.fillRect(26, 25 + i * 9, w - 52, 3); }
+        g.strokeStyle = night ? 'rgba(46,230,200,.45)' : 'rgba(70,96,100,.5)'; g.lineWidth = 4;
+        g.beginPath(); g.moveTo(w / 2, 84); g.lineTo(w / 2, h - 20); g.stroke();
+        g.lineWidth = 2; g.strokeStyle = night ? 'rgba(46,230,200,.2)' : 'rgba(96,116,120,.3)';
+        g.strokeRect(20, 90, w / 2 - 30, h - 122); g.strokeRect(w / 2 + 10, 90, w / 2 - 30, h - 122);
+        g.fillStyle = night ? 'rgba(46,230,200,.5)' : 'rgba(52,86,88,.55)';
+        g.fillRect(w / 2 - 20, h / 2 - 12, 6, 36); g.fillRect(w / 2 + 14, h / 2 - 12, 6, 36);
+        g.fillStyle = night ? 'rgba(46,230,200,.42)' : 'rgba(16,160,138,.5)'; g.fillRect(24, h - 36, 74, 11);
+        g.fillStyle = night ? 'rgba(255,176,32,.6)' : 'rgba(224,148,16,.6)'; g.fillRect(w - 98, h - 36, 74, 11);
+      }, 256, 320, 2);
+    }
+    function cabSideTex(night) {
+      return tex(function (g, w, h) {
+        g.fillStyle = night ? '#dfe5e6' : '#e2e7e8'; g.fillRect(0, 0, w, h);
+        g.strokeStyle = night ? 'rgba(46,230,200,.18)' : 'rgba(96,116,120,.22)'; g.lineWidth = 2;
+        for (var i = 1; i < 4; i++) { var x = i * w / 4; g.beginPath(); g.moveTo(x, 6); g.lineTo(x, h - 6); g.stroke(); }
+        g.strokeStyle = night ? 'rgba(46,230,200,.26)' : 'rgba(96,116,120,.3)'; g.strokeRect(6, 6, w - 12, h - 12);
+        for (var j = 0; j < 9; j++) { g.fillStyle = night ? 'rgba(46,230,200,.14)' : 'rgba(96,116,120,.28)'; g.fillRect(18, h - 72 + j * 7, w - 36, 3); }
+      }, 256, 320, 2);
+    }
+    function glowTex() {
+      return tex(function (g, w, h) {
+        var grd = g.createRadialGradient(w / 2, h / 2, 2, w / 2, h / 2, w / 2);
+        grd.addColorStop(0, 'rgba(255,255,255,.9)'); grd.addColorStop(.35, 'rgba(255,255,255,.32)'); grd.addColorStop(1, 'rgba(255,255,255,0)');
+        g.fillStyle = grd; g.fillRect(0, 0, w, h);
+      }, 128, 128);
+    }
+    var flowProto = null;
+    function flowTex(len) {
+      if (!flowProto) {
+        flowProto = tex(function (g, w, h) {
+          g.clearRect(0, 0, w, h);
+          for (var k = 0; k < 2; k++) {
+            var x = k * (w / 2), lg = g.createLinearGradient(x, 0, x + w / 2, 0);
+            lg.addColorStop(0, 'rgba(255,255,255,0)'); lg.addColorStop(.34, 'rgba(255,255,255,.30)');
+            lg.addColorStop(.5, 'rgba(255,255,255,1)'); lg.addColorStop(.62, 'rgba(255,255,255,1)');
+            lg.addColorStop(.74, 'rgba(255,255,255,.26)'); lg.addColorStop(1, 'rgba(255,255,255,0)');
+            g.fillStyle = lg; g.fillRect(x, 0, w / 2, h);
+          }
+        }, 128, 8);
+        flowProto.wrapS = flowProto.wrapT = T.RepeatWrapping;
+      }
+      var t = flowProto.clone(); t.needsUpdate = true;
+      t.wrapS = t.wrapT = T.RepeatWrapping;
+      t.repeat.set(Math.max(2, Math.round(len / 4.2)), 1);
+      return t;
+    }
+    function skyTex(stops) {
+      return tex(function (g, w, h) {
+        var grd = g.createLinearGradient(0, 0, 0, h);
+        stops.forEach(function (s) { grd.addColorStop(s[0], s[1]); });
+        g.fillStyle = grd; g.fillRect(0, 0, w, h);
+      }, 16, 256);
+    }
+    function tagTex(txt) {
+      return tex(function (g, w, h) {
+        g.fillStyle = '#1d2a2e'; g.fillRect(0, 0, w, h);
+        g.strokeStyle = 'rgba(232,255,250,.85)'; g.lineWidth = 2; g.strokeRect(3, 3, w - 6, h - 6);
+        g.fillStyle = '#eafffa'; g.font = 'bold 15px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+        g.fillText(txt, w / 2, h / 2 + 1);
+      }, 44, 24);
+    }
+
+    /* ---------------- 材质 ---------------- */
+    function stdM(hex, o) {
+      o = o || {};
+      return new T.MeshStandardMaterial({ color: hex, roughness: o.rough === undefined ? .7 : o.rough,
+        metalness: o.metal === undefined ? .2 : o.metal, envMapIntensity: o.env === undefined ? .2 : o.env,
+        emissive: o.em || 0x000000, emissiveIntensity: o.ei === undefined ? 1 : o.ei });
+    }
+    function mats(th) {
+      var day = th === 'day', night = !day, t = THEMES[th];
+      var wt = wallTex();
+      return {
+        th: th, day: day, t: t,
+        ground: new T.MeshStandardMaterial({ map: concreteTex(day), roughness: .96, metalness: .02 }),
+        slab: (function () { var m = new T.MeshStandardMaterial({ map: slabTex(day), roughness: .93, metalness: .02 });
+          m.polygonOffset = true; m.polygonOffsetFactor = 1; m.polygonOffsetUnits = 1; return m; })(),
+        edge: new T.LineBasicMaterial({ color: day ? 0x0f9682 : 0x2ee6c8, transparent: true, opacity: day ? .35 : .5, depthWrite: false }),
+        steel: stdM(t.steel, { rough: .45, metal: .55, env: .8 }),
+        dark: stdM(t.dark, { rough: .5, metal: .5, env: .5 }),
+        top: stdM(t.top, { rough: .6, metal: .3 }),
+        pad: stdM(t.pad, { rough: .92, metal: .05 }),
+        box: stdM(0x232d33, { rough: .7, metal: .3 }),
+        /* ---- 卫生院/厂房（照 buildBuilding 一套材质） ---- */
+        wall: new T.MeshStandardMaterial({ map: wt, roughness: .78, metalness: .1, envMapIntensity: day ? .16 : .3 }),
+        wallTop: stdM(day ? 0xbcc0b7 : 0x22333c, { rough: .92, env: day ? .14 : .26 }),
+        wallBot: stdM(day ? 0x545c58 : 0x0d1519, { rough: .95, env: .12 }),
+        trim: stdM(day ? 0x8d9598 : 0x2c4048, { rough: .62, metal: .3 }),
+        band: stdM(0x232a2d, { rough: .5, metal: .35 }),
+        base: stdM(day ? 0x515b5e : 0x1b2830, { rough: .9, env: .26 }),
+        par: stdM(day ? 0xb3b8ad : 0x1f2f38, { rough: .85, env: .26 }),
+        roofLine: new T.MeshBasicMaterial({ color: day ? 0x0f9682 : 0x2ee6c8, transparent: true, opacity: day ? .4 : .72 }),
+        win: (function () { var wp = winPaneTex();
+          return new T.MeshStandardMaterial({ map: wp, emissiveMap: wp, color: day ? 0x20262a : 0x0e1a1f,
+            roughness: .35, metalness: .2, emissive: new T.Color(day ? 0xfff3e2 : 0xeef4f2),
+            emissiveIntensity: day ? .16 : .58 }); })(),
+        doorFrame: stdM(day ? 0xcfd6d2 : 0x22333c, { rough: .7, env: .3 }),
+        door: stdM(day ? 0x31505c : 0x14262e, { rough: .45, metal: .35, env: .7 }),
+        doorHole: stdM(0x060d11, { rough: 1 }),
+        doorLight: new T.MeshBasicMaterial({ color: day ? 0x8e8a7e : 0x4e4b40 }),
+        headGlass: stdM(day ? 0xbcd6dd : 0x16333c, { rough: .3, metal: .3, env: .8 }),
+        aw: stdM(day ? 0xc3c8c2 : 0x1c2a31, { rough: .8, env: .26 }),
+        awPost: stdM(day ? 0xadb2ab : 0x18242a, { rough: .8 }),
+        step: stdM(day ? 0xaaafa6 : 0x1a252b, { rough: .9 }),
+        ac: stdM(day ? 0xdfe4e2 : 0x26343b, { rough: .6 }),
+        /* ---- 屋面阵列 ---- */
+        panel: new T.MeshStandardMaterial({ map: panelTex(), color: 0x33383c, roughness: .32, metalness: .5,
+          emissive: new T.Color(0x0a0d10), emissiveIntensity: .1, envMapIntensity: .38 }),
+        rail: stdM(day ? 0x9fb0b6 : 0x55666e, { rough: .42, metal: .72, env: .8 }),
+        legP: stdM(day ? 0x8b9aa0 : 0x46565d, { rough: .5, metal: .6, env: .7 }),
+        tray: stdM(day ? 0x9aa5a6 : 0x3d4d55, { rough: .45, metal: .6, env: .7 }),
+        walk: stdM(day ? 0xadb2a9 : 0x26343b, { rough: .9, env: .3 }),
+        cable2: stdM(0x22343c, { rough: .6, metal: .3 }),
+        frame: stdM(t.frame, { rough: .4, metal: .6 }),
+        leg: stdM(t.leg, { rough: .55, metal: .6 }),
+        brace: stdM(t.brace, { rough: .62, metal: .55 }),
+        arm: stdM(t.arm, { rough: .5, metal: .3, em: day ? 0x000000 : 0x0a5a4a, ei: .35 }),
+        ins: stdM(t.ins, { rough: .35, metal: .1 }),
+        cond: new T.LineBasicMaterial({ color: day ? 0x0d8f7a : 0x2ee6c8, transparent: true, opacity: .34 }),
+        /* ---- 储能柜（照 buildStorageCabinet） ---- */
+        cabF: new T.MeshStandardMaterial({ map: cabFrontTex(night), roughness: .5, metalness: .35, envMapIntensity: .6 }),
+        cabS: new T.MeshStandardMaterial({ map: cabSideTex(night), roughness: .55, metalness: .35, envMapIntensity: .6 }),
+        cabTop: stdM(day ? 0xd6dbdc : 0x2b3a42, { rough: .6, metal: .3 }),
+        cable: stdM(0x2a3b42, { rough: .48, metal: .45 }),
+        saddle: stdM(0x5a6a70, { rough: .85 }),
+        glow: new T.MeshBasicMaterial({ color: day ? 0x0f9682 : 0x2ee6c8, transparent: true, opacity: day ? .05 : .1,
+          blending: T.AdditiveBlending, depthWrite: false })
+      };
+    }
+
+    /* ---------------- 小工具 ---------------- */
+    function box(w, h, d, m, x, y, z) {
+      var o = new T.Mesh(new T.BoxGeometry(w, h, d), m);
+      o.position.set(x || 0, y || 0, z || 0); o.castShadow = o.receiveShadow = true; return o;
+    }
+    function cyl(r1, r2, h, m, x, y, z, seg) {
+      var o = new T.Mesh(new T.CylinderGeometry(r1, r2, h, seg || 10), m);
+      o.position.set(x || 0, y || 0, z || 0); o.castShadow = o.receiveShadow = true; return o;
+    }
+    var UNIT = null;
+    function instanced(list, mat, geo) {
+      if (!list.length) return null;
+      var im = new T.InstancedMesh(geo || (UNIT || (UNIT = new T.CylinderGeometry(1, 1, 1, 6))), mat, list.length);
+      var up = new T.Vector3(0, 1, 0), m = new T.Matrix4(), q = new T.Quaternion(), v = new T.Vector3();
+      list.forEach(function (it, k) {
+        var a = it[0], b = it[1], th = it[2];
+        var dir = new T.Vector3().subVectors(b, a), len = dir.length();
+        if (len < .02) { m.makeScale(0, 0, 0); im.setMatrixAt(k, m); return; }
+        q.setFromUnitVectors(up, dir.normalize());
+        v.addVectors(a, b).multiplyScalar(.5);
+        m.compose(v, q, new T.Vector3(th, len, th));
+        im.setMatrixAt(k, m);
+      });
+      im.instanceMatrix.needsUpdate = true; im.castShadow = true; im.receiveShadow = true;
+      return im;
+    }
+    function spanLine(g, m, ax, ay, az, bx, by, bz, sag, seg) {
+      var pts = []; seg = seg || 16;
+      for (var k = 0; k <= seg; k++) {
+        var t = k / seg;
+        pts.push(new T.Vector3(ax + (bx - ax) * t, ay + (by - ay) * t - Math.sin(t * Math.PI) * sag, az + (bz - az) * t));
+      }
+      g.add(new T.Line(new T.BufferGeometry().setFromPoints(pts), m));
+    }
+
+    /* ---------------- 洙边卫生院 / 厂房：逐条照搬 buildBuilding + buildArray ---------------- */
+    function makeBuilding(M) {
+      var g = new T.Group();
+      g.add(box(W2 + .9, .3, D2 + .9, M.base, 0, .15, 0));                        /* 散水基座 */
+      var bld = new T.Mesh(new T.BoxGeometry(W2, H2, D2), [M.wall, M.wall, M.wallTop, M.wallBot, M.wall, M.wall]);
+      bld.position.set(0, H2 / 2 + .3, 0); bld.castShadow = bld.receiveShadow = true; g.add(bld);
+      g.add(box(W2 + .2, .55, D2 + .2, M.band, 0, .58, 0));                       /* 深色基座带 */
+      [-1, 1].forEach(function (sz) { g.add(box(W2 + .24, .16, .18, M.trim, 0, FLOOR_Y + .3, sz * (D2 / 2 + .05))); });
+      [-1, 1].forEach(function (sx) { g.add(box(.18, .16, D2 + .24, M.trim, sx * (W2 / 2 + .05), FLOOR_Y + .3, 0)); });
+      /* 女儿墙 + 屋面发光轮廓线（抬高 1cm / 错开 2cm，防和墙顶共面闪） */
+      g.add(box(W2 + .6, .5, .3, M.par, 0, roofY + .25, -D2 / 2));
+      g.add(box(W2 + .6, .5, .3, M.par, 0, roofY + .25, D2 / 2));
+      g.add(box(.3, .5, D2, M.par, -W2 / 2, roofY + .25, 0));
+      g.add(box(.3, .5, D2, M.par, W2 / 2, roofY + .25, 0));
+      g.add(box(W2 + .66, .05, .05, M.roofLine, 0, roofY + .535, D2 / 2));
+      g.add(box(W2 + .66, .05, .05, M.roofLine, 0, roofY + .535, -D2 / 2));
+      g.add(box(.05, .05, D2 + .06, M.roofLine, W2 / 2, roofY + .555, 0));
+      g.add(box(.05, .05, D2 + .06, M.roofLine, -W2 / 2, roofY + .555, 0));
+      /* 二层整条窗带：深色带底 + n 扇格窗 + 竖挺 */
+      var bandH = 1.75, bandD = .24, winY = FLOOR_Y + .3 + 1.7;
+      function winBand(alongX, len, n, cx, cz, ww) {
+        var inner = len - .7, wwv = ww || 1.6;
+        g.add(alongX ? box(len, bandH, bandD, M.band, cx, winY, cz)
+                     : box(bandD, bandH, len, M.band, cx, winY, cz));
+        for (var i = 0; i < n; i++) {
+          var off = -inner / 2 + (i + .5) * (inner / n);
+          var px = alongX ? cx + off : cx, pz = alongX ? cz : cz + off;
+          g.add(box(alongX ? wwv : bandD + .08, bandH - .46, alongX ? bandD + .08 : wwv, M.win, px, winY, pz));
+          if (i < n - 1) {
+            var mx = alongX ? cx + off + inner / (n * 2) : cx, mz = alongX ? cz : cz + off + inner / (n * 2);
+            g.add(box(alongX ? .1 : bandD + .12, bandH, alongX ? bandD + .12 : .1, M.trim, mx, winY, mz));
+          }
+        }
+      }
+      [-1, 1].forEach(function (sz) { winBand(true, W2 - .4, 4, 0, sz * (D2 / 2 + .04), 2.0); });
+      [-1, 1].forEach(function (sx) { winBand(false, D2 - .4, 2, sx * (W2 / 2 + .04), 0, 2.0); });
+      [-1, 1].forEach(function (sx) {                                              /* 一层侧面两扇 */
+        [-2.0, 2.0].forEach(function (oz) {
+          g.add(box(.24, 1.5, 2.0, M.band, sx * (W2 / 2 + .04), 1.85, oz));
+          g.add(box(.2, 1.1, 1.7, M.win, sx * (W2 / 2 + .07), 1.85, oz));
+        });
+      });
+      /* 正面大门：门套 + 敞开的两扇门扇 + 门洞压暗 + 门里暖光 + 门头玻璃 */
+      var dz = D2 / 2;
+      g.add(box(3.4, 2.9, .24, M.doorFrame, 0, 1.75, dz + .04));
+      [1, -1].forEach(function (s) {
+        var pv = new T.Group();
+        pv.position.set(s * 1.45, 1.55, dz + .14);
+        pv.add(box(1.42, 2.5, .1, M.door, -s * .71, 0, 0));
+        pv.rotation.y = s * 1.38;
+        g.add(pv);
+      });
+      g.add(box(2.92, 2.56, .04, M.doorHole, 0, 1.55, dz + .175));
+      g.add(box(2.6, 2.28, .03, M.doorLight, 0, 1.5, dz + .2));
+      g.add(box(2.2, .22, .1, M.headGlass, 0, 2.62, dz + .16));
+      /* 雨棚 + 立柱 + 一级台阶 */
+      g.add(box(5.4, .16, 2.0, M.aw, 0, H2 - .35, dz + 1.0));
+      g.add(box(.18, H2 - .5, .18, M.awPost, -2.5, (H2 - .5) / 2, dz + 1.85));
+      g.add(box(.18, H2 - .5, .18, M.awPost, 2.5, (H2 - .5) / 2, dz + 1.85));
+      g.add(box(5.0, .12, .5, M.step, 0, .24, dz + .75));
+      /* 北墙两台空调外机 */
+      [[-4.2, 2.35], [4.2, 2.35]].forEach(function (p) {
+        g.add(box(1.05, .78, .42, M.ac, p[0], p[1], -D2 / 2 - .24));
+        g.add(box(.62, .05, .3, M.trim, p[0], p[1] - .42, -D2 / 2 - .24));
+      });
+      /* 逆变器（北墙）+ 通信模块立杆：同洙边，不接线、不挂浮标 */
+      var inv = new T.Group(); inv.position.set(-5.7, 0, -D2 / 2); inv.rotation.y = Math.PI / 2;
+      inv.add(box(.07, 1.66, 1.28, M.steel, .035, 2.18, 0));
+      inv.add(box(.36, 1.5, 1.1, M.dark, .26, 2.18, 0));
+      inv.add(box(.04, 1.56, 1.16, M.top, .44, 2.18, 0));
+      for (var k = 0; k < 5; k++) inv.add(box(.03, 1.24, .1, M.frame, .12 + k * .09, 2.18, -.575));
+      inv.add(box(.03, .52, .62, M.box, .465, 2.46, 0));
+      inv.add(box(.03, .16, .22, stdM(0xd9b23a, { rough: .5 }), .465, 1.95, -.34));
+      g.add(inv);
+      g.add(cyl(.07, .09, 3.4, M.steel, -W2 / 2 - 2.2, 1.7, -2.6, 10));
+      g.add(box(.5, .56, .36, M.top, -W2 / 2 - 2.2, 3.05, -2.6));
+      g.add(box(.52, .05, .38, M.frame, -W2 / 2 - 2.2, 3.34, -2.6));
+      g.add(cyl(.022, .022, .8, M.steel, -W2 / 2 - 2.2, 3.76, -2.6, 6));
+      /* 南墙三个进线黑盒：二楼光伏 / 墙脚储能 / 墙脚偏东国网 */
+      g.add(box(.34, .44, .10, M.box, -5.75, 3.9, D2 / 2 + .03));
+      g.add(box(.34, .44, .10, M.box, -6.35, .86, D2 / 2 + .03));
+      g.add(box(.30, .40, .10, M.box, -5.12, 1.02, D2 / 2 + .05));
+      /* 分岔节点端子小球 + 过墙套管 */
+      [[NLO[0], NLO[1], NLO[2], .10], [NHI[0], NHI[1], NHI[2], .075]].forEach(function (p) {
+        var j = new T.Mesh(new T.SphereGeometry(p[3], 10, 10), M.cable);
+        j.position.set(p[0], p[1], p[2]); g.add(j);
+      });
+      g.add(box(.7, .2, .2, M.steel, -W2 / 2 - .06, roofY + .42, .55));
+      /* ---- 屋面光伏阵列：组件 / 导轨 / 竖撑合批 + 检修走道 + 线槽 + 组串电缆 ---- */
+      var RAIL_Z = .40, RAIL_DROP = .0525;
+      var planeY = function (zl) { return roofY + ROW_Y - Math.tan(TILT) * zl; };
+      var yMod = planeY(0), yRailF = planeY(RAIL_Z) - RAIL_DROP, yRailR = planeY(-RAIL_Z) - RAIL_DROP;
+      var hLegF = yRailF - .03 - roofY, hLegR = yRailR - .03 - roofY;
+      var legXs = [-(rowW / 2 - .5), -rowW / 6, rowW / 6, rowW / 2 - .5];
+      var modInst = new T.InstancedMesh(new T.BoxGeometry(MW, MT, MD), M.panel, ROWZ.length * COLS);
+      var railInst = new T.InstancedMesh(new T.BoxGeometry(rowW + .5, .06, .12), M.rail, ROWZ.length * 2);
+      var legFI = new T.InstancedMesh(new T.BoxGeometry(.09, hLegF, .09), M.legP, ROWZ.length * legXs.length);
+      var legRI = new T.InstancedMesh(new T.BoxGeometry(.09, hLegR, .09), M.legP, ROWZ.length * legXs.length);
+      var mtx = new T.Matrix4(), mi = 0, ri = 0, li = 0;
+      ROWZ.forEach(function (rz) {
+        for (var c = 0; c < COLS; c++) {
+          mtx.makeRotationX(TILT);
+          mtx.setPosition(-rowW / 2 + MW / 2 + c * (MW + .06), yMod, rz);
+          modInst.setMatrixAt(mi++, mtx);
+        }
+        [[RAIL_Z, yRailF], [-RAIL_Z, yRailR]].forEach(function (r) {
+          mtx.makeRotationX(TILT); mtx.setPosition(0, r[1], rz + r[0]);
+          railInst.setMatrixAt(ri++, mtx);
+        });
+        legXs.forEach(function (x) {
+          mtx.makeTranslation(x, roofY + hLegF / 2, rz + RAIL_Z); legFI.setMatrixAt(li, mtx);
+          mtx.makeTranslation(x, roofY + hLegR / 2, rz - RAIL_Z); legRI.setMatrixAt(li, mtx);
+          li++;
+        });
+      });
+      [modInst, railInst, legFI, legRI].forEach(function (o) {
+        o.instanceMatrix.needsUpdate = true; o.castShadow = true; o.receiveShadow = true; g.add(o);
+      });
+      g.add(box(rowW + .8, .04, 1.5, M.walk, 0, roofY + .02, 0));                 /* 检修走道 */
+      g.add(box(rowW + .6, .05, .34, M.tray, 0, roofY + .30, 0));                 /* 屋面线槽 */
+      g.add(box(rowW + .6, .09, .05, M.tray, 0, roofY + .345, -.17));
+      g.add(box(rowW + .6, .09, .05, M.tray, 0, roofY + .345, .17));
+      [[-4.2, -2.55], [-1.4, -1.05], [1.4, 1.05], [4.2, 2.55]].forEach(function (d) {
+        var zEnd = d[1] + RAIL_Z;
+        var a = new T.Vector3(d[0], roofY + .16, 0);
+        var b = new T.Vector3(d[0], planeY(RAIL_Z) - .085, zEnd);
+        var mid = new T.Vector3(d[0], (a.y + b.y) / 2 + .04, zEnd / 2);
+        var cm = new T.Mesh(new T.TubeGeometry(new T.CatmullRomCurve3([a, mid, b]), 12, .022, 5, false), M.cable2);
+        cm.castShadow = true; g.add(cm);
+      });
+      g.userData.roofY = roofY;
+      return g;
+    }
+
+    /* ---------------- 储能柜（含三面接线盒引用） ---------------- */
+    function makeCabinet(M) {
+      var g = new T.Group(), W = CAB.w, H = CAB.h, D = CAB.d;
+      g.add(box(W + .42, .16, D + .42, M.pad, 0, .08, 0));
+      g.add(box(W + .24, .18, D + .24, M.dark, 0, .09, 0));
+      var body = new T.Mesh(new T.BoxGeometry(W, H, D), [M.cabS, M.cabS, M.cabTop, M.cabS, M.cabF, M.cabS]);
+      body.position.y = H / 2 + .18; body.castShadow = body.receiveShadow = true; g.add(body);
+      [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(function (c) {
+        g.add(box(.1, H + .04, .1, M.steel, c[0] * (W / 2 - .02), H / 2 + .18, c[1] * (D / 2 - .02)));
+      });
+      g.add(box(W * .74, .32, D * .78, M.ac, 0, H + .36, 0));                          /* 顶部空调 */
+      for (var k = 0; k < 4; k++) g.add(box(W * .6, .04, .07, M.steel, 0, H + .52, -.22 + k * .15));
+      var bars = [];
+      var colH = H * .62, base = .18 + H * .5 - colH / 2;
+      [-1, 1].forEach(function (s) {
+        g.add(box(.06, colH + .1, .32, M.dark, s * (W / 2 + .04), .18 + H * .5, D * .2));
+        var geo = new T.BoxGeometry(.05, colH, .26); geo.translate(0, colH / 2, 0);
+        var bar = new T.Mesh(geo, new T.MeshBasicMaterial({ color: FLOWC.night.idle, transparent: true, opacity: .8 }));
+        bar.position.set(s * (W / 2 + .07), base, D * .2);
+        g.add(bar); bars.push(bar);
+      });
+      g.add(box(.22, .13, .04, M.dark, W / 2 - .5, .18 + H * .86, D / 2 + .03));
+      var led = new T.Mesh(new T.BoxGeometry(.16, .09, .05), new T.MeshBasicMaterial({ color: FLOWC.night.idle }));
+      led.position.set(W / 2 - .5, .18 + H * .86, D / 2 + .055); g.add(led);
+      var glow = new T.Mesh(new T.PlaneGeometry(W * 1.7, D * 1.9), M.glow);
+      glow.rotation.x = -Math.PI / 2; glow.position.y = .22; g.add(glow);
+      g.userData = { bars: bars, led: led, glow: glow };
+      return g;
+    }
+    function makeTermBox(M) {
+      var g = new T.Group();
+      g.add(box(.72, .1, .62, M.dark, 0, .23, 0));
+      g.add(box(.6, .72, .5, M.top, 0, .64, 0));
+      g.add(box(.66, .06, .56, M.dark, 0, 1.03, 0));
+      return g;
+    }
+
+    /* ---------------- 铁塔 / 水泥杆 ---------------- */
+    function makeTower(M, tag) {
+      var g = new T.Group(), hgt = TWRH;
+      var halfAt = function (y) {
+        var t = Math.max(0, Math.min(1, y / hgt)), base = 1.5, waist = .62, top = .84;
+        return t < .6 ? base + (waist - base) * (t / .6) : waist + (top - waist) * ((t - .6) / .4);
+      };
+      var P = function (sx, y, sz) { return new T.Vector3(sx * halfAt(y), y, sz * halfAt(y)); };
+      var legs = [], braces = [], arms = [], ins = [], lv = 9;
+      [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(function (c) {
+        for (var k = 0; k < lv; k++) legs.push([P(c[0], hgt * k / lv, c[1]), P(c[0], hgt * (k + 1) / lv, c[1]), .05]);
+      });
+      for (var k = 1; k <= lv; k++) {
+        var y = hgt * k / lv, w = halfAt(y);
+        braces.push([new T.Vector3(-w, y, -w), new T.Vector3(w, y, -w), .022]);
+        braces.push([new T.Vector3(-w, y, w), new T.Vector3(w, y, w), .022]);
+        braces.push([new T.Vector3(-w, y, -w), new T.Vector3(-w, y, w), .022]);
+        braces.push([new T.Vector3(w, y, -w), new T.Vector3(w, y, w), .022]);
+        if (k < lv) {
+          var yn = hgt * (k + 1) / lv, wn = halfAt(yn);
+          [[-1, 0], [1, 0], [0, -1], [0, 1]].forEach(function (f) {
+            var a = new T.Vector3(f[0] * w, y, f[1] * w), b = new T.Vector3(f[0] * wn, yn, f[1] * wn);
+            braces.push([a, b, .02]);
+            braces.push([a, new T.Vector3(f[0] ? a.x : b.x, yn, f[1] ? a.z : b.z), .02]);
+          });
+        }
+      }
+      var SPAN = 18, SAG = .9;
+      [[6.6, 3.0], [7.8, 2.7], [9.0, 2.4]].forEach(function (a) {
+        var ay = a[0], len = a[1], w = halfAt(ay);
+        [-1, 1].forEach(function (s) {
+          var inn = new T.Vector3(s * w, ay, 0), tip = new T.Vector3(s * (w + len), ay, 0);
+          arms.push([inn, tip, .06]);
+          braces.push([inn.clone().setY(ay - .22), tip.clone().setY(ay - .3), .024]);
+          for (var j = 0; j < 4; j++) ins.push([tip.clone().setY(ay - .12 - j * .09), 0]);
+          spanLine(g, M.cond, tip.x, tip.y - .5, -SPAN, tip.x, tip.y - .5, SPAN, SAG, 22);
+        });
+      });
+      var tw = halfAt(hgt);
+      arms.push([new T.Vector3(-tw, hgt, 0), new T.Vector3(0, hgt + .9, 0), .045]);
+      arms.push([new T.Vector3(tw, hgt, 0), new T.Vector3(0, hgt + .9, 0), .045]);
+      spanLine(g, M.cond, 0, hgt + .9, -SPAN, 0, hgt + .9, SPAN, .6, 22);
+      [[1.5, 1.5], [1.5, -1.5], [-1.5, 1.5], [-1.5, -1.5]].forEach(function (p) {
+        g.add(box(.74, .5, .74, M.pad, p[0], .25, p[1]));
+      });
+      for (var l = 0; l < 18; l++) {
+        var wy = .75 + l * .5, ww = halfAt(wy);
+        g.add(box(.26, .03, .03, M.brace, -ww + .12, wy, -ww - .07));
+      }
+      [instanced(legs, M.leg), instanced(braces, M.brace), instanced(arms, M.arm)].forEach(function (o) { if (o) g.add(o); });
+      if (ins.length) {
+        var im = new T.InstancedMesh(new T.CylinderGeometry(.11, .11, .045, 8), M.ins, ins.length), m4 = new T.Matrix4();
+        ins.forEach(function (it, k) { m4.makeTranslation(it[0].x, it[0].y, it[0].z); im.setMatrixAt(k, m4); });
+        im.instanceMatrix.needsUpdate = true; im.castShadow = true; g.add(im);
+      }
+      var pt = new T.Mesh(new T.PlaneGeometry(.44, .28), new T.MeshBasicMaterial({ map: tagTex(tag), side: T.DoubleSide }));
+      pt.position.set(halfAt(2.6) + .17, 2.6, 0); pt.rotation.y = Math.PI / 2; g.add(pt);
+      var bc = new T.Mesh(new T.SphereGeometry(.13, 10, 10),
+        new T.MeshBasicMaterial({ color: 0xff5a3c, transparent: true, opacity: .9, fog: false }));
+      bc.position.set(0, hgt + 1.06, 0); g.add(bc);
+      var bg = new T.Sprite(new T.SpriteMaterial({ map: glowTex(), color: 0xff5a3c, transparent: true,
+        opacity: .5, blending: T.AdditiveBlending, depthWrite: false, fog: false }));
+      bg.position.copy(bc.position); bg.scale.set(2.6, 2.6, 1); g.add(bg);
+      g.userData.beacon = [bc, bg];
+      g.userData.topY = hgt;
+      return g;
+    }
+    function makePole(M, tag) {
+      var g = new T.Group(), h = 11;
+      g.add(box(1.3, .3, 1.3, M.pad, 0, .15, 0));
+      g.add(cyl(.15, .26, h, M.pad, 0, h / 2 + .3, 0, 10));
+      g.add(box(3.0, .12, .12, M.brace, 0, 8.4, 0));
+      [-1, 1].forEach(function (s) {
+        g.add(box(1.9, .13, .14, M.arm, s * 1.0, 8.4, 0));
+        for (var k = 0; k < 2; k++) g.add(cyl(.09, .09, .05, M.ins, s * (1.5 - k * .35), 8.28, 0, 8));
+        spanLine(g, M.cond, s * 1.5, 8.2, -13, s * 1.5, 8.2, 13, .55, 14);
+      });
+      var pt = new T.Mesh(new T.PlaneGeometry(.44, .28), new T.MeshBasicMaterial({ map: tagTex(tag), side: T.DoubleSide }));
+      pt.position.set(.28, 5.2, 0); pt.rotation.y = Math.PI / 2; g.add(pt);
+      g.userData.topY = h;
+      return g;
+    }
+
+    /* ---------------- 一个机组（洙边整套：厂房 + 柜 + 九条线） ---------------- */
+    function makeUnit(M, cfg, addFlow) {
+      var grp = new T.Group();
+      var bld = makeBuilding(M); grp.add(bld);
+      var n = cfg.cabs, span = (n - 1) * PITCH;
+      var front = cfg.form === 'front';
+      /* 柜位：gable = 洙边山墙外（西，原坐标）；front = 厂房南墙前场坪一排 */
+      var cz = front ? D2 / 2 + 5.0 : CABZ, cx0 = front ? -3 : CABX;
+      /* 贴地车道：洙边那四条在西侧院；柜挪到楼前后重新排车道（都在楼与柜之间的空档里） */
+      var L = front ? { gsto: 6.8, grid: 6.0, stoh: 5.6, gl: 4.9, stoZ: 7.7, wrap: 11.2 }
+                    : { gsto: LN.gsto, grid: LN.grid, stoh: LN.stoh, gl: LN.gl };
+      var cabs = [];
+      for (var k = 0; k < n; k++) {
+        var off = -span / 2 + k * PITCH, c = makeCabinet(M), cx = cx0 + off;
+        c.position.set(cx, 0, cz); grp.add(c);
+        cabs.push({ x: cx, z: cz, ref: c });
+      }
+      /* 三面接线盒：光伏进东面 / 国网进西面 / 储能出南面（同洙边） */
+      var east = cabs[cabs.length - 1], west = cabs[0];
+      var boxE = [east.x + CAB.w / 2 + .10, 1.0, east.z];
+      var boxW = [west.x - CAB.w / 2 - .10, 1.0, west.z];
+      cabs.forEach(function (c) {
+        grp.add(box(.10, .40, .34, M.box, c.x + CAB.w / 2 + .10, 1.0, c.z));      /* 东面（光伏进） */
+        grp.add(box(.10, .40, .34, M.box, c.x - CAB.w / 2 - .10, 1.0, c.z));      /* 西面（国网进） */
+        grp.add(box(.34, .40, .10, M.box, c.x + .2, .40, c.z + CAB.d / 2 + .05)); /* 南面（储能出） */
+      });
+      /* 塔基终端箱（本群关口）：每群一塔时留在洙边塔位；共用中心塔时挪到柜列旁，
+         这样每群西侧不必空出 20m 塔位通道，三群才凑得紧 */
+      var TBX = cfg.tboxX === undefined ? TBOXX : cfg.tboxX;
+      var tb = makeTermBox(M); tb.position.set(TBX, 0, TWRZ); grp.add(tb);
+      /* 多柜时把基础台连成一片 */
+      if (n > 1) grp.add(box(span + CAB.w + 1.2, .1, CAB.d + 1.4, M.pad, cx0, .045, cz));
+
+      /* ---- 九条线（gable 形态坐标同洙边） ---- */
+      var F = FLOWC[M.th];
+      /* 1 光伏干线：屋面线槽 → 西墙直落 → 二楼分岔点 */
+      addFlow(grp, 'pv', [[rowW / 2 + .2, roofY + .40, 0], [3.2, roofY + .42, 0], [-3.2, roofY + .42, .1],
+        [-W2 / 2 - .08, roofY + .42, .55], [-W2 / 2 - .36, 6.6, .55], [NHI[0], 3.9, .55]], F.ac, .052, 1);
+      /* 2 光伏干线（下段）：二楼分岔点 → 低位节点 */
+      addFlow(grp, 'pvlow', [[NHI[0], 3.9, .55], [NLO[0], 1.2, .55]], F.ac, .052, 1);
+      /* 3 光伏→厂房：二楼改道 → 沿西墙往南 → 西南角转弯 → 南墙二楼黑盒 */
+      addFlow(grp, 'pvh', [[NHI[0], 3.9, .55], [NHI[0], 3.9, D2 / 2 + .36],
+        [-5.75, 3.9, D2 / 2 + .36], [-5.75, 3.9, D2 / 2 + .02]], F.ac, .052, 1);
+      /* 4 光伏→储能：低位节点 → 柜东面接线盒 */
+      addFlow(grp, 'sto', front
+        ? [[NLO[0], NLO[1], NLO[2]], [NLO[0], 1.0, L.stoZ], [boxE[0], 1.0, L.stoZ], [boxE[0], 1.0, boxE[2]]]
+        : [[NLO[0], NLO[1], NLO[2]], [boxE[0], 1.0, boxE[2]]], F.ac, .052, 1);
+      /* 5 国网→储能：终端箱 → 北车道 → 折向柜西面接线盒 */
+      addFlow(grp, 'gsto', front
+        ? [[TBX - .4, .36, TWRZ - .15], [TBX - .4, .34, L.gsto], [boxW[0] + .25, .34, L.gsto],
+           [boxW[0], .7, L.gsto + .6], [boxW[0], 1.0, boxW[2]]]
+        : [[TBX - .4, .36, TWRZ - .15], [TBX - .4, .34, L.gsto], [boxW[0] + .75, .34, L.gsto],
+           [boxW[0] + .25, .36, boxW[2] + 1.0], [boxW[0], 1.0, boxW[2]]], F.buy, .052, 1);
+      /* 6 并网段：低位节点 → 贴墙根向南 → 并入走廊 → 终端箱（拐点按 2.5m 墩距铺，随关口箱位置走） */
+      var gpts = [[NLO[0], NLO[1], NLO[2]], [NLO[0], .34, front ? 1.2 : .55], [NLO[0], .34, L.grid]];
+      for (var gx = NLO[0] - 2.5; gx > TBX + 1.2; gx -= 2.5) gpts.push([gx, .34, L.grid]);
+      gpts.push([TBX + .2, .38, TWRZ - .25], [TBX, .44, TWRZ - .08]);
+      addFlow(grp, 'grid', gpts, F.ac, .052, 1);
+      /* 7 储能→厂房：柜正面（南面）出线 → 楼前走廊 → 南墙墙脚黑盒（多柜先并到干线） */
+      var wrapX = east.x + CAB.w / 2 + 1.6;
+      cabs.forEach(function (c, idx2) {
+        var isLast = idx2 === cabs.length - 1;
+        var laneZ = L.stoh + (cabs.length > 1 ? idx2 * .22 : 0);
+        var pts = front
+          ? [[c.x + .2, .40, c.z + CAB.d / 2 + .08], [c.x + .2, .34, L.wrap],
+             [wrapX, .34, L.wrap], [wrapX, 1.55, L.wrap], [wrapX, 1.55, laneZ],
+             [-6.48, 1.55, laneZ], [-6.48, .36, laneZ]]
+          : [[c.x + .2, .40, c.z + CAB.d / 2 + .08], [c.x + .2, .34, laneZ], [-6.48, .34, laneZ]];
+        if (isLast) pts.push([-6.40, .36, 3.95], [-6.35, .72, 4.02]);
+        else pts.push([-6.48, .34, laneZ], [-6.48, .34, L.stoh]);
+        addFlow(grp, 'stoh', pts, F.dis, .052, 1);
+      });
+      /* 8 电网直供：终端箱 → 前院南沿 → 折北 → 南墙进线盒 */
+      var lpts = [[TBX - .1, .36, TWRZ + .3]];
+      for (var lx = TBX + 2.4; lx < -7.6; lx += 2.5) lpts.push([lx, .34, L.gl]);
+      lpts.push([-7.5, .36, L.gl], [-5.95, .40, L.gl - .9], [-5.35, .95, 4.30], [-5.14, 1.02, 4.04]);
+      addFlow(grp, 'gl', lpts, F.buy, .052, 1);
+      /* 9 铁塔段：终端箱 → 拉线上塔中央（本群有独立塔时按洙边原样画） */
+      if (cfg.ownTower) {
+        addFlow(grp, 'tower', [[TBX, .44, TWRZ - .08], [TBX, .58, TWRZ + .08],
+          [-20.45, 2.40, 4.30], [-21.35, 4.55, 4.25], [TWRX, 5.90, TWRZ]], F.ac, .052, 1, true);
+        var twr = makeTower(M, cfg.twrTag); twr.position.set(TWRX, 0, TWRZ); grp.add(twr);
+      }
+      /* 电缆墩：四条贴地车道各按 x 每 2.5m 一格（同洙边墩阵），范围随实际走线算 */
+      var duis = [];
+      [[L.grid, NLO[0], TBX], [L.gsto, TBX, boxW[0]], [L.gl, TBX, -7.5], [L.stoh, cabs[0].x, -7.5]]
+        .forEach(function (lane) {
+          var a = Math.min(lane[1], lane[2]), b = Math.max(lane[1], lane[2]);
+          for (var x = Math.ceil(a / 2.5) * 2.5; x <= b - .6; x += 2.5) {
+            if (front && lane[0] < 4 && x < -6.6) continue;
+            duis.push(box(.16, .16, .16, M.saddle, x, .26, lane[0]));
+          }
+        });
+      duis.forEach(function (o) { grp.add(o); });
+
+      return { grp: grp, cabs: cabs, cfg: cfg, front: front, lanes: L,
+        tbLocal: new T.Vector3(TBX, .44, TWRZ), tbWorld: null, duis: duis };
+    }
+
+    /* ---------------- 站点装配 ---------------- */
+    function slotsOf(form, opt) {
+      /* 每机组占位：西侧院要装下柜列（三号 3 柜）+ 终端箱（局部 x -19.75）+ 邻居厂房东外墙，
+         方案B 还要再装下自己那座塔（塔身 ±1.5、横担 ±3） */
+      var slot = opt === 'B' ? 34 : 28;
+      var list = [];
+      var groups = form === 'dup'
+        ? [{ g: 0, n: 1 }, { g: 1, n: 1 }, { g: 2, n: 1 }, { g: 2, n: 1 }, { g: 2, n: 1 }]
+        : [{ g: 0, n: 1 }, { g: 1, n: 1 }, { g: 2, n: 3 }];
+      var total = groups.length * slot;
+      if (state.lay === 'pin') {
+        /* 品字（紧凑对咬）：三号在前排居中，一号后排左、二号后排右。
+           一号的柜列镜像到右边 → 两排的院子朝中间对咬，塔正好塞进中间那条空档；
+           三号挪到前排后它到塔的档距要跨过自己柜列头顶，所以上塔线走架空（见 buildSite 方案E） */
+        var cen = [{ x: -20, z: -12, m: true }, { x: 20, z: -12, m: false }, { x: 0, z: 14, m: false }];
+        var sub = {};
+        groups.forEach(function (d) {
+          var c = cen[d.g], k = sub[d.g] || 0;
+          sub[d.g] = k + 1;
+          list.push({ gidx: d.g, cabs: d.n, x: c.x + (form === 'dup' ? (k - 1) * slot * .85 : 0),
+            z: c.z, mirror: c.m });
+        });
+        return { list: list, slot: slot, total: slot * 3 };
+      }
+      groups.forEach(function (d, k) {
+        var x = -total / 2 + slot / 2 + k * slot;
+        var z = 0;
+        if (state.lay === 'stagger') z = (k % 2) ? -14 : 8;
+        if (state.lay === 'arc') z = Math.pow((x) / (total / 2), 2) * 16 - 6;
+        list.push({ gidx: d.g, cabs: d.n, x: x, z: z });
+      });
+      return { list: list, slot: slot, total: total };
+    }
+
+    function buildSite(optId, form, th, main) {
+      var M = mats(th), t = THEMES[th], F = FLOWC[th];
+      var scene = new T.Scene();
+      var grp = new T.Group(); scene.add(grp);
+      var wireGrp = new T.Group(); grp.add(wireGrp);
+      var flows = [], beacons = [], fitPts = [], units = [], nodes = [];
+      var tags = [];
+
+      scene.fog = new T.Fog(t.fog.c, t.fog.near, t.fog.far);
+      scene.background = new T.Color(t.bg);
+      scene.add(new T.Mesh(new T.SphereGeometry(460, 24, 16),
+        new T.MeshBasicMaterial({ map: skyTex(t.sky), side: T.BackSide, fog: false })));
+      scene.add(new T.HemisphereLight(t.hemi.s, t.hemi.g, t.hemi.i));
+      var key = new T.DirectionalLight(t.key.c, t.key.i);
+      key.position.set(-70, 100, 80);
+      if (main) { key.castShadow = true; key.shadow.mapSize.set(2048, 2048);
+        var sc = key.shadow.camera; sc.left = -110; sc.right = 110; sc.top = 110; sc.bottom = -110; sc.near = 1; sc.far = 320; }
+      scene.add(key);
+      var fill = new T.PointLight(t.fill.c, t.fill.i, 260); fill.position.set(10, 22, 40); scene.add(fill);
+
+      var ground = new T.Mesh(new T.PlaneGeometry(900, 900), M.ground);
+      ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; grp.add(ground);
+
+      /* 光纹管：core + 加色光晕，带 kind / dir / 单位引用 */
+      function addFlow(parent, kind, pts, color, r, dir, bidir) {
+        var raw = pts.map(function (p) { return new T.Vector3(p[0], p[1], p[2]); });
+        var vs = [];
+        raw.forEach(function (v) { if (!vs.length || v.distanceTo(vs[vs.length - 1]) > .35) vs.push(v); });
+        if (vs.length < 2) return null;
+        var curve = new T.CatmullRomCurve3(vs, false, 'catmullrom', .1);
+        var len = Math.max(1, curve.getLength()), seg = Math.max(14, Math.round(len * 2));
+        r = r || .052;
+        var core = new T.Mesh(new T.TubeGeometry(curve, seg, r, 6, false), M.cable);
+        core.castShadow = true; parent.add(core);
+        var map = flowTex(len);
+        var tm = new T.MeshBasicMaterial({ map: map, color: F.idle, transparent: true, opacity: .22,
+          blending: T.AdditiveBlending, depthWrite: false });
+        parent.add(new T.Mesh(new T.TubeGeometry(curve, seg, r * 2.1, 8, false), tm));
+        var f = { kind: kind, map: map, tubeMat: tm, core: core, dir: dir || 1, bidir: !!bidir,
+          len: len, inWire: parent === wireGrp };
+        flows.push(f);
+        return f;
+      }
+
+      /* 机组 */
+      var sl = slotsOf(form, optId);
+      var twrSeq = 0, gseq = {}, xs = [], zs = [];
+      sl.list.forEach(function (d, k) {
+        var own = optId === 'B';
+        /* 关口箱位置：每群一塔（B）留在洙边塔位；共塔方案挪到柜列旁，三群才凑得紧 */
+        d.tboxX = own ? TBOXX
+          : (d.cabs > 1 ? CABX - (d.cabs - 1) * PITCH / 2 - CAB.w / 2 - 1.0 : -15.5);
+        var u = makeUnit(M, { cabs: d.cabs, form: form, ownTower: own, tboxX: d.tboxX,
+          twrTag: (++twrSeq) + '#' }, addFlow);
+        u.grp.position.set(d.x, 0, d.z);
+        if (d.mirror) u.grp.scale.x = -1;        /* 柜列镜像到厂房右侧（three 会翻正面朝向，不会里外翻） */
+        grp.add(u.grp);
+        u.grp.updateMatrixWorld(true);
+        u.tbWorld = u.tbLocal.clone().applyMatrix4(u.grp.matrixWorld);
+        u.gidx = d.gidx; u.idx = k; u.mirror = !!d.mirror;
+        u.seq = gseq[d.gidx] || 0; gseq[d.gidx] = u.seq + 1;
+        var cabW = u.cabs.map(function (c) { return u.grp.localToWorld(new T.Vector3(c.x, 0, c.z)); });
+        /* 本机组的核对机位 + 场坪占位：按镜像后的真实世界坐标算 */
+        u.fit = [new T.Vector3(d.x, roofY + 1.5, d.z),
+          new T.Vector3(d.x - W2 / 2 - 1.5, 1, d.z),
+          u.tbWorld.clone().setY(1.6),
+          cabW[0].clone().setY(CAB.h + 1),
+          cabW[cabW.length - 1].clone().setY(CAB.h + 1)];
+        if (optId === 'B') u.fit.push(new T.Vector3(TWRX + d.x, TWRH, TWRZ + d.z));
+        u.cen = new T.Vector3((d.x + u.tbWorld.x) / 2, 2.5, d.z);
+        units.push(u);
+        var cx0 = Math.min.apply(null, cabW.map(function (v) { return v.x; }));
+        var cx1 = Math.max.apply(null, cabW.map(function (v) { return v.x; }));
+        xs.push(cx0 - 2, cx1 + 2, d.x - W2 / 2 - 1.2, d.x + W2 / 2 + 1.2,
+          u.tbWorld.x - .6, u.tbWorld.x + .6);
+        zs.push(d.z - D2 / 2 - 1.6, d.z + D2 / 2 + (form === 'front' ? 9.5 : 2.6), u.tbWorld.z + 1);
+        fitPts.push(new T.Vector3(d.x, roofY + 2, d.z));
+        fitPts.push(new T.Vector3(u.tbWorld.x, 1, u.tbWorld.z));
+      });
+
+      /* 并网点（塔 / 杆） */
+      var minX = Math.min.apply(null, units.map(function (u) { return u.grp.position.x; }));
+      var maxZ = Math.max.apply(null, units.map(function (u) { return u.grp.position.z; }));
+      var meanZ = units.reduce(function (a, u) { return a + u.grp.position.z; }, 0) / units.length;
+      var gpos = {};
+      units.forEach(function (u) { if (gpos[u.gidx] === undefined) gpos[u.gidx] = { x: u.grp.position.x, z: u.grp.position.z }; });
+      var gl = Object.keys(gpos).map(function (k) { return gpos[k]; });
+      function node(type, x, z) { return { type: type, x: x, z: z }; }
+      if (optId === 'A') nodes = [node('tower', minX - sl.slot * .95, meanZ)];
+      else if (optId === 'C') nodes = [node('tower', (gl[0].x + gl[1].x) / 2, meanZ + 16), node('tower', gl[2].x, gl[2].z + 16)];
+      else if (optId === 'D') nodes = gl.map(function (g) { return node('pole', g.x + 8, g.z + 13); });
+      else if (optId === 'E') {
+        /* 中央塔：品字放三群几何中心（后排两群院子对咬出的那条空档）；其余排布放到前排空地，
+           别把塔身塞进厂房行里。一律转 90°：10kV 穿越导线沿东西跨，不从厂房屋顶穿过去 */
+        var ez2 = state.lay === 'pin'
+          ? gl.reduce(function (a, p) { return a + p.z; }, 0) / gl.length
+          : Math.max.apply(null, gl.map(function (p) { return p.z; })) + 14;
+        var nd0 = node('tower',
+          gl.reduce(function (a, p) { return a + p.x; }, 0) / gl.length, ez2);
+        nd0.rot = Math.PI / 2;
+        nodes = [nd0];
+      } else nodes = [];                                  /* B：塔已随各机组建好 */
+      if (optId === 'D') nodes.push(node('tower', minX - sl.slot * .95, meanZ));
+      /* 编号：先铁塔后分支杆（主塔是 1#，别把塔编到 4# 去） */
+      nodes.slice().sort(function (a, b) {
+        return (a.type === 'tower' ? 0 : 1) - (b.type === 'tower' ? 0 : 1);
+      }).forEach(function (nd, k) { nd.no = k + 1; });
+
+      var leadLen = 0;
+      nodes.forEach(function (nd, k) {
+        var o = nd.type === 'tower' ? makeTower(M, nd.no + '#') : makePole(M, nd.no + '#');
+        o.position.set(nd.x, 0, nd.z);
+        o.rotation.y = nd.rot || 0;
+        grp.add(o);
+        if (o.userData.beacon) beacons.push(o.userData.beacon);
+        nd.topY = o.userData.topY;
+        nd.boxAt = new T.Vector3(nd.x + 2.25, .44, nd.z);
+        if (optId !== 'E') {                 /* 方案E 的关口在各群终端箱，塔基不再挂一只空箱 */
+          var nb = makeTermBox(M); nb.position.set(nd.x + 2.25, 0, nd.z); grp.add(nb);
+        }
+        fitPts.push(new T.Vector3(nd.x, (nd.topY || 10) + 1, nd.z));
+      });
+
+      /* 方案D：主塔 → 各分支杆之间的主干 */
+      if (optId === 'D') {
+        var mains = nodes.filter(function (n) { return n.type === 'tower'; })[0];
+        var poles = nodes.filter(function (n) { return n.type === 'pole'; });
+        var trunk = [mains.boxAt.clone(), new T.Vector3(mains.boxAt.x, .44, mains.z + 4.2)];
+        poles.forEach(function (p) { trunk.push(new T.Vector3(p.x + 2.25, .44, p.z + 3.4), new T.Vector3(p.x + 2.25, .44, p.z)); });
+        addFlow(wireGrp, 'trunk', trunk.map(function (v) { return [v.x, v.y, v.z]; }), F.buy, .05, 1);
+      }
+
+      /* 机组终端箱 → 所属并网点（站外联络线，世界坐标直角走） */
+      units.forEach(function (u) {
+        if (optId === 'B') { u.node = null; return; }
+        var nd;
+        if (optId === 'A' || optId === 'E') nd = nodes[0];
+        else if (optId === 'C') nd = nodes[u.gidx === 2 ? 1 : 0];
+        else if (optId === 'D') {
+          var gp = gpos[u.gidx], best = 1e18;
+          nodes.forEach(function (n) {
+            if (n.type !== 'pole') return;
+            var d = Math.pow(n.x - gp.x, 2) + Math.pow(n.z - gp.z, 2);
+            if (d < best) { best = d; nd = n; }
+          });
+        }
+        u.node = nd;
+        if (!nd) return;
+        if (optId === 'E') {
+          /* 每群一根线上塔：全程贴地电缆（同洙边，空中不架线），到塔位再"拉线上塔中央"。
+             品字紧凑下前排那群直走会插进后排厂房，所以绕自己厂房另一侧的空档北上；
+             其余排布把塔放前排空地，走廊走靠塔那一侧，同样不穿建筑 */
+          var pts, land, gmin = Math.min.apply(null, gl.map(function (p) { return p.z; }));
+          var gmax = Math.max.apply(null, gl.map(function (p) { return p.z; }));
+          if (state.lay === 'pin' && u.tbWorld.z > nd.z) {
+            var ringZ = u.tbWorld.z + 2.4;
+            var side = nd.x + (u.tbWorld.x < nd.x ? 9.5 : -9.5);
+            land = [nd.x + 2.4, .44, nd.z + 2.0];
+            pts = [[u.tbWorld.x, .44, u.tbWorld.z], [u.tbWorld.x, .44, ringZ],
+              [side, .44, ringZ], [side, .44, land[2]], [land[0], .44, land[2]], land];
+          } else {
+            var laneZ = nd.z > gmax ? gmax + D2 / 2 + 3 : gmin - D2 / 2 - 3;
+            land = [nd.x + (u.tbWorld.x < nd.x ? -2.4 : 2.4), .44, nd.z];
+            pts = [[u.tbWorld.x, .44, u.tbWorld.z], [u.tbWorld.x, .44, laneZ],
+              [land[0], .44, laneZ], land];
+          }
+          var lfe = addFlow(wireGrp, 'lead', pts, F.buy, .05, 1);
+          if (lfe) { lfe.u = u; leadLen += lfe.len; }
+          /* 拉线上塔中央（同洙边铁塔段：沿地到塔身，再斜拉到塔中央 5.9m） */
+          var rfe = addFlow(wireGrp, 'tower', [land, [land[0], 1.2, land[2]],
+            [nd.x + (land[0] - nd.x) * .35, 3.6, nd.z + (land[2] - nd.z) * .35],
+            [nd.x, 5.9, nd.z]], F.ac, .052, 1, true);
+          if (rfe) rfe.u = u;
+          if (state.duis) {                                   /* 贴地段也铺电缆墩，和站内车道一个做法 */
+            for (var seg = 1; seg < pts.length - 1; seg++) {
+              var pa = pts[seg], pb = pts[seg + 1];
+              if (pa[1] > .8 || pb[1] > .8) continue;
+              var L2 = Math.sqrt(Math.pow(pb[0] - pa[0], 2) + Math.pow(pb[2] - pa[2], 2));
+              for (var qd = 1.2; qd < L2 - .6; qd += 2.5) {
+                var tq = qd / L2;
+                wireGrp.add(box(.16, .16, .16, M.saddle, pa[0] + (pb[0] - pa[0]) * tq, .26,
+                  pa[2] + (pb[2] - pa[2]) * tq));
+              }
+            }
+          }
+          return;
+        }
+        /* 其余方案：贴地走廊到网点终端箱，再由一条上塔段拉上塔 */
+        var laneZ = Math.min(u.tbWorld.z, nd.z) - 7.5;
+        var land = [nd.boxAt.x, .44, nd.boxAt.z];
+        var pts = [[u.tbWorld.x, .44, u.tbWorld.z], [u.tbWorld.x, .44, laneZ],
+          [land[0], .44, laneZ], land];
+        var lf = addFlow(wireGrp, 'lead', pts, F.buy, .05, 1);
+        if (lf) { lf.u = u; leadLen += lf.len; }
+        /* 上塔段：网点终端箱 → 塔身中央 */
+        if (nd.type === 'tower' && !nd.riser) {
+          nd.riser = true;
+          addFlow(wireGrp, 'tower', [[nd.boxAt.x, .44, nd.boxAt.z], [nd.boxAt.x, .6, nd.boxAt.z + .2],
+            [nd.x + 1.4, 2.6, nd.z + .1], [nd.x, 5.9, nd.z]], F.ac, .052, 1, true);
+        }
+      });
+
+      /* 场坪（内容包围盒外扩 6m）：占位在上面按机组逐个收集，
+         不把塔上 ±18m 跨越档距算进场地，否则场坪会被撑得一大片空 */
+      nodes.forEach(function (nd) { xs.push(nd.x - 4.5, nd.x + 4.5); zs.push(nd.z - 4.5, nd.z + 4.5); });
+      var x0 = Math.min.apply(null, xs) - 6, x1 = Math.max.apply(null, xs) + 6;
+      var z0 = Math.min.apply(null, zs) - 6, z1 = Math.max.apply(null, zs) + 6;
+      var sw = x1 - x0, sd = z1 - z0;
+      M.slab.map.repeat.set(sw / 24, sd / 24);            /* 每格约 3m（同洙边：8 格一版、24m 一铺） */
+      var slab = new T.Mesh(new T.BoxGeometry(sw, .18, sd), M.slab);
+      slab.position.set((x0 + x1) / 2, .09, (z0 + z1) / 2); slab.receiveShadow = true; grp.add(slab);
+      var ed = new T.LineSegments(new T.EdgesGeometry(new T.BoxGeometry(sw, .18, sd)), M.edge);
+      ed.position.copy(slab.position); grp.add(ed);
+      var center = new T.Vector3((x0 + x1) / 2, 2, (z0 + z1) / 2);
+
+      /* 浮标 */
+      function tag(html, cls, x, y, z) {
+        if (!main || !labelR) return null;
+        var wrap = document.createElement('div'), el = document.createElement('div');
+        el.className = 'tag3d ' + (cls || ''); el.innerHTML = html;
+        wrap.appendChild(el);
+        var o = new T.CSS2DObject(wrap); o.position.set(x, y, z); scene.add(o);
+        tags.push({ el: el, obj: o });
+        return el;
+      }
+      var gname = ['一号', '二号', '三号'], gunits = {};
+      units.forEach(function (u) { gunits[u.gidx] = (gunits[u.gidx] || 0) + 1; });
+      units.forEach(function (u) {
+        var multi = gunits[u.gidx] > 1;
+        var nm = gname[u.gidx] + '机组' + (multi ? '·' + '甲乙丙'[u.seq || 0] : '') + ' · ' + u.cabs.length + ' 柜';
+        u.tagEl = tag('<b>' + nm + '</b><i>--</i><em>--</em>', '',
+          u.grp.position.x, roofY + 2.6, u.grp.position.z);
+      });
+      nodes.forEach(function (nd) {
+        tag(nd.type === 'tower' ? '<b>' + nd.no + '# 并网铁塔</b><i>10kV 上网线路</i>'
+          : '<b>' + nd.no + '# 分支杆</b><i>10m 水泥杆 · 本群关口</i>', nd.type === 'tower' ? '' : 'pole',
+          nd.x, (nd.topY || 10) + (nd.type === 'tower' ? .5 : 1.6), nd.z);
+      });
+
+      wireGrp.visible = state.wires;
+      if (!state.duis) units.forEach(function (u) { u.duis.forEach(function (o) { o.visible = false; }); });
+
+      var towerN = (optId === 'B' ? units.length : 0) + nodes.filter(function (n) { return n.type === 'tower'; }).length;
+      var poleN = nodes.filter(function (n) { return n.type === 'pole'; }).length;
+      return { scene: scene, grp: grp, wireGrp: wireGrp, flows: flows, tags: tags, beacons: beacons,
+        units: units, nodes: nodes, fit: fitPts, center: center, M: M, F: F,
+        stats: { towers: towerN, poles: poleN, leads: leadLen },
+        bounds: { x0: x0, x1: x1, z0: z0, z1: z1 } };
+    }
+
+    /* ---------------- 洙边六工况判据（照 agent-pack/07） ---------------- */
+    function judge(p) {
+      var gridKw = p.load - p.pv - p.st;      /* 正 = 取电 */
+      var meter = -gridKw;                    /* 正 = 送电 */
+      var surplus = meter, loadEff = Math.max(0, p.pv + p.st - meter);
+      var pvOn = p.pv > .5, chg = p.st < -.5, dis = p.st > .5;
+      var its = [];
+      if (pvOn && chg) its.push('1');
+      if (pvOn && loadEff > .3) its.push('2');
+      if (pvOn && surplus > .3) its.push('3');
+      if (surplus < -.3 && loadEff > .3) its.push('4');
+      if (chg && surplus < -.3) its.push('5');
+      if (dis) its.push('6');
+      return { gridKw: gridKw, meter: meter, surplus: surplus, loadEff: loadEff,
+        pvOn: pvOn, chg: chg, dis: dis, its: its };
+    }
+    function presetOf(u) {
+      if (state.mix) return MIX[Math.min(u.gidx, MIX.length - 1)];
+      return PRESETS.filter(function (x) { return x.id === state.preset; })[0] || PRESETS[7];
+    }
+    function applyConditions(site, th) {
+      var F = FLOWC[th], anySell = false, anyBuy = false;
+      site.units.forEach(function (u) {
+        u._j = judge(presetOf(u));
+        if (u._j.surplus > .3 && u._j.pvOn) anySell = true;
+        if (u._j.surplus < -.3) anyBuy = true;
+      });
+      site.units.forEach(function (u, k) {
+        var p = presetOf(u), j = u._j;
+        var spd = .25 + Math.min(1, Math.max(Math.abs(p.st), Math.abs(j.surplus)) / 100) * 1.6;
+        function lit(f, on, color, dir) {
+          f.tubeMat.color.setHex(on ? color : F.idle);
+          f.tubeMat.opacity = on ? .95 : .22;
+          f.dir = dir || 1; f.spd = on ? spd : .06;
+        }
+        site.flows.forEach(function (f) {
+          if (f.inWire || f.core.parent !== u.grp) return;
+          switch (f.kind) {
+            case 'pv': lit(f, j.pvOn, F.ac, 1); break;
+            case 'pvlow': lit(f, j.pvOn && (j.chg || j.surplus > .3), F.ac, 1); break;
+            case 'pvh': lit(f, j.pvOn && j.loadEff > .3, F.ac, 1); break;
+            case 'sto': lit(f, j.pvOn && j.chg, F.ac, 1); break;
+            case 'gsto': lit(f, j.chg && j.surplus < -.3, F.buy, 1); break;
+            case 'grid': lit(f, j.surplus > .3 && j.pvOn, F.ac, 1); break;
+            case 'stoh': lit(f, j.dis && j.loadEff > .3, F.dis, 1); break;
+            case 'gl': lit(f, j.surplus < -.3 && j.loadEff > .3, F.buy, 1); break;
+            case 'tower': lit(f, (j.surplus > .3 && j.pvOn) || j.surplus < -.3,
+              (j.surplus > .3 && j.pvOn) ? F.ac : F.buy, (j.surplus > .3 && j.pvOn) ? 1 : -1); break;
+          }
+        });
+        /* 柜体 SOC 光柱 / 指示灯：颜色跟工况（放电青绿 / 光伏充黄 / 电网充蓝 / 待机暗青） */
+        var cc = j.dis ? F.dis : (j.chg ? (j.surplus < -.3 ? F.buy : F.ac) : F.idle);
+        u.cabs.forEach(function (c) {
+          var ud = c.ref.userData;
+          ud.bars.forEach(function (b) { b.material.color.setHex(cc); });
+          ud.led.material.color.setHex(cc);
+          ud.glow.material.color.setHex(cc);
+          ud.glow.material.opacity = (j.dis || j.chg) ? (state.theme === 'day' ? .07 : .13) : .03;
+        });
+        if (u.tagEl) {
+          u.tagEl.querySelector('i').textContent = j.its.length ? '工况 ' + j.its.join('+') : '本群待机';
+          u.tagEl.querySelector('em').textContent = '光 ' + p.pv.toFixed(0) + ' / 储 ' +
+            (p.st > 0 ? '+' : '') + p.st.toFixed(0) + ' / 荷 ' + p.load.toFixed(0) +
+            ' / 关口' + (j.gridKw >= 0 ? '取' : '送') + Math.abs(j.gridKw).toFixed(0);
+        }
+      });
+      /* 站外联络线 / 网点上塔段 / 主干：lead 看自己那群，其余看全站 */
+      site.flows.forEach(function (f) {
+        if (!f.inWire) return;
+        var j = f.u ? f.u._j : null;          /* 带 u 的（联络线 / 该群上塔线）按本群工况亮 */
+        var sell = j ? (j.surplus > .3 && j.pvOn) : anySell;
+        var buy = j ? (j.surplus < -.3) : anyBuy;
+        var on = f.kind === 'trunk' ? (anySell || anyBuy) : (sell || buy);
+        f.tubeMat.color.setHex(on ? (sell ? F.ac : F.buy) : F.idle);
+        f.tubeMat.opacity = on ? .95 : .22;
+        f.dir = sell ? 1 : -1;
+        f.spd = on ? 1 : .06;
+      });
+      /* 巡显：只看某一条线时其余压到几乎看不见，这条按洙边线色满亮度、方向画成送出 */
+      if (state.solo) {
+        site.flows.forEach(function (f) {
+          var hit = f.kind === state.solo;
+          f.tubeMat.color.setHex(F[SOLO_C[f.kind] || 'ac']);
+          f.tubeMat.opacity = hit ? 1 : .05;
+          f.spd = hit ? 1.2 : .04;
+          if (hit) f.dir = 1;
+        });
+      }
+    }
+
+    /* ---------------- 相机 / 后期 ---------------- */
+    var mainScene = null;
+    var camera = new T.PerspectiveCamera(46, 1, .1, 1400);
+    var controls = new T.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true; controls.dampingFactor = .08;
+    controls.maxPolarAngle = Math.PI * .495;
+    var composer = null, bloomPass = null, cur = null, tween = null, thumbs = [];
+    var CAMS = {
+      home: new T.Vector3(-.28, .42, .86), top: new T.Vector3(.02, .999, .06),
+      side: new T.Vector3(-.97, .18, .12), low: new T.Vector3(-.16, .2, .97)
+    };
+    function camTarget(b, key) {
+      var m = /^u([0-2])$/.exec(key);
+      if (m) {
+        var cands = b.units.filter(function (u) { return u.gidx === Number(m[1]); });
+        var u = cands[Math.floor((cands.length - 1) / 2)] || cands[0];
+        if (u) return { fit: u.fit, center: u.cen };
+      }
+      return { fit: b.fit, center: b.center };
+    }
+    function fitView(b, aspect, dirVec, camKey) {
+      var key = camKey || state.cam;
+      var dir = (dirVec || CAMS[key] || CAMS.home).clone().normalize();
+      var asp = aspect || Math.max(.2, W / H);
+      var tg = camTarget(b, key), pts = tg.fit.slice(), cen = tg.center;
+      var lo = 14, hi = 460, best = hi;
+      var cam = new T.PerspectiveCamera(46, asp, .1, 1400);
+      for (var k = 0; k < 26; k++) {
+        var mid = (lo + hi) / 2;
+        cam.position.copy(cen).add(dir.clone().multiplyScalar(mid));
+        cam.lookAt(cen); cam.aspect = asp; cam.updateMatrixWorld(true); cam.updateProjectionMatrix();
+        var ok = true;
+        for (var j = 0; j < pts.length; j++) {
+          var v = pts[j].clone().project(cam);
+          if (Math.abs(v.x) > .74 || Math.abs(v.y) > .72) { ok = false; break; }
+        }
+        if (ok) { best = mid; hi = mid; } else lo = mid;
+      }
+      return { pos: cen.clone().add(dir.multiplyScalar(best)), tgt: cen.clone() };
+    }
+    function flyTo(b, instant) {
+      var f = fitView(b, W / H);
+      if (instant) { camera.position.copy(f.pos); controls.target.copy(f.tgt); controls.update(); return; }
+      tween = { t: 0, from: { p: camera.position.clone(), g: controls.target.clone() }, to: f };
+    }
+    function dispose(s) {
+      s.traverse(function (o) {
+        if (o.geometry) o.geometry.dispose();
+        if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(function (m) {
+          if (m.map && m.map.dispose) m.map.dispose();
+          if (m.dispose) m.dispose();
+        });
+      });
+    }
+    function applyThemePost() {
+      var t = THEMES[state.theme];
+      if (!composer) {
+        composer = new T.EffectComposer(renderer);
+        composer.addPass(new T.RenderPass(mainScene, camera));
+        bloomPass = new T.UnrealBloomPass(new T.Vector2(Math.max(1, W), Math.max(1, H)), t.bloom.s, t.bloom.r, t.bloom.t);
+        composer.addPass(bloomPass);
+      } else {
+        composer.passes[0].scene = mainScene;
+        bloomPass.strength = t.bloom.s; bloomPass.radius = t.bloom.r; bloomPass.threshold = t.bloom.t;
+      }
+      composer.setSize(W, H);
+      renderer.setClearColor(t.bg, 1);
+    }
+    function buildMain(instant) {
+      if (cur) {
+        cur.tags.forEach(function (tg) { if (tg.obj.parent) tg.obj.parent.remove(tg.obj); });
+        dispose(cur.scene);
+      }
+      cur = buildSite(state.opt, state.form, state.theme, true);
+      mainScene = cur.scene;
+      applyConditions(cur, state.theme);
+      applyThemePost();
+      flyTo(cur, instant);
+      updateInfo(); updateTopBadge();
+    }
+    var quadEl = document.getElementById('quad');
+    function buildThumbs() {
+      thumbs.forEach(function (b) { dispose(b.scene); });
+      thumbs = OPTS.map(function (o) {
+        var b = buildSite(o.id, state.form, state.theme, false);
+        applyConditions(b, state.theme);
+        return b;
+      });
+      var cols = 2, rows = Math.ceil(OPTS.length / cols);
+      quadEl.innerHTML = '';
+      var ln = document.createElement('div');
+      ln.className = 'ln'; ln.style.cssText = 'left:50%;top:0;bottom:0;width:1px';
+      quadEl.appendChild(ln);
+      for (var r = 1; r < rows; r++) {
+        var hl = document.createElement('div');
+        hl.className = 'ln';
+        hl.style.cssText = 'top:' + (r / rows * 100) + '%;left:0;right:0;height:1px';
+        quadEl.appendChild(hl);
+      }
+      OPTS.forEach(function (o, k) {
+        var d = document.createElement('div');
+        d.className = 'q';
+        d.style.left = 'calc(' + ((k % cols) * 50) + '% + 12px)';
+        d.style.top = 'calc(' + (Math.floor(k / cols) / rows * 100) + '% + 12px)';
+        d.innerHTML = '<b>' + o.name + '</b><span>' + o.short + ' · 联络线约 ' +
+          Math.round(thumbs[k].stats.leads) + 'm</span>';
+        quadEl.appendChild(d);
+      });
+    }
+    function renderGrid() {
+      var n = thumbs.length;
+      if (!n) return;
+      var cols = 2, rows = Math.ceil(n / cols);
+      var cw = Math.floor(W / cols), ch = Math.floor(H / rows);
+      renderer.setScissorTest(false); renderer.setViewport(0, 0, W, H); renderer.clear();
+      renderer.setScissorTest(true);
+      thumbs.forEach(function (b, k) {
+        var cx = (k % cols) * cw, cy = H - (Math.floor(k / cols) + 1) * ch;
+        renderer.setViewport(cx, cy, cw, ch);
+        renderer.setScissor(cx, cy, cw, ch);
+        if (!b._cam) b._cam = new T.PerspectiveCamera(46, 1, .1, 1400);
+        var cam = b._cam;
+        cam.aspect = cw / ch; cam.updateProjectionMatrix();
+        if (!b._fit) b._fit = fitView(b, cw / ch, CAMS.home, 'home');
+        cam.position.copy(b._fit.pos); cam.lookAt(b._fit.tgt);
+        renderer.render(b.scene, cam);
+      });
+      renderer.setScissorTest(false); renderer.setViewport(0, 0, W, H);
+    }
+
+    /* ---------------- 面板 ---------------- */
+    function btn(rows, items, set) {
+      rows.innerHTML = '';
+      items.forEach(function (it) {
+        var b = document.createElement('button');
+        b.innerHTML = it.label + (it.sub ? '<small>' + it.sub + '</small>' : '');
+        b.dataset.id = it.id;
+        b.addEventListener('click', function () { set(it.id); });
+        rows.appendChild(b);
+      });
+    }
+    function mark(sel, id) {
+      [].forEach.call(document.querySelectorAll(sel + ' button'), function (b) {
+        b.classList.toggle('on', b.dataset.id === id);
+      });
+    }
+    function sync() {
+      mark('#optBtns', state.opt); mark('#formBtns', state.form);
+      mark('#layBtns', state.lay); mark('#camBtns', state.cam);
+      mark('#viewBtns', state.theme);
+      mark('#flowBtns', state.mix ? 'mix' : state.preset);
+      var have = {};
+      if (cur) cur.flows.forEach(function (f) { have[f.kind] = 1; });
+      [].forEach.call(document.querySelectorAll('#lineBtns button'), function (b) {
+        var d = b.dataset.id;
+        if (d === 'tour') { b.classList.toggle('on', state.tour); return; }
+        b.classList.toggle('on', state.solo === d);
+        b.style.opacity = have[d] ? '' : '.32';
+      });
+      [].forEach.call(document.querySelectorAll('#viewBtns button'), function (b) {
+        var d = b.dataset.id;
+        if (d === 'quad') b.classList.toggle('on', state.grid);
+        if (d === 'wires') b.classList.toggle('on', state.wires);
+        if (d === 'tags') b.classList.toggle('on', state.tags);
+        if (d === 'duis') b.classList.toggle('on', state.duis);
+      });
+      document.body.classList.toggle('grid', state.grid);
+      if (labelR) labelR.domElement.style.display = (state.grid || !state.tags) ? 'none' : '';
+    }
+    function refresh(keepCam) {
+      var p = camera.position.clone(), g = controls.target.clone();
+      buildMain(!keepCam);
+      if (keepCam) { tween = null; camera.position.copy(p); controls.target.copy(g); controls.update(); }
+      if (state.grid) buildThumbs();
+    }
+    btn(document.getElementById('optBtns'), OPTS.map(function (o) {
+      return { id: o.id, label: o.name, sub: o.short };
+    }), function (id) { state.opt = id; refresh(); sync(); });
+    btn(document.getElementById('formBtns'), FORMS.map(function (f) {
+      return { id: f.id, label: f.name, sub: f.note };
+    }), function (id) { state.form = id; refresh(); sync(); });
+    btn(document.getElementById('layBtns'), LAYS.map(function (l) {
+      return { id: l.id, label: l.name, sub: l.note };
+    }), function (id) { state.lay = id; refresh(); sync(); });
+    btn(document.getElementById('flowBtns'), PRESETS.map(function (p) {
+      return { id: p.id, label: p.name };
+    }).concat([{ id: 'mix', label: '三群各异', sub: '卖电 / 受电 / 放电' }]), function (id) {
+      if (id === 'mix') state.mix = true; else { state.mix = false; state.preset = id; }
+      relight(); sync();
+    });
+    btn(document.getElementById('lineBtns'), SOLO_N.map(function (l) {
+      return { id: l[0], label: l[1] };
+    }).concat([{ id: 'tour', label: '自动巡线', sub: '逐条轮播' }]), function (id) {
+      if (id === 'tour') {
+        state.tour = !state.tour;
+        if (state.tour && !state.solo) state.solo = 'pv';
+      } else {
+        state.tour = false;
+        state.solo = state.solo === id ? null : id;
+      }
+      relight(); sync();
+    });
+    /* 重新算亮线（主画面 + 四宫格一起） */
+    function relight() {
+      if (cur) applyConditions(cur, state.theme);
+      thumbs.forEach(function (b) { applyConditions(b, state.theme); });
+    }
+    btn(document.getElementById('camBtns'), [
+      { id: 'home', label: '全景' }, { id: 'top', label: '俯视' },
+      { id: 'side', label: '侧向' }, { id: 'low', label: '低角度' },
+      { id: 'u0', label: '一号特写', sub: '核九条线' },
+      { id: 'u1', label: '二号特写', sub: '核九条线' },
+      { id: 'u2', label: '三号特写', sub: '3 柜 + 九条线' }
+    ], function (id) { state.cam = id; flyTo(cur); sync(); });
+    btn(document.getElementById('viewBtns'), [
+      { id: 'night', label: '夜' }, { id: 'day', label: '昼' }, { id: 'quad', label: '四宫格', sub: '四拓扑同屏' },
+      { id: 'wires', label: '走线' }, { id: 'duis', label: '电缆墩' }, { id: 'tags', label: '标签' },
+      { id: 'reset', label: '复位' }
+    ], function (id) {
+      if (id === 'night' || id === 'day') { state.theme = id; refresh(true); }
+      else if (id === 'quad') { state.grid = !state.grid; if (state.grid && !thumbs.length) buildThumbs(); }
+      else if (id === 'wires') { state.wires = !state.wires; if (cur) cur.wireGrp.visible = state.wires; }
+      else if (id === 'tags') state.tags = !state.tags;
+      else if (id === 'duis') { state.duis = !state.duis; refresh(true); }
+      else if (id === 'reset') flyTo(cur);
+      sync();
+    });
+    document.getElementById('panelBtn').addEventListener('click', function () {
+      document.body.classList.toggle('off'); resize();
+    });
+    function updateInfo() {
+      var o = OPTS.filter(function (x) { return x.id === state.opt; })[0];
+      var f = FORMS.filter(function (x) { return x.id === state.form; })[0];
+      var s = cur.stats;
+      document.getElementById('info').innerHTML =
+        '<h3>' + o.name + ' <span style="color:#7fa8a2;font-size:12px">' + o.short + '</span></h3>' +
+        '<div>' + o.desc + '</div>' +
+        '<div class="st"><span>铁塔 <b>' + s.towers + '</b> 座</span>' +
+        '<span>分支杆 <b>' + s.poles + '</b> 根</span>' +
+        '<span>机组 <b>' + cur.units.length + '</b> 套（柜 ' +
+        cur.units.reduce(function (a, u) { return a + u.cabs.length; }, 0) + ' 台）</span>' +
+        '<span>站外联络线 <b>约 ' + Math.round(s.leads) + '</b> m</span></div>' +
+        '<div style="color:#3df0a0;font-size:11.5px">+ ' + o.plus.join('<br>+ ') + '</div>' +
+        '<div style="color:#f5a524;font-size:11.5px">− ' + o.minus.join('<br>− ') + '</div>' +
+        '<div class="gd"><b>什么时候选它：</b>' + o.fit + '</div>' +
+        '<div class="gd"><b>机组形态：</b>' + f.name + ' — ' + f.desc + '</div>';
+    }
+    function updateTopBadge() {
+      var o = OPTS.filter(function (x) { return x.id === state.opt; })[0];
+      var f = FORMS.filter(function (x) { return x.id === state.form; })[0];
+      var l = LAYS.filter(function (x) { return x.id === state.lay; })[0];
+      document.getElementById('topbadge').textContent = o.name + '｜' + f.name + '｜' + l.name + '｜' + o.short;
+    }
+
+    /* ---------------- 尺寸 / 循环 ---------------- */
+    function resize() {
+      var r = stage.getBoundingClientRect();
+      W = Math.max(2, Math.floor(r.width)); H = Math.max(2, Math.floor(r.height));
+      renderer.setSize(W, H);
+      camera.aspect = W / H; camera.updateProjectionMatrix();
+      if (labelR) labelR.setSize(W, H);
+      if (composer) composer.setSize(W, H);
+      thumbs.forEach(function (b) { b._fit = null; });
+      if (cur) flyTo(cur);
+    }
+    window.addEventListener('resize', resize);
+    var tourT = 0;
+    function nextSolo() {
+      if (!cur) return;
+      var have = {};
+      cur.flows.forEach(function (f) { have[f.kind] = 1; });
+      var i0 = -1;
+      SOLO_N.forEach(function (l, i) { if (l[0] === state.solo) i0 = i; });
+      for (var n = 1; n <= SOLO_N.length; n++) {
+        var k = SOLO_N[(i0 + n) % SOLO_N.length][0];
+        if (have[k]) { state.solo = k; return; }
+      }
+    }
+    var last = 0;
+    function loop(ts) {
+      requestAnimationFrame(loop);
+      var dt = Math.min(.05, (ts - last) / 1000 || 0); last = ts;
+      if (tween) {
+        tween.t = Math.min(1, tween.t + dt / .62);
+        var e = 1 - Math.pow(1 - tween.t, 3);
+        camera.position.lerpVectors(tween.from.p, tween.to.pos, e);
+        controls.target.lerpVectors(tween.from.g, tween.to.tgt, e);
+        if (tween.t >= 1) tween = null;
+      }
+      controls.update();
+      if (state.tour) {
+        tourT += dt;
+        if (tourT > 2.6) { tourT = 0; nextSolo(); relight(); sync(); }
+      }
+      var run = state.grid ? thumbs : [cur];
+      run.forEach(function (b) {
+        if (!b) return;
+        b.flows.forEach(function (f) {
+          f.map.offset.x = (f.map.offset.x - dt * (f.spd || .3) * .35 * f.dir) % 1;
+        });
+        if (!state.grid) b.beacons.forEach(function (bc) {
+          var k = .45 + .45 * Math.sin(ts / 520);
+          bc[0].material.opacity = .55 + k * .45; bc[1].material.opacity = .25 + k * .4;
+        });
+      });
+      if (state.grid) { if (thumbs.length) renderGrid(); }
+      else {
+        renderer.setScissorTest(false); renderer.setViewport(0, 0, W, H);
+        if (mainScene && composer) composer.render();
+        else if (mainScene) renderer.render(mainScene, camera);
+        if (labelR && mainScene) labelR.render(mainScene, camera);
+      }
+      scaleTags();
+    }
+    function scaleTags() {
+      if (!cur) return;
+      cur.tags.forEach(function (tg) {
+        var d = camera.position.distanceTo(tg.obj.getWorldPosition(new T.Vector3()));
+        var k = Math.max(.6, Math.min(1.15, 52 / d));
+        tg.el.style.fontSize = (12 * k).toFixed(1) + 'px';
+      });
+    }
+
+    /* ---------------- 起步 ---------------- */
+    window.__DBG = function () { return { T: T, cur: cur, thumbs: thumbs, state: state, camera: camera, renderer: renderer }; };
+    resize();
+    buildMain(true);
+    if (state.grid) buildThumbs();
+    sync();
+    requestAnimationFrame(loop);
+  }
+})();
+</script>
+</body>
+</html>
