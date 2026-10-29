@@ -627,8 +627,8 @@ window.MqttUI = (function () {
   const HEALTH_FIELDS = [
     { k: 'RackVoltage', n: '电池簇电压', u: 'V', d: 2 },
     { k: 'RackCurrent', n: '电池簇电流', u: 'A', d: 2 },
-    { k: 'SOC', n: 'RackSOC', u: '%', d: 1 },
-    { k: 'SOH', n: 'RackSOH', u: '%', d: 0 },
+    { k: 'SOC', n: '电池簇 SOC', u: '%', d: 1 },
+    { k: 'SOH', n: '电池簇 SOH', u: '%', d: 0 },
     { k: 'RackMaxVoltage', n: '最高单体电压', u: 'mV', d: 0, loc: ['RackMaxVoltageModuleId', 'RackMaxVolCellId'] },
     { k: 'RackMinVoltage', n: '最低单体电压', u: 'mV', d: 0, loc: ['RackMinVoltageModuleId', 'RackMinVolCellId'] },
     { k: 'RackMaxTemp', n: '最高温度', u: '℃', d: 0, loc: ['RackMaxTempModuleId', 'RackMaxTempCellId'] },
@@ -643,8 +643,8 @@ window.MqttUI = (function () {
       return '<div class="hc-card"><div class="hc-name">' + f.n + '</div>'
         + '<div class="hc-val"><b id="hv_' + f.k + '" data-v="0">--</b><u>' + f.u + '</u></div>'
         + (f.loc ? '<div class="hc-loc" id="hl_' + f.k + '">位置：--</div>' : '')
-        + '<div class="hc-tag">' + f.k + '</div></div>';
-    }).join('') + '<div class="hc-note" id="hcNote">数据来源：BMS 主控（设备类型 BMS）实时上报点位。</div>';
+        + '</div>';
+    }).join('') + '<div class="hc-note" id="hcNote">数据来源：BMS 主控实时上报点位。未收到簇 / 单体数据时显示 --（不编数据），收到报文后自动刷新。</div>';
   }
   function fe(v, d) { if (v === null || v === undefined || v === '') return '--'; const n = parseFloat(v); return isFinite(n) ? n.toFixed(d) : String(v); }
   function updateHealth(map) {
@@ -666,7 +666,10 @@ window.MqttUI = (function () {
       const n = Object.keys(bms).length;
       note.textContent = n
         ? '数据来源：BMS 主控实时上报（本次共 ' + n + ' 个 TAG）'
-        : '尚未收到 BMS 主控数据：请接入厂家 MQTT 或发起实时召测。';
+        : '尚未收到 BMS 主控数据：' + (CFG.protocol === 'gaote'
+          ? '高特 CCU 需上报 rtg/data/cluster（簇）与 rtg/data/cell（单体）点位'
+          : '晶农 EMS 需上报 BMS 设备点位')
+          + '。页面保持 --（不编数据），收到报文后自动刷新。';
     }
     if (!byId('healthView').classList.contains('hidden')) drawCellCharts(map);
   }
