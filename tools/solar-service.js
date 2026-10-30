@@ -94,14 +94,16 @@ async function api(pathname, params, opt) {
   let json = null;
   try { json = JSON.parse(text); } catch (_) {}
   if (!json) throw new Error('返回非 JSON：' + text.slice(0, 200));
-  /* 令牌失效 → 刷新一次重试 */
-  if (json.result_code && json.result_code !== '1' && /token|授权|auth/i.test(JSON.stringify(json.error || json))) {
+  /* 令牌失效 → 刷新一次重试。OAuth2 的错误可能只有 error 字段（invalid_token），
+     没有 result_code；不识别就会把空结果当成功，页面一直显示 0。 */
+  const errText = JSON.stringify(json.error || json);
+  if (json.error || (json.result_code && json.result_code !== '1')) {
     if (!opt || !opt.retried) {
-      const ok = await refreshToken();
-      if (ok) return api(pathname, params, Object.assign({}, opt || {}, { retried: true }));
+      if (/token|auth|授权/i.test(errText)) {
+        const ok = await refreshToken();
+        if (ok) return api(pathname, params, Object.assign({}, opt || {}, { retried: true }));
+      }
     }
-  }
-  if (json.result_code && json.result_code !== '1') {
     throw new Error('接口返回错误：' + JSON.stringify(json).slice(0, 300));
   }
   return json;
