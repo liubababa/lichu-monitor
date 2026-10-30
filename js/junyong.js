@@ -292,7 +292,7 @@ window.JunyongUI = (function () {
     h += '</tbody></table>'
       + '<div class="jy-note">光伏为全站合计（阳光云口径 · ps_id ' + (s.ps_id || '--') + '）；'
       + '“设备合计”来自 8 台逆变器，每 5 分钟更新；电站接口约滞后 5 分钟（与阳光云概览一致）。'
-      + '分机组的逆变器分组待现场确认后拆列。储能数据源未接入。</div></div>';
+      + '分机组的逆变器分组待现场确认后拆列。储能数据源未接入；三维暂按光伏充储能显示（数字仍为 --），接入后自动切真实工况。</div></div>';
     p.innerHTML = h;
   }
 
@@ -308,7 +308,7 @@ window.JunyongUI = (function () {
         + gvTile('实时功率', '--', 'kW', '正=放电 / 负=充电')
         + gvTile('SOC', '--', '%', '')
         + '</div>'
-        + '<div class="jy-note">储能数据源尚未接入（协议待与厂家确认）；接入后本页补电池簇 / PCS / 液冷 / 曲线明细。</div>'
+        + '<div class="jy-note">储能数据源尚未接入（协议待与厂家确认）；三维暂按光伏充储能显示，接入后本页补电池簇 / PCS / 液冷 / 曲线明细。</div>'
         + '<div class="jy-note">机组构成：' + STATION.groups.join('、') + '。</div>')
       + '</div>';
   }
@@ -492,7 +492,7 @@ window.JunyongUI = (function () {
     if (s.updated_at) { var t0 = Date.parse(s.updated_at); if (isFinite(t0)) age = (Date.now() - t0) / 60000; }
     if (age != null && age > 10) parts.push('数据延迟 ' + Math.round(age) + ' 分钟');
     if (lastErr) parts.push('读取失败：' + lastErr);
-    parts.push('储能数据源未接入');
+    parts.push('储能数据源未接入（三维暂按光伏充储能）');
     txt.textContent = parts.join('　·　');
     var bad = !!alarms || s.online === 0 || (age != null && age > 10) || !!lastErr;
     if (bar) bar.className = 'alarm ' + (bad ? 'bad' : 'ok');

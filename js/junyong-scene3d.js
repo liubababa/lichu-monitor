@@ -748,7 +748,9 @@ window.JunyongScene = (function () {
     var st = hasSt ? d.st : 0;
     var surplus = hasGrid ? -d.grid : null;              /* 正 = 送电（卖） */
     var loadEff = hasGrid ? Math.max(0, pv + st - surplus) : (d.load != null ? Math.max(0, pv + st) : 0);
-    var pvOn = hasPv && pv > .5, chg = hasSt && st < -.5, dis = hasSt && st > .5;
+    /* 储能数据未接入时的暂定显示：按「工况 1 · 光伏充储能」点亮，数字仍为 -- */
+    var provChg = !hasSt && hasPv;
+    var pvOn = hasPv && pv > .5, chg = hasSt ? (st < -.5) : provChg, dis = hasSt && st > .5;
     var sell = hasGrid && surplus > .3, buy = hasGrid && surplus < -.3;
     var its = [];
     if (pvOn && chg) its.push('1');
@@ -758,7 +760,7 @@ window.JunyongScene = (function () {
     if (chg && buy) its.push('5');
     if (dis) its.push('6');
     return { hasPv: hasPv, hasSt: hasSt, hasGrid: hasGrid, pv: pv, st: st, surplus: surplus,
-      stationPv: !hasGroupPv && stationPv.seen,
+      stationPv: !hasGroupPv && stationPv.seen, provChg: provChg,
       loadEff: loadEff, pvOn: pvOn, chg: chg, dis: dis, sell: sell, buy: buy, its: its };
   }
   function updateFlows() {
@@ -807,8 +809,9 @@ window.JunyongScene = (function () {
         ud.glow.material.opacity = (c.dis || c.chg) ? (theme === 'day' ? .07 : .13) : .03;
       });
       if (u.tagEl) {
-        u.tagEl.querySelector('i').textContent = c.its.length ? '工况 ' + c.its.join('+')
-          : (c.stationPv ? '全站光伏' : ((c.hasPv || c.hasSt || c.hasGrid) ? '本群待机' : '无数据'));
+        u.tagEl.querySelector('i').textContent = c.provChg ? '工况 1（暂按光伏充储能）'
+          : (c.its.length ? '工况 ' + c.its.join('+')
+            : (c.stationPv ? '全站光伏' : ((c.hasPv || c.hasSt || c.hasGrid) ? '本群待机' : '无数据')));
         u.tagEl.querySelector('em').textContent = fmtRow(data[i]);
       }
     });
@@ -849,8 +852,9 @@ window.JunyongScene = (function () {
         ['SOC', d.soc == null ? '-- %' : (+d.soc).toFixed(0) + ' %'],
         ['负载', num(d.load, ' kW')],
         ['关口表', d.grid == null ? '-- kW' : ((+d.grid >= 0 ? '取电 ' : '送电 ') + Math.abs(d.grid).toFixed(1) + ' kW')]
-      ], c.its.length ? '当前工况：' + c.its.join(' + ')
-        : ((c.hasPv || c.hasSt || c.hasGrid) ? '本群待机（数据已接入，当前无工况）' : '数据未接入'));
+      ], c.provChg ? '当前工况：1（暂按光伏充储能，储能数据未接入）'
+        : (c.its.length ? '当前工况：' + c.its.join(' + ')
+          : ((c.hasPv || c.hasSt || c.hasGrid) ? '本群待机（数据已接入，当前无工况）' : '数据未接入')));
     });
     if (activeCard === 'tower') {
       setCard('tower', '并网铁塔 · 10kV 上网线路', [
