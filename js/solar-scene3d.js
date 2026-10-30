@@ -64,6 +64,9 @@ window.SolarScene = (function () {
   let theme = 'night';
 
   const THREE_ = () => window.THREE;
+  /* 三站共用的观感数值（灯光量 / 泛光 / 暗角 / 曝光 / 地面 / 接触阴影）在 js/scene-preset.js，
+     本站只保留语义颜色 */
+  const SP = window.ScenePreset;
 
   /* 双主题参数表。
      夜（站点默认主题）= 暗色数字孪生：深底穹顶 + 青调地平线 + 网格场坪 + 发光强调；
@@ -73,32 +76,24 @@ window.SolarScene = (function () {
     night: {
       sky: [[0, '#04080c'], [.42, '#071219'], [.66, '#0d2530'], [.84, '#123743'], [1, '#17505f']],
       fog: { color: 0x0b1c24, near: 105, far: 300 },
-      bloom: { strength: .55, radius: .7, threshold: .78 },
-      vignette: { strength: .3, tint: .06 },
       lights: {
-        key: { color: 0xcfe8ff, base: .88, rad: .42 },
-        hemi: { sky: 0xbfe9ff, ground: 0x0a1518, base: .95 },
-        fill: { color: 0x2ee6c8, intensity: .38 }
+        key: { color: 0xcfe8ff, base: SP.ENV.night.lights.key, rad: .42 },
+        hemi: { sky: 0xbfe9ff, ground: 0x0a1518, base: SP.ENV.night.lights.hemi },
+        fill: { color: 0x2ee6c8, intensity: SP.ENV.night.lights.fill }
       },
-      edge: { color: 0x2ee6c8, opacity: .5 },
-      glow: { color: 0x2ee6c8, opacity: .08 },
-      sweep: .05,
+      sweep: SP.ENV.night.sweep,
       cloud: 0x22343c,
       particle: { color: 0x2ee6c8, opacity: .34 }
     },
     day: {
       sky: [[0, '#2f74b8'], [.45, '#5fa6d8'], [.62, '#9ccbe4'], [.78, '#cfe2ec'], [1, '#dbe9f0']],
       fog: { color: 0xd3e3ec, near: 120, far: 340 },
-      bloom: { strength: .12, radius: .6, threshold: .96 },
-      vignette: { strength: .12, tint: 0 },
       lights: {
-        key: { color: 0xfff2d0, base: .62, rad: .22 },
-        hemi: { sky: 0xdff0ff, ground: 0x76815f, base: .3 },
-        fill: { color: 0xbfe0ff, intensity: .1 }
+        key: { color: 0xfff2d0, base: SP.ENV.day.lights.key, rad: .22 },
+        hemi: { sky: 0xdff0ff, ground: 0x76815f, base: SP.ENV.day.lights.hemi },
+        fill: { color: 0xbfe0ff, intensity: SP.ENV.day.lights.fill }
       },
-      edge: { color: 0x0f9682, opacity: .35 },
-      glow: { color: 0x0f9682, opacity: .05 },
-      sweep: 0,
+      sweep: SP.ENV.day.sweep,
       cloud: 0xffffff,
       particle: { color: 0x0f9e86, opacity: .16 }
     }
@@ -135,11 +130,22 @@ window.SolarScene = (function () {
     const p = Object.assign({ roughness: .7, metalness: .2 }, o || {});
     return new THREE.MeshStandardMaterial({
       color: color, roughness: p.roughness, metalness: p.metalness,
-      envMapIntensity: p.envMapIntensity === undefined ? .2 : p.envMapIntensity
+      /* 天空反射强度跟共用 preset：金属件和玻璃没有它就是平、哑、塑料感 */
+      envMapIntensity: p.envMapIntensity === undefined ? SP.env(theme).envInt : p.envMapIntensity
     });
   }
   function box(w, h, d, mat, x, y, z) {
     const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+    m.position.set(x || 0, y || 0, z || 0);
+    m.castShadow = m.receiveShadow = true;
+    return m;
+  }
+  /* 倒角盒：原来所有方块都是硬边直角，这是"像纸盒"的直接原因。
+     底座 / 压顶 / 立柱 / 空调这些单材质件改用真倒角；
+     六面独立贴图的柜身与楼身仍用 Box（ExtrudeGeometry 给不出六面贴图），
+     靠四角立柱和檐口把轮廓的圆角读出来 */
+  function rbox(w, h, d, mat, x, y, z, r) {
+    const m = new THREE.Mesh(SP.roundedBoxCached(THREE_(), w, h, d, r === undefined ? .05 : r), mat);
     m.position.set(x || 0, y || 0, z || 0);
     m.castShadow = m.receiveShadow = true;
     return m;
@@ -364,72 +370,22 @@ window.SolarScene = (function () {
     }, 512, 256);
   }
   /* 水泥地坪（按白天新设计的 Demo 改：原来是发光网格地台，现在铺成真水泥地）
-     细砂眼 + 少量小色差 + 抹痕：远看近看都像水泥，不是一块平色板 */
-  function concreteTexture(t) {
-    const day = (t || theme) === 'day';
-    const tx = tex(function (g, w, h) {
-      g.fillStyle = day ? '#c2c5bd' : '#1d2a31'; g.fillRect(0, 0, w, h);
-      for (let i = 0; i < 9000; i++) {
-        const darkk = Math.random() > .5;
-        g.fillStyle = darkk
-          ? (day ? 'rgba(70,74,70,' + (.02 + Math.random() * .06) + ')' : 'rgba(0,0,0,' + (.03 + Math.random() * .08) + ')')
-          : (day ? 'rgba(255,255,255,' + (.02 + Math.random() * .05) + ')' : 'rgba(255,255,255,' + (.015 + Math.random() * .04) + ')');
-        const s = Math.random() < .85 ? 1 : 2;
-        g.fillRect(Math.random() * w, Math.random() * h, s, s);
-      }
-      for (let i = 0; i < 26; i++) {
-        g.fillStyle = day
-          ? (Math.random() > .5 ? 'rgba(90,96,92,.05)' : 'rgba(255,255,255,.05)')
-          : (Math.random() > .5 ? 'rgba(0,0,0,.07)' : 'rgba(255,255,255,.03)');
-        g.beginPath();
-        g.ellipse(Math.random() * w, Math.random() * h, 4 + Math.random() * 12, 3 + Math.random() * 8, Math.random() * 3, 0, 6.3);
-        g.fill();
-      }
-      for (let i = 0; i < 7; i++) {
-        g.strokeStyle = day ? 'rgba(255,255,255,.05)' : 'rgba(255,255,255,.025)';
-        g.lineWidth = 1;
-        const yy = Math.random() * h;
-        g.beginPath(); g.moveTo(0, yy); g.lineTo(w, yy + (Math.random() - .5) * 10); g.stroke();
-      }
-    }, 512, 512);
-    tx.wrapS = tx.wrapT = THREE.RepeatWrapping;
+     一块贴图 = 12m（3 块 4m 板 + 板缝），场坪再叠 3m 一格的数字孪生格网。
+     地面和场坪用同一块物理尺寸，两者接缝才对得上。
+     固定种子：原来用 Math.random() 画，每次切主题重排一次，地面会"跳"。 */
+  const TILE_M = 12;
+  const GROUND_REPEAT = 700 / TILE_M;
+  const SLAB_REPEAT = [460 / TILE_M, 240 / TILE_M];
+  function paveTex(grid) {
+    const tx = SP.paveTexture(THREE_(), theme, { grid: !!grid, cells: 3, gridCells: 4 });
+    /* 地面是斜着看的，不给各向异性远处格线会被 mipmap 糊成一片灰 */
     if (renderer && renderer.capabilities) tx.anisotropy = renderer.capabilities.getMaxAnisotropy();
     return tx;
   }
-
-  /* 场坪（数字孪生底座）：昼=浅色水泥 + 淡格线；夜=深色底盘 + 青色细格网。
-     贴图按 8×8 格画，铺到 96×58 的场坪上（repeat 后每格约 3m） */
-  function slabTexture(t) {
-    const night = (t || theme) === 'night';
-    const tx = tex(function (g, w, h) {
-      g.fillStyle = night ? '#1b2b33' : '#c4c7bf'; g.fillRect(0, 0, w, h);
-      for (let i = 0; i < 2600; i++) {
-        const darkk = Math.random() > .5;
-        g.fillStyle = darkk
-          ? (night ? 'rgba(0,0,0,' + (.03 + Math.random() * .07) + ')' : 'rgba(70,74,70,' + (.02 + Math.random() * .05) + ')')
-          : (night ? 'rgba(255,255,255,' + (.012 + Math.random() * .03) + ')' : 'rgba(255,255,255,' + (.02 + Math.random() * .05) + ')');
-        const s = Math.random() < .85 ? 1 : 2;
-        g.fillRect(Math.random() * w, Math.random() * h, s, s);
-      }
-      const cells = 8, cw = w / cells;
-      g.strokeStyle = night ? 'rgba(46,230,200,.13)' : 'rgba(30,90,95,.09)';
-      g.lineWidth = 1.2;
-      for (let i = 0; i <= cells; i++) {
-        const p = Math.round(i * cw) + .5;
-        g.beginPath(); g.moveTo(p, 0); g.lineTo(p, h); g.stroke();
-        g.beginPath(); g.moveTo(0, p); g.lineTo(w, p); g.stroke();
-      }
-      g.strokeStyle = night ? 'rgba(46,230,200,.22)' : 'rgba(30,90,95,.14)';
-      g.lineWidth = 2;
-      for (let i = 0; i <= cells; i += 4) {                        /* 每 4 格一条主格线 */
-        const p = Math.round(i * cw) + .5;
-        g.beginPath(); g.moveTo(p, 0); g.lineTo(p, h); g.stroke();
-        g.beginPath(); g.moveTo(0, p); g.lineTo(w, p); g.stroke();
-      }
-    }, 512, 512);
-    tx.wrapS = tx.wrapT = THREE.RepeatWrapping;
-    if (renderer && renderer.capabilities) tx.anisotropy = renderer.capabilities.getMaxAnisotropy();
-    return tx;
+  /* 接触阴影：方向光夜里很弱，只靠它大件一定飘；统一贴在坪面顶（.18）之上一点 */
+  const contacts = [];
+  function groundContact(parent, x, z, w, d) {
+    contacts.push(SP.contact(THREE_(), parent, x, z, w, d, .186, SP.env(theme).contact));
   }
 
   /* 径向光晕（加色用）：场坪上的光池、塔顶航标共用一张 */
@@ -532,37 +488,38 @@ window.SolarScene = (function () {
   /* ---------------- 场地 ---------------- */
   function buildSite() {
     const T = THREE_();
+    const PE = SP.env(theme);
     /* 地坪：整片地面铺到 700 见方，远边交给雾，任何角度都看不到地边 */
-    groundMat = regThemeMat(new T.MeshStandardMaterial({ map: concreteTexture(), roughness: .96, metalness: .02 }),
-      { envMapIntensity: .5 }, { envMapIntensity: .3 });
-    groundMat.map.repeat.set(47, 47);
+    groundMat = regThemeMat(new T.MeshStandardMaterial({ map: paveTex(false), roughness: .78, metalness: .05 }),
+      { envMapIntensity: PE.envInt }, { envMapIntensity: SP.env('day').envInt });
+    groundMat.map.repeat.set(GROUND_REPEAT, GROUND_REPEAT);
     const ground = new T.Mesh(new T.PlaneGeometry(700, 700), groundMat);
     ground.rotation.x = -Math.PI / 2;
     ground.receiveShadow = true;
     root.add(ground);
-    /* 场坪：数字孪生底座 —— 深色底盘 + 细格网（每格约 3m），四周一圈发光描边 */
-    slabYardMat = regThemeMat(new T.MeshStandardMaterial({ map: slabTexture(theme), roughness: .93, metalness: .02 }),
-      { envMapIntensity: .5 }, { envMapIntensity: .35 });
+    /* 场坪：数字孪生底座 —— 混凝土铺装 + 细格网（每格约 3m），四周一圈发光描边 */
+    slabYardMat = regThemeMat(new T.MeshStandardMaterial({ map: paveTex(true), roughness: .76, metalness: .05 }),
+      { envMapIntensity: PE.envInt }, { envMapIntensity: SP.env('day').envInt });
     /* 场坪面往深度里推一点：四周那圈发光描边（EdgesGeometry 正好落在场坪棱上）
        和柜体底座顶面都跟坪面共面，不推开会远看闪烁 */
     slabYardMat.polygonOffset = true;
     slabYardMat.polygonOffsetFactor = 1;
     slabYardMat.polygonOffsetUnits = 1;
-    slabYardMat.map.repeat.set(19, 10);
+    slabYardMat.map.repeat.set(SLAB_REPEAT[0], SLAB_REPEAT[1]);
     root.add(box(460, .18, 240, slabYardMat, 0, .09, 0));
     /* 场坪描边：EdgesGeometry 细线，就是画面里"场地边界"的那圈光 */
     slabEdge = new T.LineSegments(
       new T.EdgesGeometry(new T.BoxGeometry(460, .18, 240)),
-      regThemeMat(new T.LineBasicMaterial({ color: 0x2ee6c8, transparent: true, opacity: .5, depthWrite: false }),
-        {}, { color: 0x0f9682, opacity: .35 }));
+      regThemeMat(new T.LineBasicMaterial({ color: 0x2ee6c8, transparent: true, opacity: PE.edge, depthWrite: false, toneMapped: false }),
+        { color: 0x2ee6c8, opacity: SP.env('night').edge }, { color: 0x0f9682, opacity: SP.env('day').edge }));
     slabEdge.position.y = .09;
     root.add(slabEdge);
     /* 坪面光池：加色径向渐变，场坪中心亮、四周暗 */
     siteGlow = new T.Mesh(new T.PlaneGeometry(150, 100),
       regThemeMat(new T.MeshBasicMaterial({
-        map: radialGlowTexture(), color: 0x2ee6c8, transparent: true, opacity: .08,
-        blending: T.AdditiveBlending, depthWrite: false
-      }), {}, { color: 0x0f9682, opacity: .05 }));
+        map: radialGlowTexture(), color: 0x2ee6c8, transparent: true, opacity: PE.glow,
+        blending: T.AdditiveBlending, depthWrite: false, toneMapped: false
+      }), { color: 0x2ee6c8, opacity: SP.env('night').glow }, { color: 0x0f9682, opacity: SP.env('day').glow }));
     siteGlow.rotation.x = -Math.PI / 2;
     siteGlow.position.y = .2;
     siteGlow.renderOrder = 2;
@@ -571,7 +528,7 @@ window.SolarScene = (function () {
     sweepMesh = new T.Mesh(new T.PlaneGeometry(26, 74),
       new T.MeshBasicMaterial({
         map: sweepTexture(), color: 0x2ee6c8, transparent: true, opacity: 0,
-        blending: T.AdditiveBlending, depthWrite: false
+        blending: T.AdditiveBlending, depthWrite: false, toneMapped: false
       }));
     sweepMesh.rotation.x = -Math.PI / 2;
     sweepMesh.position.y = .21;
@@ -599,19 +556,19 @@ window.SolarScene = (function () {
     root.add(bld);
     bld.userData.key = 'hosp';                 /* 点楼体 → 卫生院明细卡（与旭日东明厂房同款） */
     occluders.push(bld);                       /* 楼体：挡住它后面的浮标 */
-    root.add(box(W2 + .2, .55, D2 + .2, bandMat, 0, .58, 0));              /* 深色基座带 */
+    root.add(rbox(W2 + .2, .55, D2 + .2, bandMat, 0, .58, 0, .07));              /* 深色基座带（倒角） */
     /* 楼层腰线（一圈） */
-    [-1, 1].forEach(function (sz) { root.add(box(W2 + .24, .16, .18, trimMat, 0, FLOOR_Y + .3, sz * (D2 / 2 + .05))); });
-    [-1, 1].forEach(function (sx) { root.add(box(.18, .16, D2 + .24, trimMat, sx * (W2 / 2 + .05), FLOOR_Y + .3, 0)); });
-    /* 女儿墙 */
+    [-1, 1].forEach(function (sz) { root.add(rbox(W2 + .24, .16, .18, trimMat, 0, FLOOR_Y + .3, sz * (D2 / 2 + .05), .045)); });
+    [-1, 1].forEach(function (sx) { root.add(rbox(.18, .16, D2 + .24, trimMat, sx * (W2 / 2 + .05), FLOOR_Y + .3, 0, .045)); });
+    /* 女儿墙（倒角：硬边墙压着屋顶，远看像贴了一张纸） */
     const par = regThemeMat(std(0xb3b8ad, { roughness: .85, envMapIntensity: .16 }), { color: 0x1f2f38, envMapIntensity: .26 });
-    root.add(box(W2 + .6, .5, .3, par, 0, roofY + .25, -D2 / 2));
-    root.add(box(W2 + .6, .5, .3, par, 0, roofY + .25, D2 / 2));
-    root.add(box(.3, .5, D2, par, -W2 / 2, roofY + .25, 0));
-    root.add(box(.3, .5, D2, par, W2 / 2, roofY + .25, 0));
+    root.add(rbox(W2 + .6, .5, .3, par, 0, roofY + .25, -D2 / 2, .05));
+    root.add(rbox(W2 + .6, .5, .3, par, 0, roofY + .25, D2 / 2, .05));
+    root.add(rbox(.3, .5, D2, par, -W2 / 2, roofY + .25, 0, .05));
+    root.add(rbox(.3, .5, D2, par, W2 / 2, roofY + .25, 0, .05));
     /* 屋面发光轮廓线：沿女儿墙顶走一圈。比墙顶抬高 1cm、纵横两组再错开 2cm——
        原来正好坐在墙顶面上，远看线条会跟墙顶深度打架（一闪一闪） */
-    const roofLineMat = regThemeMat(new T.MeshBasicMaterial({ color: 0x2ee6c8, transparent: true, opacity: .72 }),
+    const roofLineMat = regThemeMat(new T.MeshBasicMaterial({ color: 0x2ee6c8, transparent: true, opacity: .72, toneMapped: false }),
       {}, { color: 0x0f9682, opacity: .4 });
     root.add(box(W2 + .66, .05, .05, roofLineMat, 0, roofY + .535, D2 / 2));
     root.add(box(W2 + .66, .05, .05, roofLineMat, 0, roofY + .535, -D2 / 2));
@@ -822,7 +779,7 @@ window.SolarScene = (function () {
     g.rotation.y = 0;
     const W = CAB_W, H = CAB_H, D = CAB_D;
     /* 混凝土基础台：柜体直接落在网格上看着"没生根" */
-    g.add(box(W + .42, .16, D + .42, regThemeMat(std(0x9aa3a6, { roughness: .92 }), { color: 0x2a3a40 }, { color: 0x3b4a4f }), 0, .08, 0));
+    g.add(rbox(W + .42, .16, D + .42, regThemeMat(std(0x9aa3a6, { roughness: .92 }), { color: 0x2a3a40 }, { color: 0x3b4a4f }), 0, .08, 0, .06));
     const steel = regThemeMat(std(0xc6ccce, { roughness: .45, metalness: .55, envMapIntensity: .6 }), { color: 0x46565d, envMapIntensity: .8 });
     const dark = std(0x22333a, { roughness: .5, metalness: .5, envMapIntensity: .5 });
     const front = regThemeMat(new T.MeshStandardMaterial({ map: cabFrontTexture(theme), roughness: .5, metalness: .35, envMapIntensity: .4 }),
@@ -830,34 +787,34 @@ window.SolarScene = (function () {
     const side = regThemeMat(new T.MeshStandardMaterial({ map: cabSideTexture(theme), roughness: .55, metalness: .35, envMapIntensity: .4 }),
       { map: function (t) { return cabSideTexture(t); }, envMapIntensity: .6 });
     const topMat = regThemeMat(std(0xd6dbdc, { roughness: .6, metalness: .3 }), { color: 0x2b3a42 });
-    g.add(box(W + .24, .18, D + .24, dark, 0, .09, 0));                                /* 底座 */
+    g.add(rbox(W + .24, .18, D + .24, dark, 0, .09, 0, .05));                                /* 底座（倒角） */
     const body = new T.Mesh(new T.BoxGeometry(W, H, D), [side, side, topMat, side, front, side]);
     body.position.y = H / 2 + .18;
     body.castShadow = body.receiveShadow = true;
     g.add(body);
     occluders.push(body);                              /* 储能柜体：挡住它后面的浮标 */
-    [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(function (c) {                        /* 四角立柱 */
-      g.add(box(.1, H + .04, .1, steel, c[0] * (W / 2 - .02), H / 2 + .18, c[1] * (D / 2 - .02)));
+    [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(function (c) {                        /* 四角立柱（倒角） */
+      g.add(rbox(.1, H + .04, .1, steel, c[0] * (W / 2 - .02), H / 2 + .18, c[1] * (D / 2 - .02), .028));
     });
-    g.add(box(W * .74, .32, D * .78, regThemeMat(std(0xdfe4e2, { roughness: .6 }), { color: 0x26343b }), 0, H + .36, 0));  /* 顶部空调 */
-    for (let k = 0; k < 4; k++) g.add(box(W * .6, .04, .07, steel, 0, H + .52, -.22 + k * .15));
+    g.add(rbox(W * .74, .32, D * .78, regThemeMat(std(0xdfe4e2, { roughness: .6 }), { color: 0x26343b }), 0, H + .36, 0, .06));  /* 顶部空调（倒角） */
+    for (let k = 0; k < 4; k++) g.add(rbox(W * .6, .04, .07, steel, 0, H + .52, -.22 + k * .15, .014));
     /* 侧面 SOC 光柱：两侧各一条，从下往上长 */
     cabSocBars = [];
     const colH = H * .62, base = .18 + H * .5 - colH / 2;
     [-1, 1].forEach(function (sgn) {
-      g.add(box(.06, colH + .1, .32, dark, sgn * (W / 2 + .04), .18 + H * .5, D * .2));
+      g.add(rbox(.06, colH + .1, .32, dark, sgn * (W / 2 + .04), .18 + H * .5, D * .2, .02));
       const geo = new T.BoxGeometry(.05, colH, .26); geo.translate(0, colH / 2, 0);
-      const bar = new T.Mesh(geo, new T.MeshBasicMaterial({ color: 0x6f9a94 }));
+      const bar = new T.Mesh(geo, new T.MeshBasicMaterial({ color: 0x6f9a94, toneMapped: false }));
       bar.position.set(sgn * (W / 2 + .07), base, D * .2);
       g.add(bar);
       cabSocBars.push(bar);
     });
     g.add(box(.22, .13, .04, dark, W / 2 - .5, .18 + H * .86, D / 2 + .03));            /* 指示灯底座 */
-    cabLed = new T.Mesh(new T.BoxGeometry(.16, .09, .05), new T.MeshBasicMaterial({ color: 0x6f9a94 }));
+    cabLed = new T.Mesh(new T.BoxGeometry(.16, .09, .05), new T.MeshBasicMaterial({ color: 0x6f9a94, toneMapped: false }));
     cabLed.position.set(W / 2 - .5, .18 + H * .86, D / 2 + .055);
     g.add(cabLed);
     cabGlow = new T.Mesh(new T.PlaneGeometry(W * 1.7, D * 1.9),
-      regThemeMat(new T.MeshBasicMaterial({ color: 0x2ee6c8, transparent: true, opacity: .06, blending: T.AdditiveBlending, depthWrite: false }),
+      regThemeMat(new T.MeshBasicMaterial({ color: 0x2ee6c8, transparent: true, opacity: .06, blending: T.AdditiveBlending, depthWrite: false, toneMapped: false }),
         { opacity: .11 }));
     cabGlow.rotation.x = -Math.PI / 2;
     cabGlow.position.y = .22;
@@ -985,7 +942,7 @@ window.SolarScene = (function () {
     g.add(new T.Line(new T.BufferGeometry().setFromPoints(gpts), condMat));
     /* 塔顶航空障碍灯：红点 + 加色光晕，呼吸闪烁（给暗色画面一个活点） */
     beacon = new T.Mesh(new T.SphereGeometry(.13, 10, 10),
-      new T.MeshBasicMaterial({ color: 0xff5a3c, transparent: true, opacity: .9, fog: false }));
+      new T.MeshBasicMaterial({ color: 0xff5a3c, transparent: true, opacity: .9, fog: false, toneMapped: false }));
     beacon.position.set(0, hgt + 1.06, 0);
     g.add(beacon);
     beaconGlow = new T.Sprite(new T.SpriteMaterial({
@@ -1086,9 +1043,11 @@ window.SolarScene = (function () {
       new THREE.MeshStandardMaterial({ color: 0x2a3b42, roughness: .48, metalness: .45 }));
     core.castShadow = true;
     root.add(core);
+    /* 光纹是"被照亮的线"不是"被灯照的表面"：toneMapped:false，
+       否则 ACES 把工况光纹压到看不见，而光纹亮灭正是这张图要表达的信息 */
     const tubeMat = new THREE.MeshBasicMaterial({
       map: flowTexture(len), color: FLOWC.night.idle, transparent: true, opacity: .3,
-      blending: THREE.AdditiveBlending, depthWrite: false
+      blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false
     });
     root.add(new THREE.Mesh(new THREE.TubeGeometry(curve, seg, (radius || .05) * 2.0, 8, false), tubeMat));
     flows.push({ map: tubeMat.map, tubeMat: tubeMat, kind: kind, on: false, speed: 0, dir: 1, tint: 0 });
@@ -1184,8 +1143,8 @@ window.SolarScene = (function () {
 
     renderer = new T.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = T.PCFSoftShadowMap;
+    /* ACES 色调映射 + 柔和阴影：自发光超过 1.0 不再直接裁成纯白，高光有滚降 */
+    SP.setupRenderer(T, renderer, theme);
     const host = document.getElementById('solar3d');
     host.appendChild(renderer.domElement);
 
@@ -1218,9 +1177,12 @@ window.SolarScene = (function () {
     sunLight.position.set(34, 40, 22);
     sunLight.castShadow = true;
     sunLight.shadow.mapSize.set(2048, 2048);
+    /* 阴影相机罩住设备群即可（塔 -22 → 楼 +7）；铺到整片 460 场坪等于把 2048
+       摊到几百米上，阴影反而糊成一片。normalBias 给格构细杆用，纯负 bias 会让杆影脱开自己 */
     const sc = sunLight.shadow.camera;
-    sc.left = -58; sc.right = 58; sc.top = 58; sc.bottom = -58; sc.near = 1; sc.far = 220;
-    sunLight.shadow.bias = -0.0009;
+    sc.left = -36; sc.right = 36; sc.top = 32; sc.bottom = -32; sc.near = 1; sc.far = 140;
+    sunLight.shadow.bias = -0.0006;
+    sunLight.shadow.normalBias = .02;
     scene.add(sunLight);
     fillLight = new T.DirectionalLight(tp.lights.fill.color, tp.lights.fill.intensity);
     fillLight.position.set(-24, 14, -18);
@@ -1246,6 +1208,11 @@ window.SolarScene = (function () {
     buildEquipment();
     buildStorageCabinet();
     buildWalkers();               /* 院内走动的人（抽象小人） */
+
+    /* 大件落地阴影：夜里方向光很弱，楼 / 柜 / 塔单靠它会飘在格子上 */
+    groundContact(root, 0, 0, 16.5, 11.5);              // 卫生院
+    groundContact(root, CAB_X, CAB_Z, 4.2, 3.3);        // 储能柜
+    groundContact(root, TWR_X, TWR_Z, 5.6, 5.6);        // 并网铁塔
 
     /* ---------- 能量流 ----------
        光伏干线沿西墙直落，到二楼分岔点（3.9）先分出"光伏→卫生院"支线；有多余的电才继续往下
@@ -1431,42 +1398,11 @@ window.SolarScene = (function () {
     /* 后期处理：MSAA + 泛光（只让日光、电流光纹这类高亮点发光）+ 暗角冷调
        暗角 pass 是"高级感"的关键一步：压住四角、让画面中心聚焦到设备上 */
     if (typeof T.EffectComposer === 'function' && T.RenderPass && T.UnrealBloomPass) {
-      try {
-        const w = host.clientWidth || 800, h = host.clientHeight || 480;
-        const msaa = (typeof T.WebGLMultisampleRenderTarget === 'function')
-          ? new T.WebGLMultisampleRenderTarget(w, h, { format: T.RGBAFormat })
-          : null;
-        composer = new T.EffectComposer(renderer, msaa || undefined);
-        if (msaa) composer.setPixelRatio(renderer.getPixelRatio());
-        composer.addPass(new T.RenderPass(scene, camera));
-        /* 泛光按半分辨率跑：模糊效果肉眼看不出差别，但填充率省 4 倍——
-           高 DPI 屏（DPR 2）上这是拖动卡顿的大头 */
-        bloomPass = new T.UnrealBloomPass(new T.Vector2(w * .5, h * .5),
-          tp.bloom.strength, tp.bloom.radius, tp.bloom.threshold);
-        composer.addPass(bloomPass);
-        if (typeof T.ShaderPass === 'function') {
-          vigPass = new T.ShaderPass({
-            uniforms: {
-              tDiffuse: { value: null },
-              strength: { value: tp.vignette.strength },
-              tint: { value: tp.vignette.tint }
-            },
-            vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-            fragmentShader: [
-              'uniform sampler2D tDiffuse; uniform float strength; uniform float tint; varying vec2 vUv;',
-              'void main(){',
-              '  vec4 c = texture2D(tDiffuse, vUv);',
-              '  vec2 d = vUv - .5;',
-              '  float r = length(d) * 1.42;',
-              '  c.rgb *= clamp(1.0 - strength * pow(max(r - .26, 0.0), 2.1), 0.0, 1.0);',
-              '  c.b *= 1.0 + tint; c.r *= 1.0 - tint * .5;',
-              '  gl_FragColor = c;',
-              '}'
-            ].join('\n')
-          });
-          composer.addPass(vigPass);
-        }
-      } catch (e) { composer = null; }
+      /* 泛光半分辨率 + MSAA 渲染目标 + 暗角，三站同一条链，见 js/scene-preset.js */
+      const cp = SP.compose(T, renderer, scene, camera, theme, {
+        width: host.clientWidth || 800, height: host.clientHeight || 480
+      });
+      composer = cp.composer; bloomPass = cp.bloomPass; vigPass = cp.vigPass;
     }
 
     refreshEnv();
@@ -1507,15 +1443,15 @@ window.SolarScene = (function () {
     /* 地面 / 场坪贴图重画（夜：深底 + 青格网；昼：浅色水泥 + 淡格线） */
     if (groundMat) {
       const old = groundMat.map;
-      groundMat.map = concreteTexture();
-      groundMat.map.repeat.set(47, 47);
+      groundMat.map = paveTex(false);
+      groundMat.map.repeat.set(GROUND_REPEAT, GROUND_REPEAT);
       groundMat.needsUpdate = true;
       if (old) old.dispose();
     }
     if (slabYardMat) {
       const old = slabYardMat.map;
-      slabYardMat.map = slabTexture(theme);
-      slabYardMat.map.repeat.set(19, 10);
+      slabYardMat.map = paveTex(true);
+      slabYardMat.map.repeat.set(SLAB_REPEAT[0], SLAB_REPEAT[1]);
       slabYardMat.needsUpdate = true;
       if (old) old.dispose();
     }
@@ -1527,15 +1463,9 @@ window.SolarScene = (function () {
       scene.fog.near = p.fog.near;
       scene.fog.far = p.fog.far;
     }
-    if (bloomPass) {
-      bloomPass.strength = p.bloom.strength;
-      bloomPass.radius = p.bloom.radius;
-      bloomPass.threshold = p.bloom.threshold;
-    }
-    if (vigPass) {
-      vigPass.uniforms.strength.value = p.vignette.strength;
-      vigPass.uniforms.tint.value = p.vignette.tint;
-    }
+    SP.setExposure(renderer, theme);
+    SP.applyThemeToPasses(bloomPass, vigPass, theme);
+    contacts.forEach(function (m) { m.material.opacity = SP.env(theme).contact; });
     refreshSkyLight();
     /* 各条光纹的颜色取自 FLOWC[theme]：切主题后立刻按新主题重算一遍，
        否则要等下一次数据推送（页面 1 分钟一刷）颜色才跟上——白天浅底上会留着夜色 */
@@ -1725,14 +1655,9 @@ window.SolarScene = (function () {
     for (let i = 0; i < labelPairs.length; i++) {
       const it = labelPairs[i];
       it.obj.getWorldPosition(_lblV);
-      const d = camera.position.distanceTo(_lblV);
-      let k = LBL_REF / Math.max(1, d);
-      k = Math.min(1, Math.max(0.36, k));
-      if (Math.abs((it.k || 0) - k) < 0.04) continue;      /* 变化小于 4% 就不写样式：拖动时每帧改 CSS 也要重排，是顿挫的来源 */
-      it.k = k;
-      it.el.style.setProperty('--lbl-scale', k.toFixed(3));
-      /* 拉得越远越淡：0.36 时降到 0.3，远景不至于是"一片标签" */
-      it.el.style.opacity = (0.3 + 0.7 * Math.min(1, (k - 0.36) / 0.64)).toFixed(2);
+      /* 缩放规则三站共用（ScenePreset.scaleLabelTo）：变化小于门槛就不写样式，
+         拖动时每帧改 CSS 也要重排，是顿挫的来源 */
+      SP.scaleLabelTo(it, camera.position.distanceTo(_lblV), LBL_REF);
     }
   }
 
@@ -2011,8 +1936,7 @@ window.SolarScene = (function () {
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
     if (labelR) labelR.setSize(w, h);
-    if (composer) composer.setSize(w, h);
-    if (bloomPass) bloomPass.setSize(w * .5, h * .5);
+    SP.resizeComposer(composer, bloomPass, w, h);
   }
 
   /* ---------------- 对外 ---------------- */

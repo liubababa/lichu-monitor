@@ -22,6 +22,7 @@ window.GaoteScene3D = (function () {
   /* 默认不自动旋转（用户要求），要用时点右上角「旋转」按钮 */
   let rot = { auto: false, speed: 0.05 }, labelsOn = true, activeCardKey = null;
   const groups = {};        // key -> THREE.Group
+  const contacts = [];      // 接触阴影片，浓度随主题调
   const labelEls = {};      // key -> .tag3d element
   const cardEls = {};       // key -> .card3d element
   const strips = {};        // key -> 柜顶色条
@@ -33,15 +34,17 @@ window.GaoteScene3D = (function () {
      场景里用到的可换色对象（地面、台面、灯光、辉光强度）建好后记录在这里 */
   let theme = 'night';
   let groundMat = null, slabYardMat = null, slabEdge = null, siteGlow = null, sweepMesh = null;
-  let hemiLight = null, sunLight = null, fillLight = null, bloomPass = null;
+  let hemiLight = null, sunLight = null, fillLight = null, bloomPass = null, vigPass = null;
+  let envRT = null;                // 天空环境贴图（IBL）的渲染目标
   let camHome = null;              // 默认机位（按画布宽高比算好后存下来，重置视角复用）
+  /* 白天 / 夜晚双主题：默认夜晚（深色科技感），白天为浅色天空 + 浅色地坪。
+     这里只放本站的"颜色"；灯光量 / 泛光 / 暗角 / 曝光 / 接触阴影这些观感数值
+     三站共用，在 js/scene-preset.js 的 ENV 里，别再各写各的 */
   const THEMES = {
     night: {
       bg: 0x04090c, fog: 0x0b1c24, fogNear: 105, fogFar: 300,
-      /* 场地铺成水泥地（白天新设计的 Demo），夜里深灰、白天浅灰 */
-      hemiSky: 0xbfe9ff, hemiGround: 0x0a1518, hemiInt: .95,
-      sunColor: 0xcfe8ff, sunInt: .88, fillColor: 0x2ee6c8, fillInt: .38, bloom: .55, bloomTh: .78,
-      vignette: { strength: .3, tint: .06 }, sweep: .05,
+      hemiSky: 0xbfe9ff, hemiGround: 0x0a1518,
+      sunColor: 0xcfe8ff, fillColor: 0x2ee6c8,
       /* 状态色：充电(蓝) / 放电(青) / 待机(灰) */
       stateChg: 0x8fd8ff, stateDis: 0x3df0a0, stateIdle: 0x6f9a94,
       /* 电流光纹：放电(青) / 充电(蓝) / 馈电卖电(橙) / 待机(暗)；夜里用加色混合发光 */
@@ -50,11 +53,8 @@ window.GaoteScene3D = (function () {
     },
     day: {
       bg: 0xdbe9f0, fog: 0xd3e3ec, fogNear: 120, fogFar: 340,
-      /* 光照总量压在 1.0 附近：再高浅色水泥地就过曝成纯白，阴影全丢。
-         环境光给足（阴面才不会发黑成剪影），直射光适度 */
-      hemiSky: 0xdff0ff, hemiGround: 0x76815f, hemiInt: .3,
-      sunColor: 0xfff2d0, sunInt: .62, fillColor: 0xbfe0ff, fillInt: .1, bloom: .12, bloomTh: .96,
-      vignette: { strength: .12, tint: 0 }, sweep: 0,
+      hemiSky: 0xdff0ff, hemiGround: 0x76815f,
+      sunColor: 0xfff2d0, fillColor: 0xbfe0ff,
       /* 白天：充电(蓝) / 放电(绿) / 待机(灰)——与光纹同色系 */
       stateChg: 0x1f7fd0, stateDis: 0x159a63, stateIdle: 0x9aa9a9,
       /* 电流光纹：白天浅底用饱和暖色 + 普通混合，否则会被浅底冲淡 */
@@ -88,8 +88,7 @@ window.GaoteScene3D = (function () {
     return mesh;
   }
 
-  /* 浮标按相机距离缩放：HTML 浮标是固定像素大小，拉远后模型缩成一点、浮标还是原尺寸，
-     就会糊成一片。这里按"默认机位距离 = 100%"给每个浮标算缩放，并让远处略微淡出 */
+  /* 浮标按相机距离缩放：规则三站共用（ScenePreset.scaleLabelTo），这里只给本站的基准距离 */
   const labelPairs = [];             // { obj, el, k }
   const LBL_REF = 26;                // 默认机位附近：浮标 100%
   let _lblV = null;
@@ -99,14 +98,7 @@ window.GaoteScene3D = (function () {
     for (let i = 0; i < labelPairs.length; i++) {
       const it = labelPairs[i];
       it.obj.getWorldPosition(_lblV);
-      const d = camera.position.distanceTo(_lblV);
-      let k = LBL_REF / Math.max(1, d);
-      k = Math.min(1.15, Math.max(0.45, k));
-      if (Math.abs((it.k || 0) - k) < 0.01) continue;      /* 变化太小就不写样式，免得每帧折腾 DOM */
-      it.k = k;
-      it.el.style.setProperty('--lbl-scale', k.toFixed(3));
-      /* 拉得越远越淡：0.45 时降到 0.35，远景不至于是"一片标签" */
-      it.el.style.opacity = (0.35 + 0.65 * Math.min(1, (k - 0.45) / 0.55)).toFixed(2);
+      window.ScenePreset.scaleLabelTo(it, camera.position.distanceTo(_lblV), LBL_REF);
     }
   }
 
@@ -131,9 +123,23 @@ window.GaoteScene3D = (function () {
   let facLabelEl = null, facOn = false, facWinMat = null, facSpillMat = null, facFaceMat = null, facWinBase = .8;
 
   /* ---------------- 基础工具 ---------------- */
-  function std(c, o) { return new THREE.MeshStandardMaterial(Object.assign({ color: c, roughness: .6, metalness: .35 }, o || {})); }
+  /* envMapIntensity 一律跟共用 preset 走：金属件和玻璃没有天空反射就是平、哑、塑料感 */
+  function std(c, o) {
+    return new THREE.MeshStandardMaterial(Object.assign(
+      { color: c, roughness: .6, metalness: .35, envMapIntensity: window.ScenePreset.env(theme).envInt }, o || {}));
+  }
   function box(w, h, d, m, x, y, z) {
     const M = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m);
+    M.position.set(x, y, z);
+    M.castShadow = M.receiveShadow = true;
+    return M;
+  }
+  /* 倒角盒：原来所有方块都是硬边直角，这是"像纸盒"的直接原因。
+     底座 / 压顶 / 立柱 / 空调这些单材质件改用真倒角；
+     六面独立贴图的柜身与楼身仍用 Box（ExtrudeGeometry 给不出六面贴图），
+     靠四角立柱和檐口把轮廓的圆角读出来 */
+  function rbox(w, h, d, m, x, y, z, r) {
+    const M = new THREE.Mesh(window.ScenePreset.roundedBoxCached(THREE, w, h, d, r === undefined ? .05 : r), m);
     M.position.set(x, y, z);
     M.castShadow = M.receiveShadow = true;
     return M;
@@ -150,41 +156,22 @@ window.GaoteScene3D = (function () {
     return new THREE.CanvasTexture(c);
   }
 
-  /* 场坪网格（2026-10-29 与洙边同一口径同步）：深色底盘 + 青色细格网，每格约 3m；
-     昼 = 浅色水泥 + 淡格线。原来那版随机污渍（26 个椭圆软斑 + 划痕）近看像脏污，已移除 */
-  function concreteTexture(grid) {
-    const day = theme === 'day';
-    const tx = tex(function (g, w, h) {
-      g.fillStyle = day ? '#c4c7bf' : '#1b2b33'; g.fillRect(0, 0, w, h);
-      for (let i = 0; i < 2600; i++) {
-        const darkk = Math.random() > .5;
-        g.fillStyle = darkk
-          ? (day ? 'rgba(70,74,70,' + (.02 + Math.random() * .05) + ')' : 'rgba(0,0,0,' + (.03 + Math.random() * .07) + ')')
-          : (day ? 'rgba(255,255,255,' + (.02 + Math.random() * .05) + ')' : 'rgba(255,255,255,' + (.012 + Math.random() * .03) + ')');
-        const s = Math.random() < .85 ? 1 : 2;
-        g.fillRect(Math.random() * w, Math.random() * h, s, s);
-      }
-      if (grid) {
-        const cells = 8, cw = w / cells;
-        g.strokeStyle = day ? 'rgba(30,90,95,.09)' : 'rgba(46,230,200,.13)';
-        g.lineWidth = 1.2;
-        for (let i = 0; i <= cells; i++) {
-          const p = Math.round(i * cw) + .5;
-          g.beginPath(); g.moveTo(p, 0); g.lineTo(p, h); g.stroke();
-          g.beginPath(); g.moveTo(0, p); g.lineTo(w, p); g.stroke();
-        }
-        g.strokeStyle = day ? 'rgba(30,90,95,.14)' : 'rgba(46,230,200,.22)';
-        g.lineWidth = 2;
-        for (let i = 0; i <= cells; i += 4) {                      /* 每 4 格一条主格线 */
-          const p = Math.round(i * cw) + .5;
-          g.beginPath(); g.moveTo(p, 0); g.lineTo(p, h); g.stroke();
-          g.beginPath(); g.moveTo(0, p); g.lineTo(w, p); g.stroke();
-        }
-      }
-    }, 512, 512);
-    tx.wrapS = tx.wrapT = THREE.RepeatWrapping;
+  /* 场坪 / 地坪贴图：三站同一份生成器（js/scene-preset.js）。
+     一块贴图 = 12m，3 块 4m 板 + 板缝；场坪再叠 3m 一格的数字孪生格网。
+     地面和场坪用同一块物理尺寸，两者接缝才对得上。 */
+  const TILE_M = 12;
+  function paveTex(grid) {
+    const tx = window.ScenePreset.paveTexture(THREE, theme, { grid: !!grid, cells: 3, gridCells: 4 });
+    /* 地面是斜着看的，不给各向异性远处格线会被 mipmap 糊成一片灰 */
     if (renderer && renderer.capabilities) tx.anisotropy = renderer.capabilities.getMaxAnisotropy();
     return tx;
+  }
+  const GROUND_REPEAT = 700 / TILE_M;
+  const SLAB_REPEAT = [460 / TILE_M, 240 / TILE_M];
+  /* 接触阴影统一贴在坪面顶（.18）之上一点点，浓度随主题；收集起来好一起调 */
+  function groundContact(parent, x, z, w, d) {
+    const PE = window.ScenePreset.env(theme);
+    contacts.push(window.ScenePreset.contact(THREE, parent, x, z, w, d, .186, PE.contact));
   }
   /* 场坪上的光池 / 扫光带贴图（洙边同款） */
   function radialGlowTexture() {
@@ -393,13 +380,15 @@ window.GaoteScene3D = (function () {
     const len = Math.max(1, curve.getLength());
     const seg = Math.max(14, Math.round(len * 4));
 
+    /* 电缆本身是"被照亮的线"而不是"被灯照的表面"：一律 toneMapped:false，
+       否则 ACES 会把工况光纹压到看不见，而光纹亮灭正是这张图要表达的信息 */
     const core = new THREE.Mesh(new THREE.TubeGeometry(curve, seg, .052, 6, false),
-      new THREE.MeshBasicMaterial({ color: 0x122a2f, transparent: true, opacity: .95 }));
+      new THREE.MeshBasicMaterial({ color: 0x122a2f, transparent: true, opacity: .95, toneMapped: false }));
     (parent || scene).add(core);
 
     const tubeMat = new THREE.MeshBasicMaterial({
       map: flowTexture(len), color: 0x16303a, transparent: true, opacity: .3,
-      blending: THREE.AdditiveBlending, depthWrite: false
+      blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false
     });
     const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, seg, .105, 8, false), tubeMat);
     (parent || scene).add(tube);
@@ -442,20 +431,20 @@ window.GaoteScene3D = (function () {
     const M = texCache.mats;
     const post = M.post;
 
-    g.add(box(W + .22, .16, D + .22, M.dark, 0, .08, 0));                                 // 底座
+    g.add(rbox(W + .22, .16, D + .22, M.dark, 0, .08, 0, .05));                                 // 底座（倒角）
     const body = new THREE.Mesh(new THREE.BoxGeometry(W, H, D), [M.cabSide, M.cabSide, M.cabTop, M.cabSide, M.cabFront, M.cabSide]);
     body.position.y = H / 2 + .16;
     body.castShadow = body.receiveShadow = true;
     g.add(body);
-    [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(function (c) {                            // 四角立柱
-      g.add(box(.1, H + .04, .1, post, c[0] * (W / 2 - .02), H / 2 + .16, c[1] * (D / 2 - .02)));
+    [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(function (c) {                            // 四角立柱（倒角）
+      g.add(rbox(.1, H + .04, .1, post, c[0] * (W / 2 - .02), H / 2 + .16, c[1] * (D / 2 - .02), .028));
     });
-    g.add(box(W * .72, .3, D * .78, M.ac, 0, H + .33, 0));   // 顶部空调
+    g.add(rbox(W * .72, .3, D * .78, M.ac, 0, H + .33, 0, .06));   // 顶部空调（倒角）
     for (let k = 0; k < 4; k++) {
-      g.add(box(W * .6, .03, .06, M.acVent, 0, H + .47, -.2 + k * .13));
+      g.add(rbox(W * .6, .03, .06, M.acVent, 0, H + .47, -.2 + k * .13, .012));
     }
 
-    const strip = box(W * .92, .12, D * .92, std(0x6f9a94, { emissive: 0x000000 }), 0, H + .2, 0);        // 柜顶色条
+    const strip = rbox(W * .92, .12, D * .92, std(0x6f9a94, { emissive: 0x000000 }), 0, H + .2, 0, .04);        // 柜顶色条
     g.add(strip);
     strips[key] = strip;
 
@@ -468,7 +457,7 @@ window.GaoteScene3D = (function () {
       g.add(box(.05, colH + .08, .3, M.slot, sgn * (W / 2 + .035), .16 + H * .5, colZ));
       const socGeo = new THREE.BoxGeometry(.045, colH, .24);
       socGeo.translate(0, colH / 2, 0);                     // 原点移到底部 → scale.y 即"从下往上长"
-      const socBar = new THREE.Mesh(socGeo, new THREE.MeshBasicMaterial({ color: 0x6f9a94 }));
+      const socBar = new THREE.Mesh(socGeo, new THREE.MeshBasicMaterial({ color: 0x6f9a94, toneMapped: false }));
       socBar.position.set(sgn * (W / 2 + .062), colBase, colZ);
       g.add(socBar);
       gauges[key].push(socBar);
@@ -480,16 +469,16 @@ window.GaoteScene3D = (function () {
         g.add(box(.09, .16, .05, post, s * (W / 2 - .05), .16 + H * t, D / 2 + .03));
       });
     });
-    g.add(box(.07, .4, .06, post, W / 2 - .28, .16 + H * .5, D / 2 + .04));                                  // 门把手
+    g.add(rbox(.07, .4, .06, post, W / 2 - .28, .16 + H * .5, D / 2 + .04, .02));                                  // 门把手
     g.add(box(.34, .18, .02, M.plate, -W / 2 + .34, .16 + H * .76, D / 2 + .022));                           // 铭牌底
-    g.add(box(.3, .14, .03, new THREE.MeshBasicMaterial({ color: 0xd9a02a }), -W / 2 + .34, .16 + H * .76, D / 2 + .036));
-    g.add(box(W * .46, .2, .28, M.ac, 0, .2, D / 2 + .12));                                                  // 底部进线箱
-    g.add(box(W * .2, .06, .18, M.fan, -W * .3, H + .5, D * .1));                                            // 顶部风机
+    g.add(box(.3, .14, .03, new THREE.MeshBasicMaterial({ color: 0xd9a02a, toneMapped: false }), -W / 2 + .34, .16 + H * .76, D / 2 + .036));
+    g.add(rbox(W * .46, .2, .28, M.ac, 0, .2, D / 2 + .12, .04));                                                  // 底部进线箱
+    g.add(rbox(W * .2, .06, .18, M.fan, -W * .3, H + .5, D * .1, .025));                                            // 顶部风机
 
     /* 门锁、状态指示灯、接地排、柜号牌：近景里经得起看的细节 */
     g.add(box(.05, .13, .05, post, W / 2 - .6, .16 + H * .32, D / 2 + .045));                                // 门锁
     g.add(box(.17, .11, .03, M.slot, -W / 2 + .3, .16 + H * .9, D / 2 + .02));                               // 指示灯底座
-    const led = new THREE.Mesh(new THREE.BoxGeometry(.12, .07, .04), new THREE.MeshBasicMaterial({ color: 0x6f9a94 }));
+    const led = new THREE.Mesh(new THREE.BoxGeometry(.12, .07, .04), new THREE.MeshBasicMaterial({ color: 0x6f9a94, toneMapped: false }));
     led.position.set(-W / 2 + .3, .16 + H * .9, D / 2 + .045);
     g.add(led);
     g.userData.led = led;                                                                                    // update() 按充放电状态点亮
@@ -507,11 +496,14 @@ window.GaoteScene3D = (function () {
     g.add(numPlane);
 
     const glow = new THREE.Mesh(new THREE.PlaneGeometry(W * 1.45, D * 1.7),
-      new THREE.MeshBasicMaterial({ color: 0x2ee6c8, transparent: true, opacity: .06, blending: THREE.AdditiveBlending, depthWrite: false }));
+      new THREE.MeshBasicMaterial({ color: 0x2ee6c8, transparent: true, opacity: .06, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
     glow.rotation.x = -Math.PI / 2;
     glow.position.set(0, .2, 0);
+    glow.renderOrder = 3;
     g.add(glow);
     g.userData.glow = glow;
+    /* 接触阴影：方向光的阴影在夜里很弱，只靠它柜子一定飘。脚下先落一层软黑 */
+    groundContact(g, 0, 0, W * 1.5, D * 1.9);
 
     g.userData.key = key;
     groups[key] = g;
@@ -750,7 +742,7 @@ window.GaoteScene3D = (function () {
        否则窗带与窗户会穿进附房、腰线会和附房屋顶板糊成"屋檐重叠" */
     const lzEnd = D / 2 + .11;                       /* 附房已删：左侧腰线/窗带通长到前角 */
 
-    g.add(box(W + .7, top, D + .7, M.dark, 0, top / 2, 0));                                  // 基座
+    g.add(rbox(W + .7, top, D + .7, M.dark, 0, top / 2, 0, .12));                                  // 基座（倒角）
     /* 两层厂房（参考图：现代工业风 —— 白色主墙 + 灰色分段 + 竖向长条窗 + 平顶，
        夜里窗户随"用电"发光，就是参考图那种暖光 + 黑剪影的效果） */
     const wallMat = regMat(std(0xd7dbdc, { roughness: .72, metalness: .12 }),
@@ -764,25 +756,25 @@ window.GaoteScene3D = (function () {
     hall.castShadow = hall.receiveShadow = true;
     g.add(hall);
     /* 深色基座（参考图底部那道深色） */
-    g.add(box(W + .18, .45, D + .18, bandMat0, 0, top + .225, 0));
+    g.add(rbox(W + .18, .45, D + .18, bandMat0, 0, top + .225, 0, .07));
 
     /* 楼层线：两层建筑只在中间留一道腰线（浅灰带），上边一层窗带 */
     const fy = top + H / 2;
     [-1, 1].forEach(function (sz) {
-      g.add(box(W + .22, .16, .18, trimMat, 0, fy, sz * (D / 2 + .04)));
+      g.add(rbox(W + .22, .16, .18, trimMat, 0, fy, sz * (D / 2 + .04), .045));
     });
-    g.add(box(.18, .16, D + .22, trimMat, W / 2 + .04, fy, 0));                                // 右侧整条
+    g.add(rbox(.18, .16, D + .22, trimMat, W / 2 + .04, fy, 0, .045));                                // 右侧整条
     const lz0 = -(D / 2) - .11;
-    g.add(box(.18, .16, lzEnd - lz0, trimMat, -(W / 2 + .04), fy, (lz0 + lzEnd) / 2));         // 左侧只到附房边
+    g.add(rbox(.18, .16, lzEnd - lz0, trimMat, -(W / 2 + .04), fy, (lz0 + lzEnd) / 2, .045));         // 左侧只到附房边
 
     /* 平屋顶：炭黑屋面板 + 女儿墙 + 屋顶机组（替换原来的双坡屋顶与山墙） */
     const parH = .55;
-    g.add(box(W + .5, .18, D + .5, trimMat, 0, top + H + .09, 0));                             // 屋面板
+    g.add(rbox(W + .5, .18, D + .5, trimMat, 0, top + H + .09, 0, .06));                             // 屋面板
     [-1, 1].forEach(function (sz) {
-      g.add(box(W + .6, parH, .26, trimMat, 0, top + H + .18 + parH / 2, sz * (D / 2 + .05)));
+      g.add(rbox(W + .6, parH, .26, trimMat, 0, top + H + .18 + parH / 2, sz * (D / 2 + .05), .05));
     });
     [-1, 1].forEach(function (sx) {
-      g.add(box(.26, parH, D + .6, trimMat, sx * (W / 2 + .05), top + H + .18 + parH / 2, 0));
+      g.add(rbox(.26, parH, D + .6, trimMat, sx * (W / 2 + .05), top + H + .18 + parH / 2, 0, .05));
     });
 
     /* 窗户贴图（改进版）：窗框 + 窗格 + 暖色室内。
@@ -852,7 +844,7 @@ window.GaoteScene3D = (function () {
       grd.addColorStop(1, 'rgba(255,255,255,0)');
       gc.fillStyle = grd; gc.fillRect(0, 0, w, h);
     }, 128, 64);
-    facFaceMat = new THREE.MeshBasicMaterial({ map: faceGlowTex, transparent: true, opacity: .2, blending: THREE.AdditiveBlending, depthWrite: false });
+    facFaceMat = new THREE.MeshBasicMaterial({ map: faceGlowTex, transparent: true, opacity: .2, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
     const faceGlow = new THREE.Mesh(new THREE.PlaneGeometry(W - .2, bandH * 2.6), facFaceMat);
     faceGlow.position.set(0, top + 4.65, D / 2 + .06);
     g.add(faceGlow);
@@ -886,7 +878,7 @@ window.GaoteScene3D = (function () {
       grd.addColorStop(1, 'rgba(255,255,255,0)');
       gc.fillStyle = grd; gc.fillRect(0, 0, w, h);
     }, 64, 64);
-    facSpillMat = new THREE.MeshBasicMaterial({ map: spillTex, transparent: true, opacity: .26, blending: THREE.AdditiveBlending, depthWrite: false });
+    facSpillMat = new THREE.MeshBasicMaterial({ map: spillTex, transparent: true, opacity: .26, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
     const spill = new THREE.Mesh(new THREE.PlaneGeometry(4.4, 1.2), facSpillMat);
     spill.rotation.x = -Math.PI / 2;
     spill.position.set(doorX, top + .27, D / 2 + .9);
@@ -975,7 +967,7 @@ window.GaoteScene3D = (function () {
     carriage.position.set(-.52, .16, 0);
     fl.add(carriage);
     const flLamp = new THREE.Mesh(new THREE.SphereGeometry(.075, 8, 6),
-      new THREE.MeshBasicMaterial({ color: 0xffb020 }));
+      new THREE.MeshBasicMaterial({ color: 0xffb020, toneMapped: false }));
     flLamp.position.set(-.35, 1.62, 0);
     fl.add(flLamp);
     g.add(fl);
@@ -1022,33 +1014,36 @@ window.GaoteScene3D = (function () {
   /* ---------------- 构建场景 ---------------- */
   function buildStation() {
     const root = new THREE.Group();
+    const PE = window.ScenePreset.env(theme);
 
-    /* 地坪：整片水泥地，铺到 700 见方（远处交给雾效），任何角度都看不到地边与"台下" */
+    /* 地坪：整片混凝土铺装，铺到 700 见方（远处交给雾效），任何角度都看不到地边与"台下" */
     groundMat = new THREE.MeshStandardMaterial({
-      map: concreteTexture(false), roughness: .96, metalness: .02
+      map: paveTex(false), roughness: .78, metalness: .05, envMapIntensity: PE.envInt
     });
-    groundMat.map.repeat.set(47, 47);   /* 洙边同款水泥大地面（每格约 3m） */
+    groundMat.map.repeat.set(GROUND_REPEAT, GROUND_REPEAT);
     const ground = new THREE.Mesh(new THREE.PlaneGeometry(700, 700), groundMat);
     ground.rotation.x = -Math.PI / 2;
     ground.receiveShadow = true;
     root.add(ground);
     /* 场合坪：洙边同款网格场坪（尺寸按本站设备范围） */
-    slabYardMat = new THREE.MeshStandardMaterial({ map: concreteTexture(true), roughness: .93, metalness: .02 });
-    slabYardMat.map.repeat.set(19, 10);
+    slabYardMat = new THREE.MeshStandardMaterial({
+      map: paveTex(true), roughness: .76, metalness: .05, envMapIntensity: PE.envInt
+    });
+    slabYardMat.map.repeat.set(SLAB_REPEAT[0], SLAB_REPEAT[1]);
     root.add(box(460, .18, 240, slabYardMat, 0, .09, 0));
-    /* 场坪发光描边（洙边同款） */
+    /* 场坪发光描边（洙边同款）：只勾边界，浓度压到不抢设备 */
     slabEdge = new THREE.LineSegments(
       new THREE.EdgesGeometry(new THREE.BoxGeometry(460, .18, 240)),
-      regMat(new THREE.LineBasicMaterial({ color: 0x2ee6c8, transparent: true, opacity: .5, depthWrite: false }),
-        {}, { color: 0x0f9682, opacity: .35 }));
+      regMat(new THREE.LineBasicMaterial({ color: 0x2ee6c8, transparent: true, opacity: PE.edge, depthWrite: false, toneMapped: false }),
+        { opacity: PE.edge }, { color: 0x0f9682, opacity: window.ScenePreset.env('day').edge }));
     slabEdge.position.y = .09;
     root.add(slabEdge);
     /* 坪面光池：加色径向渐变（洙边同款 150×100） */
     siteGlow = new THREE.Mesh(new THREE.PlaneGeometry(150, 100),
       regMat(new THREE.MeshBasicMaterial({
-        map: radialGlowTexture(), color: 0x2ee6c8, transparent: true, opacity: .08,
-        blending: THREE.AdditiveBlending, depthWrite: false
-      }), {}, { color: 0x0f9682, opacity: .05 }));
+        map: radialGlowTexture(), color: 0x2ee6c8, transparent: true, opacity: PE.glow,
+        blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false
+      }), { opacity: PE.glow }, { color: 0x0f9682, opacity: window.ScenePreset.env('day').glow }));
     siteGlow.rotation.x = -Math.PI / 2;
     siteGlow.position.y = .2;
     siteGlow.renderOrder = 2;
@@ -1057,7 +1052,7 @@ window.GaoteScene3D = (function () {
     sweepMesh = new THREE.Mesh(new THREE.PlaneGeometry(26, 74),
       new THREE.MeshBasicMaterial({
         map: sweepTexture(), color: 0x2ee6c8, transparent: true, opacity: 0,
-        blending: THREE.AdditiveBlending, depthWrite: false
+        blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false
       }));
     sweepMesh.rotation.x = -Math.PI / 2;
     sweepMesh.position.y = .21;
@@ -1180,6 +1175,10 @@ window.GaoteScene3D = (function () {
 
     buildFactory(root);
 
+    /* 大件落地阴影：夜里方向光很弱，铁塔和厂房单靠它会飘在格子上 */
+    groundContact(root, TWR_X, TWR_Z, 5.4, 5.4);
+    groundContact(root, FAC_X, FAC_Z, FAC_W + 3.4, FAC_D + 3.2);
+
     scene.add(root);
     layoutStacks(stackN);
   }
@@ -1187,6 +1186,8 @@ window.GaoteScene3D = (function () {
   /* ---------- 按实际堆数排布储能柜 ---------- */
   function layoutStacks(n) {
     stackN = Math.max(1, Math.min(MAXN, n || 2));
+    /* 阴影贴图是冻结的，柜数一变要补烘一次，否则旧柜子的影子留在地上 */
+    if (renderer && renderer.shadowMap) renderer.shadowMap.needsUpdate = true;
     const startX = -(stackN - 1) * GAP / 2;
     for (let i = 0; i < MAXN; i++) {
       const g = groups['stack' + i];
@@ -1554,9 +1555,10 @@ window.GaoteScene3D = (function () {
   function onResize() {
     if (!host || !renderer) return;
     const w = host.clientWidth, h = host.clientHeight;
+    if (!w || !h) return;
     camera.aspect = w / h; camera.updateProjectionMatrix();
     renderer.setSize(w, h); labelRenderer.setSize(w, h);
-    if (composer) composer.setSize(w, h);
+    window.ScenePreset.resizeComposer(composer, bloomPass, w, h);
   }
 
   /* ---------------- 天气（与洙边同源：只切效果，不产生任何文字） ----------------
@@ -1653,25 +1655,26 @@ window.GaoteScene3D = (function () {
   function applyTheme(t) {
     theme = THEMES[t] ? t : 'night';
     const p = THEMES[theme];
+    const PE = window.ScenePreset.env(theme);
     if (!scene) return;
     scene.background = new THREE.Color(p.bg);
     if (scene.fog) { scene.fog.color.setHex(p.fog); scene.fog.near = p.fogNear; scene.fog.far = p.fogFar; }
-    /* 水泥地坪 / 场坪跟着主题重画：夜里深灰、白天浅灰 */
+    /* 水泥地坪 / 场坪跟着主题重画：夜里深灰、白天浅灰（固定种子，切主题不会重排） */
     if (groundMat) {
       const old = groundMat.map;
-      groundMat.map = concreteTexture(false);
-      groundMat.map.repeat.set(47, 47);   /* 洙边同款水泥大地面（每格约 3m） */
+      groundMat.map = paveTex(false);
+      groundMat.map.repeat.set(GROUND_REPEAT, GROUND_REPEAT);
       groundMat.needsUpdate = true;
       if (old) old.dispose();
     }
     if (slabYardMat) {
       const old = slabYardMat.map;
-      slabYardMat.map = concreteTexture(true);
-      slabYardMat.map.repeat.set(19, 10);
+      slabYardMat.map = paveTex(true);
+      slabYardMat.map.repeat.set(SLAB_REPEAT[0], SLAB_REPEAT[1]);
       slabYardMat.needsUpdate = true;
       if (old) old.dispose();
     }
-    if (sweepMesh) sweepMesh.material.opacity = p.sweep || 0;
+    if (sweepMesh) sweepMesh.material.opacity = PE.sweep;
     /* 光纹混合方式跟着主题：夜里加色发光，白天普通混合（否则浅底上看不见） */
     flows.forEach(function (fl) {
       fl.tubeMat.blending = p.flowBlend ? THREE.AdditiveBlending : THREE.NormalBlending;
@@ -1682,16 +1685,17 @@ window.GaoteScene3D = (function () {
       m.color.setHex(p.flowBlend ? 0x2ee6c8 : 0x2e6f7c);
       m.opacity = p.flowBlend ? .32 : .6;
     });
-    if (hemiLight) { hemiLight.color.setHex(p.hemiSky); hemiLight.groundColor.setHex(p.hemiGround); hemiLight.intensity = p.hemiInt; }
-    if (sunLight) { sunLight.color.setHex(p.sunColor); sunLight.intensity = p.sunInt; }
-    if (fillLight) { fillLight.color.setHex(p.fillColor); fillLight.intensity = p.fillInt; }
-    if (bloomPass) {
-      /* 白天整体本来就亮：泛光阈值拉到 0.95 以上，否则地坪/天空会被泛光"洗白" */
-      bloomPass.strength = p.bloom;
-      bloomPass.threshold = p.bloomTh;
-    }
+    /* 灯光颜色留在本站 THEMES，强度一律取共用 preset：ACES 会吃掉约两成中间调，
+       光量必须比"没有色调映射"时代给得高，否则改完反而更黑 */
+    if (hemiLight) { hemiLight.color.setHex(p.hemiSky); hemiLight.groundColor.setHex(p.hemiGround); hemiLight.intensity = PE.lights.hemi; }
+    if (sunLight) { sunLight.color.setHex(p.sunColor); sunLight.intensity = PE.lights.key; }
+    if (fillLight) { fillLight.color.setHex(p.fillColor); fillLight.intensity = PE.lights.fill; }
+    window.ScenePreset.setExposure(renderer, theme);
+    window.ScenePreset.applyThemeToPasses(bloomPass, vigPass, theme);
+    contacts.forEach(function (m) { m.material.opacity = PE.contact; });
 
-    /* 天空：白天用渐变穹顶（顶部蓝 → 地平线雾白），夜里收回深色背景 */
+    /* 天空：白天用渐变穹顶（顶部蓝 → 地平线雾白），夜里也用穹顶给一条地平线微光，
+       地面边缘才有"融进大气"的收口，而不是直接淡进纯黑 */
     if (p.sky) {
       if (!skyDome) { skyDome = makeSkyDome(p.sky); scene.add(skyDome); }
       else {
@@ -1702,6 +1706,8 @@ window.GaoteScene3D = (function () {
       }
       skyDome.visible = true;
       scene.background = null;
+      /* 穹顶顺手烘一张环境贴图：金属件和玻璃没有它一定是平、哑、塑料感 */
+      envRT = window.ScenePreset.buildEnvironment(THREE, renderer, scene, skyDome.material.map, envRT);
     } else if (skyDome) {
       skyDome.visible = false;
       scene.background = new THREE.Color(p.bg);
@@ -1715,6 +1721,7 @@ window.GaoteScene3D = (function () {
       const cfg = e[theme] || e.night;
       if (cfg.color !== undefined) e.mat.color.setHex(cfg.color);
       if (cfg.map) e.mat.map = cfg.map;
+      if (e.mat.envMapIntensity !== undefined) e.mat.envMapIntensity = PE.envInt;
       if (cfg.emissive !== undefined && e.mat.emissive) {
         if (typeof cfg.emissive === 'number') e.mat.emissive.setHex(cfg.emissive);
         else e.mat.emissive.copy(cfg.emissive);
@@ -1793,8 +1800,8 @@ window.GaoteScene3D = (function () {
     renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
     renderer.setSize(w, h);
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;      // 柔和阴影，硬边阴影显廉价
+    /* ACES 色调映射 + 柔和阴影：自发光超过 1.0 不再直接裁成纯白，高光有滚降 */
+    window.ScenePreset.setupRenderer(THREE, renderer, theme);
     el.appendChild(renderer.domElement);
 
     labelRenderer = new THREE.CSS2DRenderer();
@@ -1804,18 +1811,24 @@ window.GaoteScene3D = (function () {
     labelRenderer.domElement.style.pointerEvents = 'none';
     el.appendChild(labelRenderer.domElement);
 
-    hemiLight = new THREE.HemisphereLight(0xbfe9ff, 0x0a1a1e, 1.05);
+    const PE0 = window.ScenePreset.env(theme);
+    hemiLight = new THREE.HemisphereLight(0xbfe9ff, 0x0a1a1e, PE0.lights.hemi);
     scene.add(hemiLight);
-    sunLight = new THREE.DirectionalLight(0xffffff, .85);
+    sunLight = new THREE.DirectionalLight(0xffffff, PE0.lights.key);
     sunLight.position.set(9, 14, 7); sunLight.castShadow = true;
-    /* 阴影相机覆盖整个场地：设备在地坪上留下接触阴影，白天也不会显得"飘" */
+    /* 阴影相机只要罩住设备群（塔 -17 → 厂房 23，柜阵南北 ±8），罩到整片 460 场坪
+       等于把 2048 的贴图摊到几百米上，阴影反而糊成一片。
+       normalBias 给格构杆件用，负 bias 太大会让细杆的阴影"脱开"自己 */
     sunLight.shadow.mapSize.set(2048, 2048);
-    sunLight.shadow.camera.left = -24; sunLight.shadow.camera.right = 24;
-    sunLight.shadow.camera.top = 20; sunLight.shadow.camera.bottom = -20;
-    sunLight.shadow.camera.near = 1; sunLight.shadow.camera.far = 60;
-    sunLight.shadow.bias = -0.0012;
+    sunLight.shadow.camera.left = -30; sunLight.shadow.camera.right = 30;
+    sunLight.shadow.camera.top = 26; sunLight.shadow.camera.bottom = -26;
+    sunLight.shadow.camera.near = 1; sunLight.shadow.camera.far = 90;
+    sunLight.shadow.bias = -0.0006;
+    sunLight.shadow.normalBias = .02;
+    sunLight.target.position.set(3, 0, 1);
+    scene.add(sunLight.target);
     scene.add(sunLight);
-    fillLight = new THREE.DirectionalLight(0x2ee6c8, .35);
+    fillLight = new THREE.DirectionalLight(0x2ee6c8, PE0.lights.fill);
     fillLight.position.set(-8, 6, -6);
     scene.add(fillLight);
 
@@ -1828,20 +1841,11 @@ window.GaoteScene3D = (function () {
       controls.target.copy(camTgt);      /* 必须和机位用同一个目标点，否则每帧 update() 会把镜头重新瞄偏 */
       controls.autoRotate = rot.auto; controls.autoRotateSpeed = rot.speed * 6;
     }
-    if (typeof THREE.EffectComposer === 'function' && THREE.RenderPass && THREE.UnrealBloomPass) {
-      try {
-        /* 走了 bloom 离屏渲染后 renderer 自带的抗锯齿就失效了（只作用于默认帧缓冲），
-           细杆 / 电缆这些窄物体会出现锯齿和抖动——给 composer 配多重采样渲染目标把 MSAA 找回来 */
-        const msaa = (typeof THREE.WebGLMultisampleRenderTarget === 'function')
-          ? new THREE.WebGLMultisampleRenderTarget(w, h, { format: THREE.RGBAFormat })
-          : null;
-        composer = new THREE.EffectComposer(renderer, msaa || undefined);
-        if (msaa) composer.setPixelRatio(renderer.getPixelRatio());
-        composer.addPass(new THREE.RenderPass(scene, camera));
-        bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(w, h), THEMES.night.bloom, .85, .82);
-        composer.addPass(bloomPass);
-      } catch (_) { composer = null; }
-    }
+    const cp = window.ScenePreset.compose(THREE, renderer, scene, camera, theme, { width: w, height: h });
+    composer = cp.composer; bloomPass = cp.bloomPass; vigPass = cp.vigPass;
+    /* 阴影贴图冻结：太阳不动、行人和叉车都刻意不投影，每帧重烘 2048 的阴影图纯属白烧。
+       柜数变化 / 换主题时手动补烘一次（见 layoutStacks 与 applyTheme） */
+    if (composer) { renderer.shadowMap.autoUpdate = false; renderer.shadowMap.needsUpdate = true; }
     buildStation();
     applyTheme(theme);
     bind();
