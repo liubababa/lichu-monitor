@@ -23,12 +23,16 @@ window.JunyongScene = (function () {
   'use strict';
 
   var T_ = function () { return window.THREE; };
-  var inited = false, scene, camera, renderer, composer = null, bloomPass = null, controls, labelR = null;
+  var inited = false, scene, camera, renderer, composer = null, bloomPass = null, vigPass = null, controls, labelR = null;
   var root = null, raf = null, W = 0, H = 0, active = true, last = 0;
   var theme = 'night', labelsOn = true, rotating = false, camHome = null, camAz = 0;
   var flows = [], units = [], tower = null, beacons = [], occluders = [];
   var labelPairs = [], cards = {}, activeCard = null;
   var key = null, hemi = null, fill = null, dome = null;
+  /* 环境层（照洙边那套）：坪面光池 / 扫光带 / 日月 / 云 / 降水 / 天空环境贴图 */
+  var siteGlow = null, sweepMesh = null, sun = null, sunGlow = null, moon = null;
+  var cloudGrp = null, rainInst = null, rainMat = null, cloudMats = [], envRT = null;
+  var RAIN_N = 420, rainX = [], rainY = [], rainZ = [], rainV = [], _rainM = null;
   /* 三组机组各自的数据；null = 该路没上报（不亮线，不当 0 处理） */
   var data = [ {}, {}, {} ];
   var wx = { cloud: null, precip: null, isDay: null, radiation: null };
@@ -49,8 +53,9 @@ window.JunyongScene = (function () {
   var THEMES = {
     night: {
       sky: [[0, '#04080c'], [.42, '#071219'], [.66, '#0d2530'], [.84, '#123743'], [1, '#17505f']],
-      bg: 0x050b0d, fog: { c: 0x0b1c24, near: 150, far: 460 }, bloom: { s: .42, r: .6, t: .84 },
-      key: .62, hemi: .6, fill: .26,
+      bg: 0x050b0d, fog: { c: 0x0b1c24, near: 105, far: 300 }, bloom: { s: .55, r: .7, t: .78 },
+      vignette: { s: .3, t: .06 }, sweep: .05, cloud: 0x22343c,
+      key: .88, keyRad: .42, hemi: .95, fill: .38,
       steel: 0x46565d, dark: 0x1b272c, top: 0x2b3a42, pad: 0x2a3a40, frame: 0x5a6a70,
       leg: 0x6d8b93, brace: 0x54737b, arm: 0x2ee6c8, ins: 0xd8e6e4,
       wallTop: 0x22333c, wallBot: 0x0d1519, trim: 0x2c4048, base: 0x1b2830, par: 0x1f2f38,
@@ -63,8 +68,9 @@ window.JunyongScene = (function () {
     },
     day: {
       sky: [[0, '#2f74b8'], [.45, '#5fa6d8'], [.62, '#9ccbe4'], [.78, '#cfe2ec'], [1, '#dbe9f0']],
-      bg: 0xdbe9f0, fog: { c: 0xd3e3ec, near: 170, far: 500 }, bloom: { s: .1, r: .6, t: .96 },
-      key: .78, hemi: .55, fill: .1,
+      bg: 0xdbe9f0, fog: { c: 0xd3e3ec, near: 120, far: 340 }, bloom: { s: .12, r: .6, t: .96 },
+      vignette: { s: .12, t: 0 }, sweep: 0, cloud: 0xffffff,
+      key: .62, keyRad: .22, hemi: .3, fill: .1,
       steel: 0xc6ccce, dark: 0x3c4a50, top: 0xd6dbdc, pad: 0x9aa3a6, frame: 0xb9c1c3,
       leg: 0x93a3a8, brace: 0x7d8f94, arm: 0x18b39a, ins: 0xf2f6f5,
       wallTop: 0xbcc0b7, wallBot: 0x545c58, trim: 0x8d9598, base: 0x515b5e, par: 0xb3b8ad,
@@ -300,6 +306,25 @@ window.JunyongScene = (function () {
       grd.addColorStop(0, 'rgba(255,255,255,.9)'); grd.addColorStop(.35, 'rgba(255,255,255,.32)'); grd.addColorStop(1, 'rgba(255,255,255,0)');
       g.fillStyle = grd; g.fillRect(0, 0, w, h);
     }, 128, 128);
+  }
+  /* 日月光晕（暖色径向，同洙边） */
+  function sunGlowTex() {
+    return tex(function (g, w, h) {
+      var grd = g.createRadialGradient(w / 2, h / 2, 2, w / 2, h / 2, w / 2);
+      grd.addColorStop(0, 'rgba(255,246,214,.95)'); grd.addColorStop(.32, 'rgba(255,228,150,.42)');
+      grd.addColorStop(1, 'rgba(255,224,140,0)');
+      g.fillStyle = grd; g.fillRect(0, 0, w, h);
+    }, 128, 128);
+  }
+  /* 扫光带：横向一条柔和亮带（加色混合，淡到只当呼吸用） */
+  function sweepTex() {
+    return tex(function (g, w, h) {
+      var grd = g.createLinearGradient(0, 0, w, 0);
+      grd.addColorStop(0, 'rgba(255,255,255,0)'); grd.addColorStop(.42, 'rgba(255,255,255,.05)');
+      grd.addColorStop(.5, 'rgba(255,255,255,.5)'); grd.addColorStop(.58, 'rgba(255,255,255,.05)');
+      grd.addColorStop(1, 'rgba(255,255,255,0)');
+      g.fillStyle = grd; g.fillRect(0, 0, w, h);
+    }, 128, 8);
   }
   function skyTex(stops) {
     return tex(function (g, w, h) {
@@ -775,15 +800,17 @@ window.JunyongScene = (function () {
         ud.glow.material.opacity = (c.dis || c.chg) ? (theme === 'day' ? .07 : .13) : .03;
       });
       if (u.tagEl) {
-        u.tagEl.querySelector('i').textContent = c.its.length ? '工况 ' + c.its.join('+') : '待机 / 无数据';
+        u.tagEl.querySelector('i').textContent = c.its.length ? '工况 ' + c.its.join('+')
+          : ((c.hasPv || c.hasSt || c.hasGrid) ? '本群待机' : '无数据');
         u.tagEl.querySelector('em').textContent = fmtRow(data[i]);
       }
     });
     if (tower && tower.tagEl) {
       var anySell = units.some(function (u, i) { return cond(data[i]).sell; });
       var anyBuy = units.some(function (u, i) { return cond(data[i]).buy; });
+      var anyGrid = units.some(function (u, i) { return cond(data[i]).hasGrid; });
       tower.tagEl.querySelector('em').textContent = (anySell || anyBuy)
-        ? (anySell ? '送出中' : '受电中') : '待机 / 无数据';
+        ? (anySell ? '送出中' : '受电中') : (anyGrid ? '待机' : '无数据');
     }
     refreshCards();
   }
@@ -804,7 +831,8 @@ window.JunyongScene = (function () {
         ['SOC', d.soc == null ? '-- %' : (+d.soc).toFixed(0) + ' %'],
         ['负载', num(d.load, ' kW')],
         ['关口表', d.grid == null ? '-- kW' : ((+d.grid >= 0 ? '取电 ' : '送电 ') + Math.abs(d.grid).toFixed(1) + ' kW')]
-      ], c.its.length ? '当前工况：' + c.its.join(' + ') : '待机 / 数据未接入');
+      ], c.its.length ? '当前工况：' + c.its.join(' + ')
+        : ((c.hasPv || c.hasSt || c.hasGrid) ? '本群待机（数据已接入，当前无工况）' : '数据未接入'));
     });
     if (activeCard === 'tower') {
       setCard('tower', '并网铁塔 · 10kV 上网线路', [
@@ -816,30 +844,131 @@ window.JunyongScene = (function () {
     }
   }
 
+  /* ---------------- 环境层（坪面光池 / 扫光带 / 日月 / 云 / 降水，逐条照洙边） ---------------- */
+  function buildEnv(th) {
+    var T = T_();
+    /* 坪面光池：加色径向渐变，场坪中心亮、四周暗 */
+    siteGlow = new T.Mesh(new T.PlaneGeometry(120, 88), new T.MeshBasicMaterial({
+      map: glowTex(), color: th.glow, transparent: true, opacity: th.glowO * .8,
+      blending: T.AdditiveBlending, depthWrite: false }));
+    siteGlow.rotation.x = -Math.PI / 2; siteGlow.position.set(0, .2, 1); siteGlow.renderOrder = 2;
+    root.add(siteGlow);
+    /* 扫光带：一条极淡的加色光带缓慢横移（18s 一轮），给静态画面一点"数据在跑"的呼吸 */
+    sweepMesh = new T.Mesh(new T.PlaneGeometry(26, 96), new T.MeshBasicMaterial({
+      map: sweepTex(), color: th.glow, transparent: true, opacity: th.sweep,
+      blending: T.AdditiveBlending, depthWrite: false }));
+    sweepMesh.rotation.x = -Math.PI / 2; sweepMesh.position.set(-46, .21, 1); sweepMesh.renderOrder = 3;
+    root.add(sweepMesh);
+    /* 日 / 月：真实昼夜决定挂哪一个（见 refreshSkyLight） */
+    sun = new T.Mesh(new T.SphereGeometry(3.2, 20, 20), new T.MeshBasicMaterial({ color: 0xffe9a8, fog: false }));
+    sun.position.set(52, 46, 30); root.add(sun);
+    sunGlow = new T.Sprite(new T.SpriteMaterial({ map: sunGlowTex(), transparent: true,
+      blending: T.AdditiveBlending, depthWrite: false, fog: false, opacity: .6 }));
+    sunGlow.position.copy(sun.position); sunGlow.scale.set(26, 26, 1); root.add(sunGlow);
+    moon = new T.Mesh(new T.SphereGeometry(1.9, 18, 18), new T.MeshBasicMaterial({ color: 0xdfe9f5, fog: false }));
+    moon.position.set(-48, 42, 22); root.add(moon);
+    /* 云：9 团、缓慢东移，按云量显隐 */
+    cloudGrp = new T.Group();
+    for (var i = 0; i < 9; i++) {
+      var cg = new T.Group();
+      for (var k = 0; k < 4; k++) {
+        var cm = new T.MeshBasicMaterial({ color: th.cloud, transparent: true, opacity: .7 + Math.random() * .25 });
+        var s = new T.Mesh(new T.SphereGeometry(2.6 + Math.random() * 2.2, 10, 10), cm);
+        s.position.set(k * 3.1 - 4.4, Math.random() * 1.2, Math.random() * 2.4 - 1.2);
+        cloudMats.push(cm); cg.add(s);
+      }
+      cg.position.set((Math.random() - .5) * 140, 42 + Math.random() * 16, (Math.random() - .5) * 120);
+      cg.userData.speed = .35 + Math.random() * .5;
+      cloudGrp.add(cg);
+    }
+    root.add(cloudGrp);
+    /* 降水：420 滴合批成一个 InstancedMesh（1 个 draw call） */
+    rainMat = new T.MeshBasicMaterial({ color: 0x9fd8ff, transparent: true, opacity: .5 });
+    rainInst = new T.InstancedMesh(new T.CylinderGeometry(.022, .022, .9, 4), rainMat, RAIN_N);
+    rainInst.visible = false;
+    rainInst.frustumCulled = false;                /* 位置每帧改，包围盒不跟着走 */
+    var rm = new T.Matrix4();
+    for (var q = 0; q < RAIN_N; q++) {
+      rainX[q] = (Math.random() - .5) * 92; rainY[q] = Math.random() * 30 + 2;
+      rainZ[q] = (Math.random() - .5) * 80; rainV[q] = 2.4 + Math.random() * 2;
+      rm.makeTranslation(rainX[q], rainY[q], rainZ[q]);
+      rainInst.setMatrixAt(q, rm);
+    }
+    rainInst.instanceMatrix.setUsage(T.DynamicDrawUsage);
+    root.add(rainInst);
+  }
+
+  /* 天空当环境贴图：金属、玻璃、柜面才有天光反射（洙边同款做法） */
+  function refreshEnv() {
+    var T = T_();
+    if (!renderer || typeof T.PMREMGenerator !== 'function' || !dome) return;
+    try {
+      var pmrem = new T.PMREMGenerator(renderer);
+      var envTex = dome.material.map;
+      envTex.mapping = T.EquirectangularReflectionMapping;
+      var rt = pmrem.fromEquirectangular(envTex);
+      if (envRT) envRT.dispose();
+      envRT = rt;
+      scene.environment = envRT.texture;
+      pmrem.dispose();
+    } catch (e) { scene.environment = null; }
+  }
+
+  /* 天气驱动灯光与日月云雨；没上报的字段按"无云 / 按主题昼夜"处理，不编数据 */
+  function refreshSkyLight() {
+    var th = THEMES[theme];
+    var cloud = wx.cloud == null ? 0 : Math.max(0, Math.min(100, Number(wx.cloud) || 0));
+    var rad = wx.radiation == null ? 0 : Math.max(0, Number(wx.radiation) || 0);
+    var day = wx.isDay == null ? theme !== 'night' : !!wx.isDay;
+    var dim = 1 - cloud / 100 * .38;
+    if (key) key.intensity = (th.key + (rad > 0 ? Math.min(1, rad / 950) * th.keyRad : .1)) * dim;
+    if (hemi) hemi.intensity = th.hemi * dim;
+    if (fill) fill.intensity = th.fill;
+    if (sun) sun.visible = day;
+    if (sunGlow) {
+      sunGlow.visible = day;
+      sunGlow.material.opacity = (theme === 'day' ? .55 : .4) * (1 - cloud / 160);
+    }
+    if (moon) moon.visible = !day;
+    var cf = cloud / 100;
+    if (cloudGrp) cloudGrp.children.forEach(function (cg) {
+      cg.visible = cf > .08;
+      cg.children.forEach(function (s) {
+        s.material.opacity = (theme === 'day' ? .35 : .22) + cf * (theme === 'day' ? .6 : .45);
+      });
+    });
+    if (rainInst) {
+      rainInst.visible = Number(wx.precip) > 0;
+      if (rainMat) rainMat.opacity = cf > .5 ? .6 : .45;
+    }
+    if (sweepMesh) sweepMesh.material.opacity = th.sweep;
+  }
+
   /* ---------------- 建站 ---------------- */
   function build(M) {
     var T = T_();
     root = new T.Group(); root.userData.M = M; scene.add(root);
     var th = THEMES[theme];
-    dome = new T.Mesh(new T.SphereGeometry(460, 24, 16),
-      new T.MeshBasicMaterial({ map: skyTex(th.sky), side: T.BackSide, fog: false }));
+    dome = new T.Mesh(new T.SphereGeometry(210, 28, 18),
+      new T.MeshBasicMaterial({ map: skyTex(th.sky), side: T.BackSide, depthWrite: false, fog: false }));
+    dome.renderOrder = -1;
     root.add(dome);
-    hemi = new T.HemisphereLight(th.hemi.s || 0xbfe9ff, 0x0a1518, th.hemi);
-    hemi.color.setHex(theme === 'night' ? 0xbfe9ff : 0xdff0ff);
-    hemi.groundColor.setHex(theme === 'night' ? 0x0a1518 : 0x76815f);
+    hemi = new T.HemisphereLight(theme === 'night' ? 0xbfe9ff : 0xdff0ff,
+      theme === 'night' ? 0x0a1518 : 0x76815f, th.hemi);
     root.add(hemi);
     key = new T.DirectionalLight(theme === 'night' ? 0xcfe8ff : 0xfff2d0, th.key);
     key.position.set(-70, 100, 80); key.castShadow = true;
     key.shadow.mapSize.set(2048, 2048);
     var sc = key.shadow.camera;
     sc.left = -70; sc.right = 70; sc.top = 70; sc.bottom = -70; sc.near = 1; sc.far = 300;
+    key.shadow.bias = -0.0009;
     root.add(key);
-    fill = new T.PointLight(th.fill.c || 0x2ee6c8, th.fill);
-    fill.color.setHex(theme === 'night' ? 0x2ee6c8 : 0xbfe0ff);
-    fill.position.set(0, 22, 26); fill.distance = 240; root.add(fill);
+    fill = new T.DirectionalLight(theme === 'night' ? 0x2ee6c8 : 0xbfe0ff, th.fill);
+    fill.position.set(-24, 14, -18); root.add(fill);
 
-    var ground = new T.Mesh(new T.PlaneGeometry(900, 900), M.ground);
+    var ground = new T.Mesh(new T.PlaneGeometry(700, 700), M.ground);
     ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; root.add(ground);
+    buildEnv(th);
 
     var xs = [], zs = [];
     SITE.forEach(function (p, i) {
@@ -918,7 +1047,12 @@ window.JunyongScene = (function () {
       fitPts.push(u.tbWorld.clone());
     });
     fitPts.push(new T.Vector3(TWR_AT.x, TWRH + 1.2, TWR_AT.z));
-    fitPts.push(new T.Vector3(x0, .2, z1)); fitPts.push(new T.Vector3(x1, .2, z0));
+    /* 取景按设备轮廓，不算场坪外扩的那圈空坪：带上 6m 外扩会把机位顶到 84m，
+       三栋厂房在画面里就缩成一小块（洙边 fitStory 同样只框设备，不框场坪） */
+    var ex0 = Math.min.apply(null, xs), ex1 = Math.max.apply(null, xs);
+    var ez0 = Math.min.apply(null, zs), ez1 = Math.max.apply(null, zs);
+    fitPts.push(new T.Vector3(ex0, .2, ez0)); fitPts.push(new T.Vector3(ex1, .2, ez0));
+    fitPts.push(new T.Vector3(ex0, .2, ez1)); fitPts.push(new T.Vector3(ex1, .2, ez1));
   }
   var center = null, fitPts = [], duisOn = true;
   function state_duis() { return duisOn; }
@@ -956,18 +1090,20 @@ window.JunyongScene = (function () {
 
   /* ---------------- 主题 ---------------- */
   function applyTheme() {
-    var T = T_();
     theme = document.documentElement.getAttribute('data-theme') === 'day' ? 'day' : 'night';
     var th = THEMES[theme], M = mats(theme);
     /* 换材质：整场重建（构件材质上百个，逐个换更容易漏；重建一次比留错值划算） */
     scene.remove(root);
     root = null; flows = []; units = []; labelPairs = []; cards = {}; occluders = []; beacons = [];
+    cloudMats = [];
     activeCard = null;
     build(M);
-    if (dome) dome.material.map = skyTex(th.sky);
     scene.fog.color.setHex(th.fog.c); scene.fog.near = th.fog.near; scene.fog.far = th.fog.far;
     scene.background.setHex(th.bg);
     if (bloomPass) { bloomPass.strength = th.bloom.s; bloomPass.radius = th.bloom.r; bloomPass.threshold = th.bloom.t; }
+    if (vigPass) { vigPass.uniforms.strength.value = th.vignette.s; vigPass.uniforms.tint.value = th.vignette.t; }
+    refreshEnv();
+    refreshSkyLight();
     updateFlows();
     applyLabelVisibility();
   }
@@ -990,6 +1126,24 @@ window.JunyongScene = (function () {
       var k = .45 + .45 * Math.sin(ts / 520);
       b[0].material.opacity = .55 + k * .45; b[1].material.opacity = .25 + k * .4;
     });
+    /* 云缓慢东移、降水下落、扫光带 18s 横移一轮 */
+    if (cloudGrp) cloudGrp.children.forEach(function (cg) {
+      cg.position.x += cg.userData.speed * dt * 6;
+      if (cg.position.x > 78) cg.position.x = -78;
+    });
+    if (rainInst && rainInst.visible) {
+      if (!_rainM) _rainM = new (T_().Matrix4)();
+      for (var i = 0; i < RAIN_N; i++) {
+        rainY[i] -= rainV[i] * dt * 3.6;
+        if (rainY[i] < 0) rainY[i] = 30;
+        _rainM.makeTranslation(rainX[i], rainY[i], rainZ[i]);
+        rainInst.setMatrixAt(i, _rainM);
+      }
+      rainInst.instanceMatrix.needsUpdate = true;
+    }
+    if (sweepMesh && sweepMesh.material.opacity > 0) {
+      sweepMesh.position.x = -46 + ((ts / 1000) % 18) / 18 * 92;
+    }
     updateOcclusion();
     renderer.setScissorTest(false); renderer.setViewport(0, 0, W, H);
     if (composer) composer.render(); else renderer.render(scene, camera);
@@ -1035,15 +1189,6 @@ window.JunyongScene = (function () {
       return;
     }
 
-    if (typeof T.EffectComposer === 'function' && T.RenderPass && T.UnrealBloomPass) {
-      try {
-        composer = new T.EffectComposer(renderer);
-        composer.addPass(new T.RenderPass(scene, camera));
-        var th = THEMES[theme];
-        bloomPass = new T.UnrealBloomPass(new T.Vector2(600, 400), th.bloom.s, th.bloom.r, th.bloom.t);
-        composer.addPass(bloomPass);
-      } catch (e) { composer = null; }
-    }
     /* 点设备 → 明细卡（卡片打开时浮标全藏，同洙边） */
     var down = null;
     renderer.domElement.addEventListener('pointerdown', function (e) { down = [e.clientX, e.clientY]; });
@@ -1061,6 +1206,44 @@ window.JunyongScene = (function () {
       showCard(hit ? hit.object.userData.cardKey : null);
     });
     resize();            /* 先量画幅：resetView 的取景距离要用 W/H，顺序反了算出来是 NaN，整屏黑 */
+    /* 后期处理：MSAA + 泛光（半分辨率）+ 暗角冷调，参数与洙边一致
+       暗角 pass 是"高级感"的关键一步：压住四角、让画面中心聚焦到设备上 */
+    if (typeof T.EffectComposer === 'function' && T.RenderPass && T.UnrealBloomPass) {
+      var th = THEMES[theme];
+      try {
+        var msaa = typeof T.WebGLMultisampleRenderTarget === 'function'
+          ? new T.WebGLMultisampleRenderTarget(W, H, { format: T.RGBAFormat }) : null;
+        composer = new T.EffectComposer(renderer, msaa || undefined);
+        if (msaa) composer.setPixelRatio(renderer.getPixelRatio());
+        composer.addPass(new T.RenderPass(scene, camera));
+        bloomPass = new T.UnrealBloomPass(new T.Vector2(W * .5, H * .5), th.bloom.s, th.bloom.r, th.bloom.t);
+        composer.addPass(bloomPass);
+        if (typeof T.ShaderPass === 'function') {
+          vigPass = new T.ShaderPass({
+            uniforms: {
+              tDiffuse: { value: null },
+              strength: { value: th.vignette.s },
+              tint: { value: th.vignette.t }
+            },
+            vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+            fragmentShader: [
+              'uniform sampler2D tDiffuse; uniform float strength; uniform float tint; varying vec2 vUv;',
+              'void main(){',
+              '  vec4 c = texture2D(tDiffuse, vUv);',
+              '  vec2 d = vUv - .5;',
+              '  float r = length(d) * 1.42;',
+              '  c.rgb *= clamp(1.0 - strength * pow(max(r - .26, 0.0), 2.1), 0.0, 1.0);',
+              '  c.b *= 1.0 + tint; c.r *= 1.0 - tint * .5;',
+              '  gl_FragColor = c;',
+              '}'
+            ].join('\n')
+          });
+          composer.addPass(vigPass);
+        }
+      } catch (e) { composer = null; bloomPass = null; vigPass = null; }
+    }
+    refreshEnv();
+    refreshSkyLight();
     resetView();
     updateFlows();
     raf = requestAnimationFrame(loop);
@@ -1080,6 +1263,7 @@ window.JunyongScene = (function () {
     camera.aspect = W / H; camera.updateProjectionMatrix();
     if (labelR) labelR.setSize(W, H);
     if (composer) composer.setSize(W, H);
+    if (bloomPass) bloomPass.setSize(W * .5, H * .5);   /* 泛光半分辨率：4K 屏上省 4 倍填充率 */
     if (camHome) {                       /* 比例变了按新画幅重新算距离，保留当前视线方向 */
       var dir = camera.position.clone().sub(controls.target).normalize();
       var d = fitDistance(center, dir, fitPts, Math.max(.2, W / H));
@@ -1099,15 +1283,10 @@ window.JunyongScene = (function () {
   }
   function setWeather(w) {
     if (!w) return;
-    for (var k in w) wx[k] = w[k];
-    if (!inited) return;
-    var cloud = w.cloud == null ? 0 : Math.max(0, Math.min(100, w.cloud)) / 100;
-    var day = w.is_day === undefined ? null : w.is_day;
-    var th = THEMES[theme];
-    var dim = 1 - cloud * .45;
-    if (key) key.intensity = th.key * dim * (day === 0 ? .25 : 1);
-    if (hemi) hemi.intensity = th.hemi * (1 - cloud * .3);
-    if (dome && dome.material) dome.material.opacity = 1;
+    wx.cloud = w.cloud; wx.precip = w.precip; wx.radiation = w.radiation;
+    wx.isDay = (w.is_day === undefined || w.is_day === null) ? null
+      : ((w.is_day === 0 || w.is_day === '0') ? 0 : 1);
+    if (inited) refreshSkyLight();
   }
   return {
     init: init, resize: resize, resetView: resetView, setLabels: setLabels, setRotate: setRotate,

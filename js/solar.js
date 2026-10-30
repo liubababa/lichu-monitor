@@ -92,7 +92,7 @@ window.SolarUI = (function () {
 
   /* ---------------- 视图切换 ---------------- */
   function hideOthers() {
-    ['main', 'overviewView', 'gaoteView', 'detailView', 'deviceView', 'tabView'].forEach(function (id) {
+    ['main', 'overviewView', 'gaoteView', 'detailView', 'tabView'].forEach(function (id) {
       const e = byId(id); if (e) e.classList.add('hidden');
     });
     if (window.GaoteView) GaoteView.hide();
