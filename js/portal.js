@@ -23,11 +23,11 @@ window.PortalUI = (function () {
     },
     {
       kind: 'solar', group: '洙边卫生院光储电站', name: '洙边卫生院光储电站', sn: '', psn: '',
-      tag: '光储 · 阳光云 + 日升云', note: '光伏 110.16kW / 100kWh；储能 100kW / 215kWh；阳光电源逆变器'
+      tag: '光储 · 阳光云 + 日升云', note: '光伏 110.16kWp；储能 100kW / 215kWh'
     },
     {
       kind: 'junyong', group: '山东峻涌光储电站', name: '山东峻涌光储电站', sn: '', psn: '',
-      tag: '光储 · 阳光电源逆变器', note: '光伏 972.4kWp / 820kW；储能 625kW / 1305kWh；阳光电源逆变器'
+      tag: '光储 · 阳光云', note: '光伏 972.4kWp / 820kW；储能 625kW / 1305kWh'
     }
   ];
   const OTHER_GROUP = '其他电站';
@@ -114,8 +114,7 @@ window.PortalUI = (function () {
     const stat = el('div', 'pt-cstat');
     stat.innerHTML = '<i class="pt-dot ' + state + '"></i>' + stateText
       + (st.kind === 'solar' ? '　数据源 阳光云（5 分钟）+ 日升云（1 分钟）'
-        : (st.kind === 'junyong' ? '　数据源 阳光云（5 分钟）+ 储能（待配置）'
-          : (dev ? '　报文 ' + dev.msgs + ' 条　最后上报 ' + fmtTime(dev.lastSeen) : '')));
+        : (st.kind === 'junyong' ? '　数据源 阳光云（5 分钟）+ 储能（待配置）' : ''));
     c.appendChild(stat);
     const btn = el('button', 'mq-btn primary pt-enter', (hosted || st.sn) ? '进入监控' : '未接入');
     btn.disabled = !hosted && !st.sn;
@@ -212,6 +211,7 @@ window.PortalUI = (function () {
     if (window.JunyongUI) JunyongUI.hide();
     if (window.SolarUI) SolarUI.hide();          /* 光伏站视图收起，别和目录叠在一起 */
     p.classList.remove('hidden');
+    setCurStation('');                  /* 目录页不显示「当前电站」，进站才显示 */
     renderPortal();
   }
   function closePortal() {
@@ -241,7 +241,11 @@ window.PortalUI = (function () {
     let n = name;
     if (n === undefined) { try { n = localStorage.getItem('dianzhan.station.cur') || ''; } catch (_) { n = ''; } }
     const b = byId('topStation');
-    if (b) b.textContent = n || '未选择电站';
+    if (b) {
+      b.textContent = n || '未选择电站';
+      const chip = b.closest ? b.closest('.top-chip') : null;
+      if (chip) chip.style.display = n ? '' : 'none';
+    }
   }
 
   /* ---------------- 初始化 ---------------- */
