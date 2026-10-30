@@ -103,8 +103,8 @@ window.SolarScene = (function () {
      充电是从哪来的电就用哪个源的颜色（光伏充就黄、电网充就蓝，看关口那条线）。
      白天浅底整体用深一档，否则浅色底上只剩一片白。下面几条线的颜色都从这里取，别再各写各的 */
   const FLOWC = {
-    night: { ac: 0xffb020, idle: 0x24444a, chg: 0x8fd8ff, dis: 0x3df0a0, sell: 0xffb020, buy: 0x8fd8ff },
-    day: { ac: 0xd97700, idle: 0x6f8a86, chg: 0x1f7fd0, dis: 0x159a63, sell: 0xd97700, buy: 0x1f7fd0 }
+    night: { ac: 0xffb020, idle: 0x24444a, chg: 0x8fd8ff, dis: 0x3df0a0, sell: 0xffb020, buy: 0x8fd8ff, bar: 0x2f8f7d },
+    day: { ac: 0xd97700, idle: 0x6f8a86, chg: 0x1f7fd0, dis: 0x159a63, sell: 0xd97700, buy: 0x1f7fd0, bar: 0x4f9c8c }
   };
 
   /* ---------------- 基础工具 ---------------- */
@@ -807,6 +807,9 @@ window.SolarScene = (function () {
       const bar = new T.Mesh(geo, new T.MeshBasicMaterial({ color: 0x6f9a94, toneMapped: false }));
       bar.position.set(sgn * (W / 2 + .07), base, D * .2);
       g.add(bar);
+      /* 外层光晕：柱体只是涂色，待机色偏暗就看着"没亮"。套一层加色壳，
+         做成子物体，按 SOC 设 scale.y 时光晕自动跟着长 */
+      bar.userData.sleeve = SP.glowSleeve(T, bar, .11, colH, .44, .3);
       cabSocBars.push(bar);
     });
     g.add(box(.22, .13, .04, dark, W / 2 - .5, .18 + H * .86, D / 2 + .03));            /* 指示灯底座 */
@@ -899,10 +902,12 @@ window.SolarScene = (function () {
        本站进线走地面电缆到塔基终端箱（见 buildEquipment 的电缆敷设），但塔上仍要有 10kV 穿越导线——
        它是"1# 杆塔"（明细卡也写着"1# 杆塔 · 三跨导线"）：横担沿 ±x、**线路沿 ±z 穿塔**
        （和旭日东明那座同向），导线带垂弧穿过塔位、往南北两侧出线，塔顶再一根地线 */
-    const condMat = regThemeMat(new T.LineBasicMaterial({ color: 0x2ee6c8, transparent: true, opacity: .32 }),
+    const condMat = regThemeMat(new T.LineBasicMaterial({ color: 0x2ee6c8, transparent: true, opacity: .22, toneMapped: false }),
       { color: 0x2ee6c8 }, { color: 0x0d8f7a });
     const ARMS = [[6.6, 3.0], [7.8, 2.7], [9.0, 2.4]];
-    const SPAN = 20, SAG = .95;              /* 半跨 20m（垂弧在 ±SPAN 处最大），弧垂 0.95m */
+    /* 半跨收到 10m（原来 20m）：画面里只建了这一座塔，线伸太远就是"断在半空"，
+       看着像画面上划了几道痕；再整体调淡一档，退成背景不抢视线 */
+    const SPAN = 10, SAG = .95;               /* 半跨 10m（垂弧在 ±SPAN 处最大），弧垂 0.95m */
     ARMS.forEach(function (a) {
       const y = a[0], len = a[1], w = halfAt(y);
       [-1, 1].forEach(function (s) {
@@ -1050,7 +1055,12 @@ window.SolarScene = (function () {
       blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false
     });
     root.add(new THREE.Mesh(new THREE.TubeGeometry(curve, seg, (radius || .05) * 2.0, 8, false), tubeMat));
-    flows.push({ map: tubeMat.map, tubeMat: tubeMat, kind: kind, on: false, speed: 0, dir: 1, tint: 0 });
+    /* 地面光溢：同一条线外套一根很粗很淡的加色管。电缆贴地走，
+       这根粗管看着就是"线把脚下照亮了一点"，线有了落点而不是飘在坪上 */
+    const spill = SP.spillTube(THREE_(), curve, seg, (radius || .05) * 6.8, 0x2ee6c8, .06);
+    spill.renderOrder = 1;
+    root.add(spill);
+    flows.push({ map: tubeMat.map, tubeMat: tubeMat, spill: spill, kind: kind, on: false, speed: 0, dir: 1, tint: 0 });
   }
 
   /* ---------------- 电线一键隐藏（截图对走向用） ----------------
@@ -1579,15 +1589,19 @@ window.SolarScene = (function () {
        模式还是上一轮的），第一轮还会空着 */
     updateEnergyFlows();
     const soc = Math.max(0, Math.min(100, Number(cur.storSoc) || 0));
+    /* SOC 到底有没有上报：没上报时光柱留一截暗槽（看得见"有这根柱但没数据"），
+       而不是缩到看不见、也不是假装 0% —— 数字仍按红线显示 -- */
+    const socSeen = !(cur.storSoc === null || cur.storSoc === undefined || !isFinite(Number(cur.storSoc)));
     const dis = Number(cur.storPower) > 0, chg = Number(cur.storPower) < 0;
     const pvOnNow = cur.pvSeen && Number(cur.power) > .5;
     const fc = FLOWC[theme] || FLOWC.night;
     /* 指示灯/光晕/SOC 光柱跟着工况走，和光纹同一套口径：光伏充=黄 / 电网充=蓝 / 放电=青绿 / 待机=暗青。
        SOC 光柱与旭日东明一致：颜色随工况（亮色经泛光后就是"发光"的柱子），高度按 SOC 从下往上长 */
-    const col = chg ? (pvOnNow ? fc.ac : fc.chg) : (dis ? fc.dis : 0x6f9a94);
+    const col = chg ? (pvOnNow ? fc.ac : fc.chg) : (dis ? fc.dis : fc.bar);
     cabSocBars.forEach(function (bar) {
-      bar.scale.y = Math.max(.02, soc / 100);
+      bar.scale.y = socSeen ? Math.max(.08, soc / 100) : .12;
       bar.material.color.setHex(col);
+      SP.syncSleeve(bar);
     });
     if (cabLed) cabLed.material.color.setHex(col);
     if (cabGlow) cabGlow.material.color.setHex(col);
@@ -1672,6 +1686,12 @@ window.SolarScene = (function () {
     for (let i = 0; i < flows.length; i++) {
       const fl = flows[i];
       fl.tubeMat.opacity = fl.on ? .95 : .22;
+      /* 光溢只在这里同步：颜色和明暗一律跟着光纹管走，
+         上面那十几处按工况取色的逻辑就不用各改一遍，也不会漏 */
+      if (fl.spill) {
+        fl.spill.material.color.copy(fl.tubeMat.color);
+        fl.spill.material.opacity = fl.on ? .16 : .04;
+      }
       if (!fl.on) continue;
       fl.map.offset.x -= (fl.dir || 1) * fl.speed * dt * .35;
       if (fl.tint) fl.tubeMat.color.setHex(fl.tint);

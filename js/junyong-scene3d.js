@@ -88,8 +88,8 @@ window.JunyongScene = (function () {
   };
   /* 线色按"谁在供电"分（同洙边 FLOWC）：光伏黄、电网蓝、储能放电青绿、无出力暗青 */
   var FLOWC = {
-    night: { ac: 0xffb020, idle: 0x24444a, dis: 0x3df0a0, buy: 0x8fd8ff },
-    day: { ac: 0xd97700, idle: 0x6f8a86, dis: 0x159a63, buy: 0x1f7fd0 }
+    night: { ac: 0xffb020, idle: 0x24444a, dis: 0x3df0a0, buy: 0x8fd8ff, bar: 0x2f8f7d },
+    day: { ac: 0xd97700, idle: 0x6f8a86, dis: 0x159a63, buy: 0x1f7fd0, bar: 0x4f9c8c }
   };
 
   /* ---------------- 基础工具 ---------------- */
@@ -418,7 +418,7 @@ window.JunyongScene = (function () {
       brace: std(th.brace, { rough: .62, metal: .55 }),
       arm: std(th.arm, { rough: .5, metal: .3, em: night ? 0x0a5a4a : 0x000000, ei: .35 }),
       ins: std(th.ins, { rough: .35, metal: .1 }),
-      cond: new T.LineBasicMaterial({ color: night ? 0x2ee6c8 : 0x0d8f7a, transparent: true, opacity: .34 }),
+      cond: new T.LineBasicMaterial({ color: night ? 0x2ee6c8 : 0x0d8f7a, transparent: true, opacity: .22, toneMapped: false }),
       cabF: new T.MeshStandardMaterial({ map: cabFrontTex(t), roughness: .5, metalness: .35, envMapIntensity: .6 }),
       cabS: new T.MeshStandardMaterial({ map: cabSideTex(t), roughness: .55, metalness: .35, envMapIntensity: .6 }),
       cabTop: std(night ? 0x2b3a42 : 0xd6dbdc, { rough: .6, metal: .3 }),
@@ -572,9 +572,13 @@ window.JunyongScene = (function () {
     [-1, 1].forEach(function (s) {
       g.add(rbox(.06, colH + .1, .32, M.dark, s * (w / 2 + .04), .18 + h * .5, d * .2, .02));
       var geo = new T.BoxGeometry(.05, colH, .26); geo.translate(0, colH / 2, 0);
-      var bar = new T.Mesh(geo, new T.MeshBasicMaterial({ color: FLOWC[theme].idle, transparent: true, opacity: .85, toneMapped: false }));
+      var bar = new T.Mesh(geo, new T.MeshBasicMaterial({ color: FLOWC[theme].bar, transparent: true, opacity: .85, toneMapped: false }));
       bar.position.set(s * (w / 2 + .07), base, d * .2);
-      g.add(bar); bars.push(bar);
+      g.add(bar);
+      /* 外层光晕：柱体只是涂色，色一暗就看着"没亮"。做成子物体，
+         按 SOC 设 scale.y 时光晕自动跟着长 */
+      bar.userData.sleeve = SP.glowSleeve(T, bar, .11, colH, .44, .3);
+      bars.push(bar);
     });
     g.add(box(.22, .13, .04, M.dark, w / 2 - .5, .18 + h * .86, d / 2 + .03));
     var led = new T.Mesh(new T.BoxGeometry(.16, .09, .05), new T.MeshBasicMaterial({ color: FLOWC[theme].idle, toneMapped: false }));
@@ -619,7 +623,9 @@ window.JunyongScene = (function () {
         });
       }
     }
-    var SPAN = 18, SAG = .9;
+    /* 半跨收到 10m（原来 18m）：画面里只建了这一座塔，线伸太远就是"断在半空"，
+       看着像画面上划了几道痕；导线透明度同步调淡一档，退成背景不抢视线 */
+    var SPAN = 10, SAG = .9;
     [[6.6, 3.0], [7.8, 2.7], [9.0, 2.4]].forEach(function (a) {
       var ay = a[0], len = a[1], w = halfAt(ay);
       [-1, 1].forEach(function (s) {
@@ -675,7 +681,11 @@ window.JunyongScene = (function () {
     var tm = new T.MeshBasicMaterial({ map: map, color: FLOWC[theme].idle, transparent: true, opacity: .22,
       blending: T.AdditiveBlending, depthWrite: false, toneMapped: false });
     parent.add(new T.Mesh(new T.TubeGeometry(curve, seg, r * 2.1, 8, false), tm));
-    var f = { kind: kind, gi: gi, map: map, tubeMat: tm, dir: 1, spd: .06, len: len };
+    /* 地面光溢：同一条线外套一根很粗很淡的加色管。电缆贴地走，
+       这根粗管看着就是"线把脚下照亮了一点"，线有了落点而不是飘在坪上 */
+    var spill = SP.spillTube(T, curve, seg, r * 6.8, 0x2ee6c8, .06);
+    spill.renderOrder = 1; parent.add(spill);
+    var f = { kind: kind, gi: gi, map: map, tubeMat: tm, spill: spill, dir: 1, spd: .06, len: len };
     flows.push(f);
     return f;
   }
@@ -801,14 +811,17 @@ window.JunyongScene = (function () {
         f.tubeMat.opacity = on ? .95 : .22;
         f.dir = c.sell ? 1 : -1; f.spd = on ? spd : .06;
       });
-      /* 柜体 SOC 光柱 / 指示灯 / 柜底光晕：颜色跟工况（放电青绿 / 光伏充黄 / 电网充蓝 / 待机暗青） */
-      var cc = c.dis ? F.dis : (c.chg ? (c.buy ? F.buy : F.ac) : F.idle);
+      /* 柜体 SOC 光柱 / 指示灯 / 柜底光晕：颜色跟工况（放电青绿 / 光伏充黄 / 电网充蓝 / 待机暗绿）。
+         待机一律用 bar 而不是线路的 idle——idle 是给"没电的线"用的近黑色，
+         拿来涂电量柱就看着像没亮 */
+      var cc = c.dis ? F.dis : (c.chg ? (c.buy ? F.buy : F.ac) : F.bar);
       var soc = (data[i].soc == null) ? null : Math.max(0, Math.min(100, data[i].soc));
       u.cabs.forEach(function (cb) {
         var ud = cb.ref.userData;
         ud.bars.forEach(function (b) {
           b.material.color.setHex(cc);
           b.scale.y = soc == null ? .12 : Math.max(.08, soc / 100);   /* 没上报 SOC 就留一截暗槽，不装样子 */
+          SP.syncSleeve(b);
         });
         ud.led.material.color.setHex(cc);
         ud.glow.material.color.setHex(cc);
@@ -1175,7 +1188,15 @@ window.JunyongScene = (function () {
     }
     controls.update();
     var spd = 1;
-    flows.forEach(function (f) { f.map.offset.x = (f.map.offset.x - dt * f.spd * spd * .35 * f.dir) % 1; });
+    flows.forEach(function (f) {
+      f.map.offset.x = (f.map.offset.x - dt * f.spd * spd * .35 * f.dir) % 1;
+      /* 光溢只在这里同步：颜色和明暗一律跟着光纹管走，
+         上面按工况取色的那几处就不用各改一遍，也不会漏 */
+      if (f.spill) {
+        f.spill.material.color.copy(f.tubeMat.color);
+        f.spill.material.opacity = f.tubeMat.opacity > .5 ? .16 : .04;
+      }
+    });
     beacons.forEach(function (b) {
       var k = .45 + .45 * Math.sin(ts / 520);
       b[0].material.opacity = .55 + k * .45; b[1].material.opacity = .25 + k * .4;

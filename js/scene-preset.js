@@ -196,6 +196,36 @@ window.ScenePreset = (function () {
     return m;
   }
 
+  /* ---------------- 点缀发光 ----------------
+     光柱 / 灯带原来只是"涂一块颜色"，颜色暗或泛光阈值一高就看着像没亮。
+     这里在外面套一层加色粗壳，让它真的往空气里放光晕。
+     做成子物体：父级按 SOC 设 scale.y 时，光晕跟着一起长，不用另外同步高度。 */
+  function glowSleeve(T, parent, w, h, d, opacity) {
+    const geo = new T.BoxGeometry(w, h, d);
+    geo.translate(0, h / 2, 0);
+    const m = new T.Mesh(geo, new T.MeshBasicMaterial({
+      color: 0xffffff, transparent: true, opacity: opacity,
+      blending: T.AdditiveBlending, depthWrite: false, toneMapped: false
+    }));
+    parent.add(m);
+    return m;
+  }
+  /* 光柱颜色同步：柱体换色时外层光晕跟一起换（状态色只有一个真源） */
+  function syncSleeve(bar) {
+    const s = bar.userData.sleeve;
+    if (s) s.material.color.copy(bar.material.color);
+  }
+
+  /* 电缆的地面光溢：同一条曲线再套一根很粗很淡的加色管。
+     线是贴地走的，所以这根粗管看着就是"线把地面照亮了一点"，
+     比沿线铺几十片光池便宜得多（每条线只多一个网格）。 */
+  function spillTube(T, curve, seg, r, color, opacity) {
+    const m = new T.Mesh(new T.TubeGeometry(curve, Math.max(12, Math.round(seg * .5)), r, 6, false),
+      new T.MeshBasicMaterial({ color: color, transparent: true, opacity: opacity,
+        blending: T.AdditiveBlending, depthWrite: false, toneMapped: false }));
+    return m;
+  }
+
   /* ---------------- 暗角 ----------------
      四角压暗 + 冷调，视线收到中间的设备上。三站同一份 GLSL。 */
   function vignetteShader() {
@@ -353,6 +383,7 @@ window.ScenePreset = (function () {
     LBL: LBL, scaleLabelTo: scaleLabelTo,
     paveTexture: paveTexture,
     contactTexture: contactTexture, contact: contact,
+    glowSleeve: glowSleeve, syncSleeve: syncSleeve, spillTube: spillTube,
     vignetteShader: vignetteShader,
     compose: compose, resizeComposer: resizeComposer, applyThemeToPasses: applyThemeToPasses,
     setupRenderer: setupRenderer, setExposure: setExposure,

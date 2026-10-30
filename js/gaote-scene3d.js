@@ -45,8 +45,9 @@ window.GaoteScene3D = (function () {
       bg: 0x04090c, fog: 0x0b1c24, fogNear: 105, fogFar: 300,
       hemiSky: 0xbfe9ff, hemiGround: 0x0a1518,
       sunColor: 0xcfe8ff, fillColor: 0x2ee6c8,
-      /* 状态色：充电(蓝) / 放电(青) / 待机(灰) */
-      stateChg: 0x8fd8ff, stateDis: 0x3df0a0, stateIdle: 0x6f9a94,
+      /* 状态色：充电(蓝) / 放电(青) / 待机(暗绿——原来用近灰的 0x6f9a94，
+         待机时整台柜子像断电，电量柱和灯带都"不亮") */
+      stateChg: 0x8fd8ff, stateDis: 0x3df0a0, stateIdle: 0x2f8f7d,
       /* 电流光纹：放电(青) / 充电(蓝) / 馈电卖电(橙) / 待机(暗)；夜里用加色混合发光 */
       flowDis: 0x3df0a0, flowChg: 0x8fd8ff, flowSell: 0xffb020, flowIdle: 0x16303a, flowBlend: 1,
       sky: [[0, '#04080c'], [.42, '#071219'], [.66, '#0d2530'], [.84, '#123743'], [1, '#17505f']]
@@ -55,8 +56,8 @@ window.GaoteScene3D = (function () {
       bg: 0xdbe9f0, fog: 0xd3e3ec, fogNear: 120, fogFar: 340,
       hemiSky: 0xdff0ff, hemiGround: 0x76815f,
       sunColor: 0xfff2d0, fillColor: 0xbfe0ff,
-      /* 白天：充电(蓝) / 放电(绿) / 待机(灰)——与光纹同色系 */
-      stateChg: 0x1f7fd0, stateDis: 0x159a63, stateIdle: 0x9aa9a9,
+      /* 白天：充电(蓝) / 放电(绿) / 待机(青绿，浅底上要能看出柱子和灯边还在) */
+      stateChg: 0x1f7fd0, stateDis: 0x159a63, stateIdle: 0x4f9c8c,
       /* 电流光纹：白天浅底用饱和暖色 + 普通混合，否则会被浅底冲淡 */
       flowDis: 0x159a63, flowChg: 0x1f7fd0, flowSell: 0xd97700, flowIdle: 0x9aa9a9, flowBlend: 0,
       /* 天空穹顶的竖直渐变：天顶蓝 → 地平线白雾（相机基本平视，
@@ -392,9 +393,14 @@ window.GaoteScene3D = (function () {
     });
     const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, seg, .105, 8, false), tubeMat);
     (parent || scene).add(tube);
+    /* 地面光溢：同一条线外套一根很粗很淡的加色管。电缆是贴地走的，
+       所以这根粗管看着就是"线把脚下照亮了一点"，线有了落点而不是飘在坪上 */
+    const spill = window.ScenePreset.spillTube(THREE, curve, seg, .34, 0x2ee6c8, .06);
+    spill.renderOrder = 1;
+    (parent || scene).add(spill);
 
     const fl = {
-      curve: curve, len: len, map: tubeMat.map, tubeMat: tubeMat, tube: tube, core: core,
+      curve: curve, len: len, map: tubeMat.map, tubeMat: tubeMat, tube: tube, core: core, spill: spill,
       stack: (stack === undefined ? -1 : stack), dir: 0, speed: 0
     };
     flows.push(fl);
@@ -417,6 +423,11 @@ window.GaoteScene3D = (function () {
         ? (sd > 0 ? p.flowSell : (sd < 0 ? p.flowChg : p.flowIdle))
         : (sd > 0 ? p.flowDis : (sd < 0 ? p.flowChg : p.flowIdle));
       fl.tubeMat.color.setHex(col);
+      /* 光溢跟光纹同色，但有电流才亮；待机时几乎收掉，避免全场泛一层绿雾 */
+      if (fl.spill) {
+        fl.spill.material.color.setHex(col);
+        fl.spill.material.opacity = on ? .16 : .04;
+      }
       /* 有电流时全亮（夜里再加一层加色发光），待机时暗下来但管线还在 */
       fl.tubeMat.opacity = on ? 1 : (p.flowBlend ? .26 : .42);
       if (on) fl.map.offset.x -= fl.dir * fl.speed * dt * .35;     // 光纹沿电缆滚动
@@ -460,6 +471,9 @@ window.GaoteScene3D = (function () {
       const socBar = new THREE.Mesh(socGeo, new THREE.MeshBasicMaterial({ color: 0x6f9a94, toneMapped: false }));
       socBar.position.set(sgn * (W / 2 + .062), colBase, colZ);
       g.add(socBar);
+      /* 外层光晕：柱体只是涂色，待机色偏暗就看着"没亮"。套一层加色壳，
+         做成子物体，update() 里按 SOC 设 scale.y 时光晕自动跟着长 */
+      socBar.userData.sleeve = window.ScenePreset.glowSleeve(THREE, socBar, .11, colH, .42, .3);
       gauges[key].push(socBar);
     });
 
@@ -637,6 +651,7 @@ window.GaoteScene3D = (function () {
 
     /* 三层横担（双回路：每层左右各一挑），端部下挂绝缘子串，导线沿线路方向穿越 */
     const ARMS = [[5.9, 2.7], [6.9, 2.4], [7.9, 2.1]];
+    const TSPAN = 9.5;               // 跨越导线 / 地线在塔两侧各伸出多远（只建了一座塔，别留长断头）
     ARMS.forEach(function (a, ai) {
       const y = a[0], len = a[1], w = halfAt(y);
       [-1, 1].forEach(function (s) {
@@ -654,17 +669,19 @@ window.GaoteScene3D = (function () {
         }
         g.add(ins);
         const wy = tip.y - .55, wx = tip.x;                                           // 导线（带垂弧，穿过塔位）
+        /* 跨越只留塔两侧一小截（原来拉到 ±17m）：画面里只建了这一座塔，
+           线伸太远就是"断在半空"，看着像画面上划了几道痕 */
         const pts = [];
         for (let k = 0; k <= 24; k++) {
-          const z = -17 + (k / 24) * 34;
-          const sag = Math.sin(Math.min(1, Math.abs(z) / 17) * Math.PI / 2) * .85;
+          const z = -TSPAN + (k / 24) * TSPAN * 2;
+          const sag = Math.sin(Math.min(1, Math.abs(z) / TSPAN) * Math.PI / 2) * .85;
           pts.push(new THREE.Vector3(wx, wy - sag, z));
         }
         g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), condMat));
         /* 防振锤只在中层横担两侧各挂一个示意（挂满一排反而假） */
         if (ai === 1) {
-          const zz = 6.5;
-          const sag = Math.sin(Math.min(1, Math.abs(zz) / 17) * Math.PI / 2) * .85;
+          const zz = TSPAN * .55;
+          const sag = Math.sin(Math.min(1, Math.abs(zz) / TSPAN) * Math.PI / 2) * .85;
           const dm = new THREE.Group();
           dm.position.set(wx, wy - sag, zz);
           dm.add(box(.04, .2, .04, braceMat, 0, -.1, 0));
@@ -685,8 +702,8 @@ window.GaoteScene3D = (function () {
     g.add(box(tw * 2.6, .06, .06, braceMat, 0, hgt + .55, 0));
     const gpts = [];
     for (let k = 0; k <= 24; k++) {
-      const z = -17 + (k / 24) * 34;
-      gpts.push(new THREE.Vector3(0, hgt + .9 - Math.sin(Math.min(1, Math.abs(z) / 17) * Math.PI / 2) * .55, z));
+      const z = -TSPAN + (k / 24) * TSPAN * 2;
+      gpts.push(new THREE.Vector3(0, hgt + .9 - Math.sin(Math.min(1, Math.abs(z) / TSPAN) * Math.PI / 2) * .55, z));
     }
     g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(gpts), condMat));
 
@@ -1352,15 +1369,20 @@ window.GaoteScene3D = (function () {
       if (strip) {
         strip.material.color.setHex(col);
         strip.material.emissive.setHex(col);
-        strip.material.emissiveIntensity = (chg || dis) ? .85 : .12;
+        /* 待机也要看得出是一圈亮边（原来 .12 基本是灭的，整台柜子看着"没通电"） */
+        strip.material.emissiveIntensity = (chg || dis) ? .9 : .38;
       }
       /* 柜侧 SOC 光柱：高度按 SOC 从下往上长，颜色随充放电状态（左右各一条） */
       const gg = gauges[key];
       if (gg) {
-        const soc = (d.soc === null || d.soc === undefined) ? 0 : Math.max(0, Math.min(100, Number(d.soc)));
+        const raw = d.soc;
+        const soc = (raw === null || raw === undefined || !isFinite(Number(raw)))
+          ? null : Math.max(0, Math.min(100, Number(raw)));
         gg.forEach(function (b) {
-          b.scale.y = Math.max(.02, soc / 100);
+          /* 没上报 SOC 就留一截暗槽（不是缩到看不见，也不是假装满格） */
+          b.scale.y = soc == null ? .12 : Math.max(.08, soc / 100);
           b.material.color.setHex(col);
+          window.ScenePreset.syncSleeve(b);
         });
       }
       /* 柜底光晕随充放电强弱 */
@@ -1680,10 +1702,11 @@ window.GaoteScene3D = (function () {
       fl.tubeMat.blending = p.flowBlend ? THREE.AdditiveBlending : THREE.NormalBlending;
       fl.tubeMat.needsUpdate = true;
     });
-    /* 铁塔导线：白天要把青色压深，否则浅天空下看不见 */
+    /* 铁塔导线：白天要把青色压深，否则浅天空下看不见；整体再调淡一档，
+       退成背景而不是抢视线的"划痕" */
     conductorMats.forEach(function (m) {
       m.color.setHex(p.flowBlend ? 0x2ee6c8 : 0x2e6f7c);
-      m.opacity = p.flowBlend ? .32 : .6;
+      m.opacity = p.flowBlend ? .22 : .42;
     });
     /* 灯光颜色留在本站 THEMES，强度一律取共用 preset：ACES 会吃掉约两成中间调，
        光量必须比"没有色调映射"时代给得高，否则改完反而更黑 */
