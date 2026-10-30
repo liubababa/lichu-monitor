@@ -23,12 +23,10 @@ window.PortalUI = (function () {
     },
     {
       kind: 'solar', group: '洙边卫生院光储电站', name: '洙边卫生院光储电站', sn: '', psn: '',
-      line: '洙边卫生院 · ps_id 2355743',
       tag: '光储 · 阳光云 + 日升云', note: '光伏 110.16kW / 100kWh；储能 100kW / 215kWh；阳光电源逆变器'
     },
     {
       kind: 'junyong', group: '山东峻涌光储电站', name: '山东峻涌光储电站', sn: '', psn: '',
-      line: '三群品字围合 · 共用中心铁塔 · 每群各自关口',
       tag: '光储 · 阳光电源逆变器', note: '光伏 972.4kWp / 820kW；储能 625kW / 1305kWh；阳光电源逆变器'
     }
   ];
@@ -104,7 +102,7 @@ window.PortalUI = (function () {
     const state = st.kind === 'solar' ? 'on'
       : (st.kind === 'junyong' ? 'na' : (!st.sn ? 'off' : (online ? 'on' : (dev ? 'off' : 'na'))));
     const stateText = st.kind === 'solar' ? '已接入'
-      : (st.kind === 'junyong' ? '页面已上线 · 数据源待接入'
+      : (st.kind === 'junyong' ? '光伏已接入 · 储能待接入'
         : (!st.sn ? '未接入' : (online ? '在线' : (dev ? '离线' : '未上报'))));
 
     const c = el('div', 'pt-card pt-' + state);
@@ -112,13 +110,11 @@ window.PortalUI = (function () {
     head.appendChild(el('b', '', st.name));
     head.appendChild(el('span', 'pt-tag', st.tag || ''));
     c.appendChild(head);
-    c.appendChild(el('div', 'pt-crow', '<span>' + (hosted ? '电站' : '设备号') + '</span>'
-      + (st.line || (hosted ? st.name : (st.sn || '—')))));
     if (st.note) c.appendChild(el('div', 'pt-crow', '<span>装机容量</span>' + st.note));
     const stat = el('div', 'pt-cstat');
     stat.innerHTML = '<i class="pt-dot ' + state + '"></i>' + stateText
       + (st.kind === 'solar' ? '　数据源 阳光云（5 分钟）+ 日升云（1 分钟）'
-        : (st.kind === 'junyong' ? '　数据源 阳光云 + 储能（待配置）'
+        : (st.kind === 'junyong' ? '　数据源 阳光云（5 分钟）+ 储能（待配置）'
           : (dev ? '　报文 ' + dev.msgs + ' 条　最后上报 ' + fmtTime(dev.lastSeen) : '')));
     c.appendChild(stat);
     const btn = el('button', 'mq-btn primary pt-enter', (hosted || st.sn) ? '进入监控' : '未接入');
