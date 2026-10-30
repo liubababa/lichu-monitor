@@ -98,7 +98,7 @@ async function api(pathname, params, opt) {
   if (json.result_code && json.result_code !== '1' && /token|授权|auth/i.test(JSON.stringify(json.error || json))) {
     if (!opt || !opt.retried) {
       const ok = await refreshToken();
-      if (ok) return api(pathname, params, { retried: true });
+      if (ok) return api(pathname, params, Object.assign({}, opt || {}, { retried: true }));
     }
   }
   if (json.result_code && json.result_code !== '1') {
@@ -377,12 +377,14 @@ async function getDevices(psId) {
   return (j.result_data && j.result_data.pageList) || [];
 }
 
-/* 光伏逆变器实时测点（开发者平台 /openapi/getPVInverterRealTimeData）
+/* 光伏逆变器实时测点（OAuth2：/openapi/platform/getDeviceRealTimeData）
    dev_status 0 离线 / 1 在线；dev_fault_status 1 故障 / 2 告警 / 4 正常；
    p1 日发电量 Wh、p2 总发电量 Wh、p24 总有功功率 W、device_time 数据时间 */
 async function getPvInverterRealtime(snList) {
   if (!snList || !snList.length) return {};
-  const j = await api('/openapi/getPVInverterRealTimeData', { sn_list: snList });
+  const j = await api('/openapi/platform/getDeviceRealTimeData', {
+    sn_list: snList, device_type: 1, point_id_list: ['1', '2', '24', '14'], is_get_point_dict: '0'
+  });
   const list = (j.result_data && j.result_data.device_point_list) || [];
   const out = {};
   list.forEach(function (x) {
