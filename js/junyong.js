@@ -34,7 +34,7 @@ window.JunyongUI = (function () {
     stor: '625kW / 1305kWh',
     inv: '阳光电源逆变器',
     groups: ['一号机组 · 1 台光储一体柜', '二号机组 · 1 台光储一体柜', '三号机组 · 3 台光储一体柜'],
-    grid: '三群各自关口，共用一座中心铁塔上网（品字围合）'
+    grid: '三群各自关口，共用一座中心铁塔并网；自发自用、余电上网'
   };
   var GN = ['一号机组', '二号机组', '三号机组'];
   /* 减排折算（与阳光云页面同一口径）：kg CO₂/kWh、kg 标准煤/kWh、每棵树年吸收 kg CO₂ */
@@ -65,6 +65,12 @@ window.JunyongUI = (function () {
     if (isNaN(d.getTime())) return '--';
     var p = function (x) { return String(x).padStart(2, '0'); };
     return p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+  }
+  /* 阳光云设备数据时间：14 位 YYYYMMDDhhmmss */
+  function fmtDevTime(s) {
+    s = String(s || '');
+    if (!/^\d{14}$/.test(s)) return fmtTime(s);
+    return s.slice(4, 6) + '-' + s.slice(6, 8) + ' ' + s.slice(8, 10) + ':' + s.slice(10, 12) + ':' + s.slice(12, 14);
   }
   function isDay() { return document.documentElement.getAttribute('data-theme') === 'day'; }
   function kpi(label, value, sub, cls) {
@@ -206,6 +212,9 @@ window.JunyongUI = (function () {
         module_temp: n(d.module_temp),
         radiation: n(d.radiation),
         daily_irradiation: n(d.daily_irradiation),
+        device_power_kw: n(d.device_power_kw),
+        device_today_kwh: n(d.device_today_kwh),
+        data_time: d.data_time || null,
         updated_at: d.updated_at
       }
     };
@@ -220,7 +229,7 @@ window.JunyongUI = (function () {
     getJSON('summary').then(function (s) {
       if (!s || !s.data) throw new Error('summary 为空');
       payload = build(s.data);
-      lastErr = '';
+      lastErr = s.last_error ? String(s.last_error) : '';
       return getJSON('trend?range=' + trendRange, { tries: 1, timeout: 8000 })
         .then(function (t) { if (t && t.points) trend = t.points; }).catch(function () {});
     }).then(function () {
@@ -250,7 +259,10 @@ window.JunyongUI = (function () {
 
   function st() { return (payload && payload.station) || {}; }
   function srcTag() {
-    if (payload) return '光伏 · 阳光云 更新 ' + fmtTime(st().updated_at);
+    if (payload) {
+      var t = st().data_time ? fmtDevTime(st().data_time) : fmtTime(st().updated_at);
+      return '光伏 · 阳光云 更新 ' + t + (lastErr ? '（读取失败，显示上次数据）' : '');
+    }
     return '数据源：' + (lastErr ? ('光伏读不到（' + lastErr + '）') : '未接入');
   }
 
@@ -262,7 +274,9 @@ window.JunyongUI = (function () {
     var s = st();
     var h = '<div class="panel"><div class="panel-title"><span>系统概况</span><em>' + srcTag() + '</em></div>'
       + '<div class="kpi-grid">'
-      + kpi('光伏功率', fmtU(s.power_kw, ' kW'), STATION.pvKwp + ' / ' + STATION.pvInv)
+      + kpi('光伏功率', fmtU(s.power_kw, ' kW'),
+          s.device_power_kw == null ? (STATION.pvKwp + ' / ' + STATION.pvInv)
+            : ('设备合计 ' + fmt(s.device_power_kw, 1) + ' kW · ' + STATION.pvKwp))
       + kpi('储能功率', '-- kW', STATION.stor)
       + kpi('SOC', '-- %', '待储能接入')
       + kpi('负荷', '-- kW', '待储能接入')
@@ -277,6 +291,7 @@ window.JunyongUI = (function () {
     }
     h += '</tbody></table>'
       + '<div class="jy-note">光伏为全站合计（阳光云口径 · ps_id ' + (s.ps_id || '--') + '）；'
+      + '“设备合计”来自 8 台逆变器，每 5 分钟更新；电站接口约滞后 5 分钟（与阳光云概览一致）。'
       + '分机组的逆变器分组待现场确认后拆列。储能数据源未接入。</div></div>';
     p.innerHTML = h;
   }
@@ -318,12 +333,32 @@ window.JunyongUI = (function () {
       + r('日出 / 日落', (wx.sunrise || '--') + ' / ' + (wx.sunset || '--'))
       + '</div>';
   }
+  function devStatus(d) {
+    if (d.online === false) return '离线';
+    if (d.fault_status === 1) return '故障';
+    if (d.fault_status === 2) return '告警';
+    if (d.online === true || d.fault_status === 4) return '正常';
+    return '--';
+  }
   function devicesHtml() {
     if (!devices.length) return '<div class="gv3-empty">暂无设备</div>';
     var TYPE = { 1: '逆变器', 22: '通信模块' };
-    return '<div class="sl-devs">' + devices.map(function (d) {
+    var list = devices.slice().sort(function (a, b) {
+      var ta = Number(a.type) === 1 ? 0 : 1, tb = Number(b.type) === 1 ? 0 : 1;
+      if (ta !== tb) return ta - tb;
+      return String(a.name || a.sn || '').localeCompare(String(b.name || b.sn || ''), 'zh-CN', { numeric: true });
+    });
+    return '<div class="sl-devs">' + list.map(function (d) {
+      var isInv = Number(d.type) === 1;
+      var ds = devStatus(d);
+      var extra = isInv
+        ? ('总有功 ' + (d.power_kw == null ? '--' : fmt(d.power_kw, 2) + ' kW')
+          + '　当日 ' + (d.today_kwh == null ? '--' : fmt(d.today_kwh, 1) + ' 度')
+          + '　' + ds + '　数据 ' + (d.device_time ? fmtDevTime(d.device_time).slice(6) : '--'))
+        : (ds + (d.device_time ? ('　数据 ' + fmtDevTime(d.device_time).slice(6)) : ''));
       return '<div class="sl-dev"><div class="sl-devmain"><b>' + (d.name || d.sn) + '</b>'
-        + '<span>' + (TYPE[d.type] || ('类型 ' + d.type)) + '　' + (d.model || '') + '　SN ' + (d.sn || '') + '</span></div></div>';
+        + '<span>' + (TYPE[d.type] || ('类型 ' + d.type)) + '　' + (d.model || '') + '　SN ' + (d.sn || '') + '</span>'
+        + '<span style="display:block;margin-top:2px">' + extra + '</span></div></div>';
     }).join('') + '</div>';
   }
   function renderSolarPage() {
@@ -338,6 +373,7 @@ window.JunyongUI = (function () {
       + sec('sp12', '光伏总览', '力储峻涌光伏电站 · 阳光云',
         '<div class="gv3-flow">'
         + gvTile('实时功率', fmt(s.power_kw, 2), 'kW', '阳光云')
+        + gvTile('设备合计', fmt(s.device_power_kw, 2), 'kW', '8 台逆变器 · 快约 5 分钟')
         + gvTile('今日发电', fmt(s.today_kwh, 1), '度', '阳光云')
         + gvTile('累计发电', fmt(s.total_kwh, 0), '度', s.install_date ? ('并网 ' + String(s.install_date).slice(0, 10)) : '')
         + gvTile('装机容量', fmt(cap, 2), 'kWp', s.type || '分布式光伏')
@@ -345,12 +381,14 @@ window.JunyongUI = (function () {
         + gvTile('CO₂ 减排', fmt(co2 === null ? null : co2 / 1000, 2), '吨', '累计 · 折算')
         + gvTile('节约标准煤', fmt(coal === null ? null : coal / 1000, 2), '吨', '累计 · 折算')
         + gvTile('等效植树', trees === null ? '--' : trees, '棵', '累计 · 折算')
-        + '</div>')
+        + '</div>'
+        + '<div class="jy-note">“实时功率/今日发电”为电站口径（与阳光云概览一致）；'
+        + '“设备合计”来自 8 台逆变器，更新快约 5 分钟。分机组归属待现场确认。</div>')
       + '<div class="ov-grid">'
       + sec('sp12', '发电趋势', rangeBtns() + '<em id="jyTrendMeta" style="margin-left:8px;font-style:normal;font-size:11px;color:var(--dim)">--</em>',
         '<div class="dt-chart" id="jyTrendChart"></div>')
       + sec('sp6', '天气', 'Open-Meteo', weatherHtml())
-      + sec('sp6', '逆变器 / 通信模块', devices.length ? (devices.length + ' 台') : '--', devicesHtml())
+      + sec('sp6', '逆变器 / 通信模块', devices.length ? (devices.length + ' 台 · 设备级') : '--', devicesHtml())
       + '</div></div>';
     renderTrendChart();
   }
@@ -443,16 +481,25 @@ window.JunyongUI = (function () {
     var parts = [];
     if (wx) {
       parts.push(wx.text + ' ' + fmt(wx.temp, 1) + '℃'
-        + (n(wx.radiation) === null ? '' : '　辐照 ' + fmt(wx.radiation, 0) + ' W/㎡'));
+        + (n(wx.radiation) === null ? '' : '　辐照 ' + fmt(wx.radiation, 0) + ' W/㎡（Open-Meteo）'));
     } else parts.push('天气读取中…');
-    var alarms = n(st().alarms);
+    var s = st();
+    if (s.power_kw != null) parts.push('全站光伏 ' + fmt(s.power_kw, 1) + ' kW');
+    var alarms = n(s.alarms);
     parts.push(alarms ? ('告警 ' + alarms + ' 条') : '无告警');
+    if (s.online === 0) parts.push('电站离线');
+    var age = null;
+    if (s.updated_at) { var t0 = Date.parse(s.updated_at); if (isFinite(t0)) age = (Date.now() - t0) / 60000; }
+    if (age != null && age > 10) parts.push('数据延迟 ' + Math.round(age) + ' 分钟');
+    if (lastErr) parts.push('读取失败：' + lastErr);
     parts.push('储能数据源未接入');
     txt.textContent = parts.join('　·　');
-    if (bar) bar.className = 'alarm ' + (alarms ? 'bad' : 'ok');
+    var bad = !!alarms || s.online === 0 || (age != null && age > 10) || !!lastErr;
+    if (bar) bar.className = 'alarm ' + (bad ? 'bad' : 'ok');
   }
 
-  /* 把数据推给三维场景（光伏/储能按机组；暂时没有分组数据 → 全待机） */
+  /* 把数据推给三维场景：有分组按分组；没有分组就用全站光伏驱动三栋的光纹，
+     分群标签保持 --，不编分群数字 */
   function pushScene() {
     if (!window.JunyongScene || !JunyongScene.ready()) return;
     var gs = (payload && payload.groups) || [];
@@ -466,6 +513,10 @@ window.JunyongUI = (function () {
         load: g.load_kw == null ? null : +g.load_kw,
         grid: g.grid_kw == null ? null : +g.grid_kw
       });
+    }
+    if (JunyongScene.setStationPv) {
+      var s = st();
+      JunyongScene.setStationPv(s.power_kw, s.power_kw != null);
     }
     if (wx) JunyongScene.setWeather(wx);
   }

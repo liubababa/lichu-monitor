@@ -16,7 +16,7 @@
  *     ⑤ 国网→储能 gsto ⑥ 并网段 grid ⑦ 铁塔段 tower ⑧ 储能→厂房 stoh ⑨ 电网直供 gl
  *   数据缺失一律不亮（光伏 null≠0；关口没上报就不判买卖电），不编数据。
  *
- *   对外接口：JunyongScene.init / setGroup(i, d) / setWeather(w) / setTheme(t)
+ *   对外接口：JunyongScene.init / setGroup(i, d) / setStationPv(kw, seen) / setWeather(w) / setTheme(t)
  *            resize / setActive / setLabels / setRotate / resetView
  * ============================================================ */
 window.JunyongScene = (function () {
@@ -35,6 +35,8 @@ window.JunyongScene = (function () {
   var RAIN_N = 420, rainX = [], rainY = [], rainZ = [], rainV = [], _rainM = null;
   /* 三组机组各自的数据；null = 该路没上报（不亮线，不当 0 处理） */
   var data = [ {}, {}, {} ];
+  /* 全站口径：没有分机组数据时，用站级光伏功率驱动三栋的光纹（分群数字仍不编） */
+  var stationPv = { seen: false, kw: 0 };
   var wx = { cloud: null, precip: null, isDay: null, radiation: null };
 
   /* ---------------- 洙边原始尺寸 ---------------- */
@@ -739,8 +741,11 @@ window.JunyongScene = (function () {
 
   /* ---------------- 六工况判据（洙边口径；缺数据的路不亮） ---------------- */
   function cond(d) {
-    var hasPv = !!(d.pvSeen && d.pv != null), hasSt = d.st != null, hasGrid = d.grid != null;
-    var pv = hasPv ? d.pv : 0, st = hasSt ? d.st : 0;
+    var hasGroupPv = !!(d.pvSeen && d.pv != null);
+    var hasPv = hasGroupPv || stationPv.seen;
+    var pv = hasGroupPv ? d.pv : (stationPv.seen ? stationPv.kw : 0);
+    var hasSt = d.st != null, hasGrid = d.grid != null;
+    var st = hasSt ? d.st : 0;
     var surplus = hasGrid ? -d.grid : null;              /* 正 = 送电（卖） */
     var loadEff = hasGrid ? Math.max(0, pv + st - surplus) : (d.load != null ? Math.max(0, pv + st) : 0);
     var pvOn = hasPv && pv > .5, chg = hasSt && st < -.5, dis = hasSt && st > .5;
@@ -753,6 +758,7 @@ window.JunyongScene = (function () {
     if (chg && buy) its.push('5');
     if (dis) its.push('6');
     return { hasPv: hasPv, hasSt: hasSt, hasGrid: hasGrid, pv: pv, st: st, surplus: surplus,
+      stationPv: !hasGroupPv && stationPv.seen,
       loadEff: loadEff, pvOn: pvOn, chg: chg, dis: dis, sell: sell, buy: buy, its: its };
   }
   function updateFlows() {
@@ -760,6 +766,7 @@ window.JunyongScene = (function () {
     units.forEach(function (u, i) {
       var c = cond(data[i]);
       var spd = .25 + Math.min(1, Math.max(Math.abs(c.st), Math.abs(c.surplus || 0)) / 625) * 1.6;
+      if (c.pvOn) spd = Math.max(spd, .25 + Math.min(1, c.pv / 972.4) * 1.6);
       function lit(f, on, color, dir) {
         f.tubeMat.color.setHex(on ? color : F.idle);
         f.tubeMat.opacity = on ? .95 : .22;
@@ -801,16 +808,27 @@ window.JunyongScene = (function () {
       });
       if (u.tagEl) {
         u.tagEl.querySelector('i').textContent = c.its.length ? '工况 ' + c.its.join('+')
-          : ((c.hasPv || c.hasSt || c.hasGrid) ? '本群待机' : '无数据');
+          : (c.stationPv ? '全站光伏' : ((c.hasPv || c.hasSt || c.hasGrid) ? '本群待机' : '无数据'));
         u.tagEl.querySelector('em').textContent = fmtRow(data[i]);
       }
+    });
+    /* 组件发光：全站光伏 / 装机容量；没数据就回暗态 */
+    var pvRatio = stationPv.seen ? Math.max(0, Math.min(1, stationPv.kw / 972.4)) : 0;
+    units.forEach(function (u) {
+      var m = u.grp.userData.M && u.grp.userData.M.panel;
+      if (!m || !m.emissive) return;
+      m.emissive.setHex(pvRatio > .005 ? (theme === 'day' ? 0x14507f : 0x0b3c60) : 0x0a0d10);
+      m.emissiveIntensity = stationPv.seen
+        ? ((theme === 'day' ? .04 : .14) + pvRatio * (theme === 'day' ? .22 : .34))
+        : .1;
     });
     if (tower && tower.tagEl) {
       var anySell = units.some(function (u, i) { return cond(data[i]).sell; });
       var anyBuy = units.some(function (u, i) { return cond(data[i]).buy; });
       var anyGrid = units.some(function (u, i) { return cond(data[i]).hasGrid; });
       tower.tagEl.querySelector('em').textContent = (anySell || anyBuy)
-        ? (anySell ? '送出中' : '受电中') : (anyGrid ? '待机' : '无数据');
+        ? (anySell ? '送出中' : '受电中')
+        : (anyGrid ? '待机' : (stationPv.seen ? ('全站光伏 ' + num(stationPv.kw, 'kW')) : '无数据'));
     }
     refreshCards();
   }
@@ -1281,6 +1299,13 @@ window.JunyongScene = (function () {
     for (var k in d) data[i][k] = d[k];
     if (inited) updateFlows();
   }
+  /* 全站口径：kw = 站级光伏功率（kW）；seen=false 表示没数据（回到待机暗态） */
+  function setStationPv(kw, seen) {
+    var v = Number(kw);
+    stationPv.seen = !!seen && kw !== null && kw !== undefined && isFinite(v);
+    stationPv.kw = stationPv.seen ? v : 0;
+    if (inited) updateFlows();
+  }
   function setWeather(w) {
     if (!w) return;
     wx.cloud = w.cloud; wx.precip = w.precip; wx.radiation = w.radiation;
@@ -1290,7 +1315,7 @@ window.JunyongScene = (function () {
   }
   return {
     init: init, resize: resize, resetView: resetView, setLabels: setLabels, setRotate: setRotate,
-    setActive: setActive, setGroup: setGroup, setWeather: setWeather, setDuis: setDuis,
+    setActive: setActive, setGroup: setGroup, setStationPv: setStationPv, setWeather: setWeather, setDuis: setDuis,
     setTheme: function () { if (inited) applyTheme(); },
     ready: function () { return inited; }
   };
