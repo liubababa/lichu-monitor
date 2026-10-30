@@ -548,11 +548,11 @@ window.SolarScene = (function () {
     slabYardMat.polygonOffset = true;
     slabYardMat.polygonOffsetFactor = 1;
     slabYardMat.polygonOffsetUnits = 1;
-    slabYardMat.map.repeat.set(4, 58 / 24);
-    root.add(box(96, .18, 58, slabYardMat, 0, .09, 0));
+    slabYardMat.map.repeat.set(19, 10);
+    root.add(box(460, .18, 240, slabYardMat, 0, .09, 0));
     /* 场坪描边：EdgesGeometry 细线，就是画面里"场地边界"的那圈光 */
     slabEdge = new T.LineSegments(
-      new T.EdgesGeometry(new T.BoxGeometry(96, .18, 58)),
+      new T.EdgesGeometry(new T.BoxGeometry(460, .18, 240)),
       regThemeMat(new T.LineBasicMaterial({ color: 0x2ee6c8, transparent: true, opacity: .5, depthWrite: false }),
         {}, { color: 0x0f9682, opacity: .35 }));
     slabEdge.position.y = .09;
@@ -1515,7 +1515,7 @@ window.SolarScene = (function () {
     if (slabYardMat) {
       const old = slabYardMat.map;
       slabYardMat.map = slabTexture(theme);
-      slabYardMat.map.repeat.set(4, 58 / 24);
+      slabYardMat.map.repeat.set(19, 10);
       slabYardMat.needsUpdate = true;
       if (old) old.dispose();
     }

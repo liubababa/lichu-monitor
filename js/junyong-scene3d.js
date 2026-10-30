@@ -1057,10 +1057,10 @@ window.JunyongScene = (function () {
     var x0 = Math.min.apply(null, xs) - 6, x1 = Math.max.apply(null, xs) + 6;
     var z0 = Math.min.apply(null, zs) - 6, z1 = Math.max.apply(null, zs) + 6;
     var sw = x1 - x0, sd = z1 - z0;
-    M.slab.map.repeat.set(sw / 24, sd / 24);
-    var slab = new T.Mesh(new T.BoxGeometry(sw, .18, sd), M.slab);
+    M.slab.map.repeat.set(19, 10);
+    var slab = new T.Mesh(new T.BoxGeometry(460, .18, 240), M.slab);
     slab.position.set((x0 + x1) / 2, .09, (z0 + z1) / 2); slab.receiveShadow = true; root.add(slab);
-    var ed = new T.LineSegments(new T.EdgesGeometry(new T.BoxGeometry(sw, .18, sd)), M.edge);
+    var ed = new T.LineSegments(new T.EdgesGeometry(new T.BoxGeometry(460, .18, 240)), M.edge);
     ed.position.copy(slab.position); root.add(ed);
     center = new T.Vector3((x0 + x1) / 2, 2, (z0 + z1) / 2);
     fitPts = [];
