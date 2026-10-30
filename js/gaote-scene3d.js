@@ -32,34 +32,36 @@ window.GaoteScene3D = (function () {
   /* 白天 / 夜晚双主题：默认夜晚（深色科技感），白天为浅色天空 + 浅色地坪。
      场景里用到的可换色对象（地面、台面、灯光、辉光强度）建好后记录在这里 */
   let theme = 'night';
-  let groundMat = null, slabYardMat = null;
+  let groundMat = null, slabYardMat = null, slabEdge = null, siteGlow = null, sweepMesh = null;
   let hemiLight = null, sunLight = null, fillLight = null, bloomPass = null;
   let camHome = null;              // 默认机位（按画布宽高比算好后存下来，重置视角复用）
   const THEMES = {
     night: {
-      bg: 0x04090c, fog: 0x04090c, fogNear: 34, fogFar: 95,
+      bg: 0x04090c, fog: 0x0b1c24, fogNear: 105, fogFar: 300,
       /* 场地铺成水泥地（白天新设计的 Demo），夜里深灰、白天浅灰 */
-      hemiSky: 0xbfe9ff, hemiGround: 0x0a1a1e, hemiInt: 1.05,
-      sunColor: 0xffffff, sunInt: .85, fillColor: 0x2ee6c8, fillInt: .35, bloom: .62, bloomTh: .82,
+      hemiSky: 0xbfe9ff, hemiGround: 0x0a1518, hemiInt: .95,
+      sunColor: 0xcfe8ff, sunInt: .88, fillColor: 0x2ee6c8, fillInt: .38, bloom: .55, bloomTh: .78,
+      vignette: { strength: .3, tint: .06 }, sweep: .05,
       /* 状态色：充电(蓝) / 放电(青) / 待机(灰) */
       stateChg: 0x8fd8ff, stateDis: 0x3df0a0, stateIdle: 0x6f9a94,
       /* 电流光纹：放电(青) / 充电(蓝) / 馈电卖电(橙) / 待机(暗)；夜里用加色混合发光 */
       flowDis: 0x3df0a0, flowChg: 0x8fd8ff, flowSell: 0xffb020, flowIdle: 0x16303a, flowBlend: 1,
-      sky: null
+      sky: [[0, '#04080c'], [.42, '#071219'], [.66, '#0d2530'], [.84, '#123743'], [1, '#17505f']]
     },
     day: {
-      bg: 0xcfe4f0, fog: 0xe9f1f4, fogNear: 58, fogFar: 165,
+      bg: 0xdbe9f0, fog: 0xd3e3ec, fogNear: 120, fogFar: 340,
       /* 光照总量压在 1.0 附近：再高浅色水泥地就过曝成纯白，阴影全丢。
          环境光给足（阴面才不会发黑成剪影），直射光适度 */
-      hemiSky: 0xdfefff, hemiGround: 0xb9bdb6, hemiInt: .6,
-      sunColor: 0xfff0da, sunInt: .55, fillColor: 0xbfe6ff, fillInt: .15, bloom: .1, bloomTh: .97,
+      hemiSky: 0xdff0ff, hemiGround: 0x76815f, hemiInt: .3,
+      sunColor: 0xfff2d0, sunInt: .62, fillColor: 0xbfe0ff, fillInt: .1, bloom: .12, bloomTh: .96,
+      vignette: { strength: .12, tint: 0 }, sweep: 0,
       /* 白天：充电(蓝) / 放电(绿) / 待机(灰)——与光纹同色系 */
       stateChg: 0x1f7fd0, stateDis: 0x159a63, stateIdle: 0x9aa9a9,
       /* 电流光纹：白天浅底用饱和暖色 + 普通混合，否则会被浅底冲淡 */
       flowDis: 0x159a63, flowChg: 0x1f7fd0, flowSell: 0xd97700, flowIdle: 0x9aa9a9, flowBlend: 0,
       /* 天空穹顶的竖直渐变：天顶蓝 → 地平线白雾（相机基本平视，
          所以蓝色要压到接近地平线才看得见，否则整片都是白的） */
-      sky: { stops: [[0, '#4f9fd4'], [.36, '#7dbde3'], [.47, '#b6d9ee'], [.52, '#e6eff4'], [1, '#e6eff4']] }
+      sky: [[0, '#2f74b8'], [.45, '#5fa6d8'], [.62, '#9ccbe4'], [.78, '#cfe2ec'], [1, '#dbe9f0']]
     }
   };
 
@@ -68,12 +70,16 @@ window.GaoteScene3D = (function () {
   const themeMats = [];
   function regMat(mat, night, day) { themeMats.push({ mat: mat, night: night, day: day }); return mat; }
   let skyDome = null;
-  function makeSkyDome(sky) {
-    const t = tex(function (g, w, h) {
+  function skyTexture(sky) {
+    const stops = sky.stops || sky;
+    return tex(function (g, w, h) {
       const grd = g.createLinearGradient(0, 0, 0, h);
-      sky.stops.forEach(function (s) { grd.addColorStop(s[0], s[1]); });
+      stops.forEach(function (s) { grd.addColorStop(s[0], s[1]); });
       g.fillStyle = grd; g.fillRect(0, 0, w, h);
     }, 16, 256);
+  }
+  function makeSkyDome(sky) {
+    const t = skyTexture(sky);
     const mesh = new THREE.Mesh(
       new THREE.SphereGeometry(180, 24, 16),
       new THREE.MeshBasicMaterial({ map: t, side: THREE.BackSide, depthWrite: false, fog: false, toneMapped: false })
@@ -146,7 +152,7 @@ window.GaoteScene3D = (function () {
 
   /* 场坪网格（2026-10-29 与洙边同一口径同步）：深色底盘 + 青色细格网，每格约 3m；
      昼 = 浅色水泥 + 淡格线。原来那版随机污渍（26 个椭圆软斑 + 划痕）近看像脏污，已移除 */
-  function concreteTexture() {
+  function concreteTexture(grid) {
     const day = theme === 'day';
     const tx = tex(function (g, w, h) {
       g.fillStyle = day ? '#c4c7bf' : '#1b2b33'; g.fillRect(0, 0, w, h);
@@ -158,25 +164,48 @@ window.GaoteScene3D = (function () {
         const s = Math.random() < .85 ? 1 : 2;
         g.fillRect(Math.random() * w, Math.random() * h, s, s);
       }
-      const cells = 8, cw = w / cells;
-      g.strokeStyle = day ? 'rgba(30,90,95,.09)' : 'rgba(46,230,200,.13)';
-      g.lineWidth = 1.2;
-      for (let i = 0; i <= cells; i++) {
-        const p = Math.round(i * cw) + .5;
-        g.beginPath(); g.moveTo(p, 0); g.lineTo(p, h); g.stroke();
-        g.beginPath(); g.moveTo(0, p); g.lineTo(w, p); g.stroke();
-      }
-      g.strokeStyle = day ? 'rgba(30,90,95,.14)' : 'rgba(46,230,200,.22)';
-      g.lineWidth = 2;
-      for (let i = 0; i <= cells; i += 4) {                      /* 每 4 格一条主格线 */
-        const p = Math.round(i * cw) + .5;
-        g.beginPath(); g.moveTo(p, 0); g.lineTo(p, h); g.stroke();
-        g.beginPath(); g.moveTo(0, p); g.lineTo(w, p); g.stroke();
+      if (grid) {
+        const cells = 8, cw = w / cells;
+        g.strokeStyle = day ? 'rgba(30,90,95,.09)' : 'rgba(46,230,200,.13)';
+        g.lineWidth = 1.2;
+        for (let i = 0; i <= cells; i++) {
+          const p = Math.round(i * cw) + .5;
+          g.beginPath(); g.moveTo(p, 0); g.lineTo(p, h); g.stroke();
+          g.beginPath(); g.moveTo(0, p); g.lineTo(w, p); g.stroke();
+        }
+        g.strokeStyle = day ? 'rgba(30,90,95,.14)' : 'rgba(46,230,200,.22)';
+        g.lineWidth = 2;
+        for (let i = 0; i <= cells; i += 4) {                      /* 每 4 格一条主格线 */
+          const p = Math.round(i * cw) + .5;
+          g.beginPath(); g.moveTo(p, 0); g.lineTo(p, h); g.stroke();
+          g.beginPath(); g.moveTo(0, p); g.lineTo(w, p); g.stroke();
+        }
       }
     }, 512, 512);
     tx.wrapS = tx.wrapT = THREE.RepeatWrapping;
     if (renderer && renderer.capabilities) tx.anisotropy = renderer.capabilities.getMaxAnisotropy();
     return tx;
+  }
+  /* 场坪上的光池 / 扫光带贴图（洙边同款） */
+  function radialGlowTexture() {
+    return tex(function (g, w, h) {
+      const grd = g.createRadialGradient(w / 2, h / 2, 2, w / 2, h / 2, w / 2);
+      grd.addColorStop(0, 'rgba(255,255,255,.9)');
+      grd.addColorStop(.35, 'rgba(255,255,255,.32)');
+      grd.addColorStop(1, 'rgba(255,255,255,0)');
+      g.fillStyle = grd; g.fillRect(0, 0, w, h);
+    }, 128, 128);
+  }
+  function sweepTexture() {
+    return tex(function (g, w, h) {
+      const grd = g.createLinearGradient(0, 0, w, 0);
+      grd.addColorStop(0, 'rgba(255,255,255,0)');
+      grd.addColorStop(.42, 'rgba(255,255,255,.05)');
+      grd.addColorStop(.5, 'rgba(255,255,255,.5)');
+      grd.addColorStop(.58, 'rgba(255,255,255,.05)');
+      grd.addColorStop(1, 'rgba(255,255,255,0)');
+      g.fillStyle = grd; g.fillRect(0, 0, w, h);
+    }, 128, 8);
   }
   /* 设备贴图配色：白天 / 夜晚两套。
      夜里是深色柜体 + 青色发光线；白天换成浅色柜体 + 深灰缝线，
@@ -996,18 +1025,44 @@ window.GaoteScene3D = (function () {
 
     /* 地坪：整片水泥地，铺到 700 见方（远处交给雾效），任何角度都看不到地边与"台下" */
     groundMat = new THREE.MeshStandardMaterial({
-      map: concreteTexture(), roughness: .96, metalness: .02
+      map: concreteTexture(false), roughness: .96, metalness: .02
     });
-    groundMat.map.repeat.set(29, 29);   /* 8 格/贴图 × 29 次 = 700m 里每格约 3m，对齐洙边场坪网格 */
+    groundMat.map.repeat.set(47, 47);   /* 洙边同款水泥大地面（每格约 3m） */
     const ground = new THREE.Mesh(new THREE.PlaneGeometry(700, 700), groundMat);
     ground.rotation.x = -Math.PI / 2;
     ground.receiveShadow = true;
     root.add(ground);
-    /* 场地台座：原来是 48×22 的深色小台，四周露边像"模型底座"；
-       现在换成同材质混凝土并放大到 460×240 铺满画面，边缘落在雾外看不到台边 */
-    slabYardMat = new THREE.MeshStandardMaterial({ map: concreteTexture(), roughness: .93, metalness: .02 });
-    slabYardMat.map.repeat.set(19, 10);   /* 460×240 场坪同样 3m 网格（19×10 次 ×8 格） */
+    /* 场合坪：洙边同款网格场坪（尺寸按本站设备范围） */
+    slabYardMat = new THREE.MeshStandardMaterial({ map: concreteTexture(true), roughness: .93, metalness: .02 });
+    slabYardMat.map.repeat.set(19, 10);
     root.add(box(460, .18, 240, slabYardMat, 0, .09, 0));
+    /* 场坪发光描边（洙边同款） */
+    slabEdge = new THREE.LineSegments(
+      new THREE.EdgesGeometry(new THREE.BoxGeometry(460, .18, 240)),
+      regMat(new THREE.LineBasicMaterial({ color: 0x2ee6c8, transparent: true, opacity: .5, depthWrite: false }),
+        {}, { color: 0x0f9682, opacity: .35 }));
+    slabEdge.position.y = .09;
+    root.add(slabEdge);
+    /* 坪面光池：加色径向渐变（洙边同款 150×100） */
+    siteGlow = new THREE.Mesh(new THREE.PlaneGeometry(150, 100),
+      regMat(new THREE.MeshBasicMaterial({
+        map: radialGlowTexture(), color: 0x2ee6c8, transparent: true, opacity: .08,
+        blending: THREE.AdditiveBlending, depthWrite: false
+      }), {}, { color: 0x0f9682, opacity: .05 }));
+    siteGlow.rotation.x = -Math.PI / 2;
+    siteGlow.position.y = .2;
+    siteGlow.renderOrder = 2;
+    root.add(siteGlow);
+    /* 扫光带：极淡的加色光带缓慢横移（18s 一轮） */
+    sweepMesh = new THREE.Mesh(new THREE.PlaneGeometry(26, 74),
+      new THREE.MeshBasicMaterial({
+        map: sweepTexture(), color: 0x2ee6c8, transparent: true, opacity: 0,
+        blending: THREE.AdditiveBlending, depthWrite: false
+      }));
+    sweepMesh.rotation.x = -Math.PI / 2;
+    sweepMesh.position.y = .21;
+    sweepMesh.renderOrder = 3;
+    root.add(sweepMesh);
 
     /* 电缆沟盖板：储能柜前 → 汇流柜 → 厂房，放电/充电两组电缆都在沟里走，地面干净 */
     const gutterMat = regMat(std(0x1a2a2f, { roughness: .85 }), { color: 0x1a2a2f }, { color: 0xb4bcbd });
@@ -1538,6 +1593,10 @@ window.GaoteScene3D = (function () {
         rainInst.instanceMatrix.needsUpdate = true;
       }
     }
+    /* 扫光带：和洙边同一条横向呼吸光带（18s 一轮） */
+    if (sweepMesh && sweepMesh.material.opacity > 0) {
+      sweepMesh.position.x = -58 + ((t / 1000) % 18) / 18 * 116;
+    }
     scaleLabels();                       /* 浮标跟着相机距离缩放 */
     updateLabelOcclusion();              /* 被模型挡住的浮标藏起来 */
     /* 厂房灯（玻璃 / 门里的光 / 墙面柔光 / 地面光晕）一起呼吸：
@@ -1600,18 +1659,19 @@ window.GaoteScene3D = (function () {
     /* 水泥地坪 / 场坪跟着主题重画：夜里深灰、白天浅灰 */
     if (groundMat) {
       const old = groundMat.map;
-      groundMat.map = concreteTexture();
-      groundMat.map.repeat.set(29, 29);   /* 8 格/贴图 × 29 次 = 700m 里每格约 3m，对齐洙边场坪网格 */
+      groundMat.map = concreteTexture(false);
+      groundMat.map.repeat.set(47, 47);   /* 洙边同款水泥大地面（每格约 3m） */
       groundMat.needsUpdate = true;
       if (old) old.dispose();
     }
     if (slabYardMat) {
       const old = slabYardMat.map;
-      slabYardMat.map = concreteTexture();
-      slabYardMat.map.repeat.set(19, 10);   /* 460×240 场坪同样 3m 网格（19×10 次 ×8 格） */
+      slabYardMat.map = concreteTexture(true);
+      slabYardMat.map.repeat.set(19, 10);
       slabYardMat.needsUpdate = true;
       if (old) old.dispose();
     }
+    if (sweepMesh) sweepMesh.material.opacity = p.sweep || 0;
     /* 光纹混合方式跟着主题：夜里加色发光，白天普通混合（否则浅底上看不见） */
     flows.forEach(function (fl) {
       fl.tubeMat.blending = p.flowBlend ? THREE.AdditiveBlending : THREE.NormalBlending;
@@ -1634,6 +1694,12 @@ window.GaoteScene3D = (function () {
     /* 天空：白天用渐变穹顶（顶部蓝 → 地平线雾白），夜里收回深色背景 */
     if (p.sky) {
       if (!skyDome) { skyDome = makeSkyDome(p.sky); scene.add(skyDome); }
+      else {
+        const oldSky = skyDome.material.map;
+        skyDome.material.map = skyTexture(p.sky);
+        skyDome.material.needsUpdate = true;
+        if (oldSky) oldSky.dispose();
+      }
       skyDome.visible = true;
       scene.background = null;
     } else if (skyDome) {
@@ -1654,6 +1720,7 @@ window.GaoteScene3D = (function () {
         else e.mat.emissive.copy(cfg.emissive);
       }
       if (cfg.emissiveIntensity !== undefined) e.mat.emissiveIntensity = cfg.emissiveIntensity;
+      if (cfg.opacity !== undefined) e.mat.opacity = cfg.opacity;
       e.mat.needsUpdate = true;
     });
     /* 厂房灯的呼吸基准跟着主题：夜里 0.5 的暖光，白天压到 0.16（浅底上不刺眼） */

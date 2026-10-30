@@ -870,16 +870,16 @@ window.JunyongScene = (function () {
   function buildEnv(th) {
     var T = T_();
     /* 坪面光池：加色径向渐变，场坪中心亮、四周暗 */
-    siteGlow = new T.Mesh(new T.PlaneGeometry(120, 88), new T.MeshBasicMaterial({
+    siteGlow = new T.Mesh(new T.PlaneGeometry(150, 100), new T.MeshBasicMaterial({
       map: glowTex(), color: th.glow, transparent: true, opacity: th.glowO * .8,
       blending: T.AdditiveBlending, depthWrite: false }));
     siteGlow.rotation.x = -Math.PI / 2; siteGlow.position.set(0, .2, 1); siteGlow.renderOrder = 2;
     root.add(siteGlow);
     /* 扫光带：一条极淡的加色光带缓慢横移（18s 一轮），给静态画面一点"数据在跑"的呼吸 */
-    sweepMesh = new T.Mesh(new T.PlaneGeometry(26, 96), new T.MeshBasicMaterial({
+    sweepMesh = new T.Mesh(new T.PlaneGeometry(26, 74), new T.MeshBasicMaterial({
       map: sweepTex(), color: th.glow, transparent: true, opacity: th.sweep,
       blending: T.AdditiveBlending, depthWrite: false }));
-    sweepMesh.rotation.x = -Math.PI / 2; sweepMesh.position.set(-46, .21, 1); sweepMesh.renderOrder = 3;
+    sweepMesh.rotation.x = -Math.PI / 2; sweepMesh.position.set(-58, .21, 1); sweepMesh.renderOrder = 3;
     root.add(sweepMesh);
     /* 日 / 月：真实昼夜决定挂哪一个（见 refreshSkyLight） */
     sun = new T.Mesh(new T.SphereGeometry(3.2, 20, 20), new T.MeshBasicMaterial({ color: 0xffe9a8, fog: false }));
@@ -1164,7 +1164,7 @@ window.JunyongScene = (function () {
       rainInst.instanceMatrix.needsUpdate = true;
     }
     if (sweepMesh && sweepMesh.material.opacity > 0) {
-      sweepMesh.position.x = -46 + ((ts / 1000) % 18) / 18 * 92;
+      sweepMesh.position.x = -58 + ((ts / 1000) % 18) / 18 * 116;
     }
     updateOcclusion();
     renderer.setScissorTest(false); renderer.setViewport(0, 0, W, H);
