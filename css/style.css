@@ -211,9 +211,9 @@ button{font-family:inherit;cursor:pointer;background:none;border:none;color:inhe
   padding:10px;display:flex;flex-direction:column;gap:12px;min-height:0;
   overflow-y:auto;overflow-x:hidden;
 }
-/* 触摸屏 / 触控板：竖边加宽成好点的目标 */
+/* 触摸屏 / 触控板：竖边加宽成好点的目标（三站同一套，收起时宽度一致） */
 @media (pointer:coarse){
-  #right,#slRight{--strip:46px}
+  #right,#slRight,#jyRight{--strip:46px}
   .side-handle{font-size:12px;letter-spacing:4px}
 }
 .panel{
@@ -1507,7 +1507,7 @@ html[data-theme="day"] #slRight .side-handle{color:#0b8f76;background:linear-gra
 #jyView.page-mode #jyPageBar{display:flex}
 #jyRight{
   --panel-w:clamp(340px,24vw,460px);
-  --strip:46px;              /* 与洙边同宽：大屏手点，34px 太窄 */
+  --strip:34px;              /* 与东明 / 洙边一致；触屏由 @media(pointer:coarse) 统一加宽到 46 */
   position:absolute;top:12px;right:0;bottom:12px;z-index:20;width:var(--strip);overflow:hidden;
   transition:width .26s ease;border:1px solid var(--acc-2);border-radius:2px;
   background:linear-gradient(165deg,rgba(10,26,30,.92),rgba(5,13,16,.94));
