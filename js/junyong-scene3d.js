@@ -1,7 +1,7 @@
 /* ============================================================
  * 山东峻涌光储电站 · 光储一体三维场景
  *
- *   三套机组品字围合（一号后排左 / 二号后排右 / 三号前排居中）：
+ *   三套机组 L 形围合（一号后排左 / 二号后排右 / 三号前排靠右，右墙与二号齐平）：
  *     一号机组 1 台光储一体柜、二号机组 1 台、三号机组 3 台（共 5 台）
  *   每群 = 一栋厂房（13×6.2×8，白墙 + 二层格窗 + 门斗雨棚台阶 + 北墙空调外机）
  *         + 屋面光伏 4 排 × 5 块（规格同洙边）
@@ -31,6 +31,7 @@ window.JunyongScene = (function () {
   var flows = [], units = [], tower = null, beacons = [], occluders = [];
   var labelPairs = [], cards = {}, activeCard = null;
   var key = null, hemi = null, fill = null, dome = null;
+  var viewInset = 0;              /* 右侧数据栏展开时把画面左移半个面板宽，避免挡设备 */
   /* 环境层（照洙边那套）：坪面光池 / 扫光带 / 日月 / 云 / 降水 / 天空环境贴图 */
   var siteGlow = null, sweepMesh = null, sun = null, sunGlow = null, moon = null;
   var cloudGrp = null, rainInst = null, rainMat = null, cloudMats = [], envRT = null;
@@ -52,8 +53,9 @@ window.JunyongScene = (function () {
   var GN = ['一号机组', '二号机组', '三号机组'], GCAB = [1, 1, 3];
   /* 三维标签用：厂房名 / 每群那台（组）柜的现场编号，与平台「储能机组」表一致 */
   var GB = ['一号厂房', '二号厂房', '三号厂房'], GCABN = ['6号柜', '7号柜', '3-5号柜'];
-  /* 品字：一号（柜列镜像到右）、二号在后排，三号在前排居中；塔在三群中心 */
-  var SLOT = 20, SITE = [{ x: -SLOT, z: -12, m: true }, { x: SLOT, z: -12, m: false }, { x: 0, z: 14, m: false }];
+  /* L 形：一号（柜列镜像到右）、二号在后排右，三号在前排、右墙与二号齐平（2026-10-31 用户要求右移）；
+     塔仍在场地西侧中心，三号并网线沿厂房西侧向北进塔 */
+  var SLOT = 20, SITE = [{ x: -SLOT, z: -12, m: true }, { x: SLOT, z: -12, m: false }, { x: SLOT, z: 14, m: false }];
   var TWR_AT = { x: 0, z: -3.33 };
 
   /* 观感数值（泛光 / 暗角 / 曝光 / 灯光量 / 地面 / 接触阴影）三站共用，在 js/scene-preset.js；
@@ -766,16 +768,25 @@ window.JunyongScene = (function () {
     var provChg = !hasSt && hasPv;
     var pvOn = hasPv && pv > .5, chg = hasSt ? (st < -.5) : provChg, dis = hasSt && st > .5;
     var sell = hasGrid && surplus > .3, buy = hasGrid && surplus < -.3;
+    var charge = chg && hasSt ? -st : 0;
+    /* 光伏先满足储能充电，剩余出力才供厂房（与场景里 sto / pvh 两条线的画法一致）：
+       · 充电时 PV 全额被充电吃掉，就不再判「光伏→厂房」；
+       · 只有 PV 小于充电功率、且关口在取电，才判「电网→储能」。 */
+    var pvToLoad = pvOn && loadEff > .3 && (!chg || pv > charge + .3);
+    var gridToStorage = !!(chg && buy && (hasSt ? pv < charge - .3 : true));
+    /* 储能放电但负荷≈0、关口却在送电：六工况里没有「储能→电网」，按现场“储能不卖电”口径属于数据/策略矛盾 */
+    var dataWarn = (dis && sell && loadEff <= .3) ? '储能放电但负荷≈0、关口送电（储能不卖电口径）' : '';
     var its = [];
     if (pvOn && chg) its.push('1');
-    if (pvOn && loadEff > .3) its.push('2');
+    if (pvToLoad) its.push('2');
     if (pvOn && sell) its.push('3');
     if (buy && loadEff > .3) its.push('4');
-    if (chg && buy) its.push('5');
-    if (dis) its.push('6');
+    if (gridToStorage) its.push('5');
+    if (dis && loadEff > .3) its.push('6');
     return { hasPv: hasPv, hasSt: hasSt, hasGrid: hasGrid, pv: pv, st: st, surplus: surplus,
       stationPv: !hasGroupPv && stationPv.seen, provChg: provChg,
-      loadEff: loadEff, pvOn: pvOn, chg: chg, dis: dis, sell: sell, buy: buy, its: its };
+      loadEff: loadEff, pvOn: pvOn, chg: chg, dis: dis, sell: sell, buy: buy,
+      charge: charge, pvToLoad: pvToLoad, gridToStorage: gridToStorage, dataWarn: dataWarn, its: its };
   }
   function updateFlows() {
     var F = FLOWC[theme];
@@ -793,9 +804,9 @@ window.JunyongScene = (function () {
         switch (f.kind) {
           case 'pv': lit(f, c.pvOn, F.ac, 1); break;
           case 'pvlow': lit(f, c.pvOn && (c.chg || c.sell), F.ac, 1); break;
-          case 'pvh': lit(f, c.pvOn && c.loadEff > .3, F.ac, 1); break;
+          case 'pvh': lit(f, c.pvToLoad, F.ac, 1); break;
           case 'sto': lit(f, c.pvOn && c.chg, F.ac, 1); break;
-          case 'gsto': lit(f, c.chg && c.buy, F.buy, 1); break;
+          case 'gsto': lit(f, c.gridToStorage, F.buy, 1); break;
           case 'grid': lit(f, c.pvOn && c.sell, F.ac, 1); break;
           case 'stoh': lit(f, c.dis && c.loadEff > .3, F.dis, 1); break;
           case 'gl': lit(f, c.buy && c.loadEff > .3, F.buy, 1); break;
@@ -828,9 +839,10 @@ window.JunyongScene = (function () {
       /* 标签：厂房 = 本群工况 + 关口；储能柜 = 功率 / SOC / 今日充放；屋顶光伏 = 分群（暂无）与全站口径 */
       var dd = data[i];
       if (u.tagBld) {
-        u.tagBld.querySelector('i').textContent = c.provChg ? '工况 1（暂按光伏充储能）'
-          : (c.its.length ? '工况 ' + c.its.join('+')
-            : (c.stationPv ? '全站光伏' : ((c.hasPv || c.hasSt || c.hasGrid) ? '本群待机' : '无数据')));
+        u.tagBld.querySelector('i').textContent = c.dataWarn ? '数据矛盾 · 储能→网'
+          : (c.provChg ? '工况 1（暂按光伏充储能）'
+            : (c.its.length ? '工况 ' + c.its.join('+')
+              : (c.stationPv ? '全站光伏' : ((c.hasPv || c.hasSt || c.hasGrid) ? '本群待机' : '无数据'))));
         u.tagBld.querySelector('em').textContent = '光伏 ' + (dd.pv == null ? '--kW' : num(dd.pv, 'kW'))
           + ' · 关口 ' + (dd.grid == null ? '--kW'
             : ((dd.grid >= 0 ? '取 ' : '送 ') + Math.abs(+dd.grid).toFixed(1) + 'kW'));
@@ -881,9 +893,10 @@ window.JunyongScene = (function () {
         ['SOC', d.soc == null ? '-- %' : (+d.soc).toFixed(0) + ' %'],
         ['负载', num(d.load, ' kW')],
         ['关口表', d.grid == null ? '-- kW' : ((+d.grid >= 0 ? '取电 ' : '送电 ') + Math.abs(d.grid).toFixed(1) + ' kW')]
-      ], c.provChg ? '当前工况：1（暂按光伏充储能，储能数据未接入）'
-        : (c.its.length ? '当前工况：' + c.its.join(' + ')
-          : ((c.hasPv || c.hasSt || c.hasGrid) ? '本群待机（数据已接入，当前无工况）' : '数据未接入')));
+      ], c.dataWarn ? ('数据矛盾：' + c.dataWarn)
+        : (c.provChg ? '当前工况：1（暂按光伏充储能，储能数据未接入）'
+          : (c.its.length ? '当前工况：' + c.its.join(' + ')
+            : ((c.hasPv || c.hasSt || c.hasGrid) ? '本群待机（数据已接入，当前无工况）' : '数据未接入'))));
     });
     if (activeCard === 'tower') {
       setCard('tower', '并网铁塔 · 10kV 上网线路', [
@@ -1072,11 +1085,13 @@ window.JunyongScene = (function () {
     /* 每群一根线上塔：贴地到塔位，再拉线上塔中央；三个进塔点不交叉 */
     units.forEach(function (u, i) {
       var land, pts;
-      if (i === 2) {                                 /* 前排三号：绕自己厂房东侧空档北上 */
-        var ringZ = u.tbWorld.z + 2.4, side = TWR_AT.x + 9.5;
+      if (i === 2) {
+        /* 三号右移到二号正前方后，关口箱落在厂房西侧（x≈2）；并网线沿厂房西侧向北，
+           不再绕东侧，最后在塔东南脚进塔。x=2.2：西离三号柜地坪（西沿 2.4）、东离塔基（1.87）。 */
         land = [TWR_AT.x + 2.4, .44, TWR_AT.z + 2.0];
-        pts = [[u.tbWorld.x, .44, u.tbWorld.z], [u.tbWorld.x, .44, ringZ],
-          [side, .44, ringZ], [side, .44, land[2]], land];
+        var gx = TWR_AT.x + 2.2;
+        pts = [[u.tbWorld.x, .44, u.tbWorld.z], [gx, .44, u.tbWorld.z],
+          [gx, .44, land[2]], land];
       } else {
         land = [TWR_AT.x + (i === 0 ? -2.4 : 2.4), .44, TWR_AT.z];
         pts = [[u.tbWorld.x, .44, u.tbWorld.z], [u.tbWorld.x, .44, TWR_AT.z], land];
@@ -1320,7 +1335,8 @@ window.JunyongScene = (function () {
     var r = host.getBoundingClientRect();
     W = Math.max(2, Math.floor(r.width)); H = Math.max(2, Math.floor(r.height));
     renderer.setSize(W, H);
-    camera.aspect = W / H; camera.updateProjectionMatrix();
+    camera.aspect = W / H;
+    applyViewInset();
     if (labelR) labelR.setSize(W, H);
     SP.resizeComposer(composer, bloomPass, W, H);   /* 泛光半分辨率：4K 屏上省 4 倍填充率 */
     if (camHome) {                       /* 比例变了按新画幅重新算距离，保留当前视线方向 */
@@ -1331,6 +1347,19 @@ window.JunyongScene = (function () {
       camHome = { p: camera.position.clone(), t: center.clone() };
       lblRef = d;
     }
+  }
+  /* 右栏展开时把投影视窗左移半个面板宽：站点平面坐标不动，只让取景避开覆盖层 */
+  function applyViewInset() {
+    if (!camera || !renderer) return;
+    var el = renderer.domElement;
+    var w = el.clientWidth || W, h = el.clientHeight || H;
+    if (viewInset > 0) camera.setViewOffset(w + viewInset, h, viewInset, 0, w, h);
+    else camera.clearViewOffset();
+    camera.updateProjectionMatrix();
+  }
+  function setViewInset(px) {
+    viewInset = Math.max(0, Math.min(900, +px || 0));
+    applyViewInset();
   }
   function setLabels(on) { labelsOn = !!on; applyLabelVisibility(); }
   function setRotate(on) { rotating = !!on; }
@@ -1358,6 +1387,7 @@ window.JunyongScene = (function () {
   return {
     init: init, resize: resize, resetView: resetView, setLabels: setLabels, setRotate: setRotate,
     setActive: setActive, setGroup: setGroup, setStationPv: setStationPv, setWeather: setWeather, setDuis: setDuis,
+    setViewInset: setViewInset,
     setTheme: function () { if (inited) applyTheme(); },
     ready: function () { return inited; }
   };

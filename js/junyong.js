@@ -1208,6 +1208,16 @@ window.JunyongUI = (function () {
   }
 
   /* ---------------- 绑定 ---------------- */
+  /* 右栏展开时让三维画面左移半个面板宽，避免覆盖最右侧的三号厂房 */
+  function syncSceneInset() {
+    var jr = byId('jyRight');
+    if (!jr) return;
+    var on = jr.classList.contains('pinned');
+    var vw = window.innerWidth || 1920;
+    var pw = Math.min(460, Math.max(340, vw * .24));
+    var strip = parseFloat(getComputedStyle(jr).getPropertyValue('--strip')) || 46;
+    if (window.JunyongScene && JunyongScene.setViewInset) JunyongScene.setViewInset(on ? Math.round(pw + strip) : 0);
+  }
   function bind() {
     var jt = byId('jyTabs');
     if (jt) jt.addEventListener('click', function (e) {
@@ -1249,9 +1259,15 @@ window.JunyongUI = (function () {
     });
     window.addEventListener('resize', function () {
       if (window.JunyongScene && byId('jyView') && !byId('jyView').classList.contains('hidden')) JunyongScene.resize();
+      syncSceneInset();
       if (chart && tab === 'solar') chart.resize();
       if (revChart && tab === 'revenue') revChart.resize();
     });
+    var jr = byId('jyRight');
+    if (jr && window.MutationObserver) {
+      new MutationObserver(syncSceneInset).observe(jr, { attributes: true, attributeFilter: ['class'] });
+    }
+    syncSceneInset();
     new MutationObserver(function () {
       setTimeout(function () {
         applyChartTheme();

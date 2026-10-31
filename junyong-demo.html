@@ -48,6 +48,12 @@
   #mode b { color: #2ee6c8; }
   #legend { margin-top: 10px; font-size: 10.5px; color: #7fa8a2; line-height: 1.7; }
   #legend b { color: #9adfd2; font-weight: normal; }
+  #lines { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0 5px; }
+  #lines span {
+    font-size: 10.5px; padding: 3px 6px; border-radius: 2px;
+    color: #7fa8a2; border: 1px solid rgba(46,230,200,.2); background: rgba(46,230,200,.03);
+  }
+  #lines span.on { color: #04231d; background: #2ee6c8; border-color: #2ee6c8; }
 </style>
 </head>
 <body>
@@ -55,8 +61,9 @@
 
 <div id="panel">
   <h1>山东峻涌 · 模拟工况对照</h1>
-  <p class="hint">点一个工况 → <b style="color:#2ee6c8">三群一起</b>按这组数据跑；也可以选「编辑机组」单独拖某一群的滑杆。
-    左键拖拽旋转 / 滚轮缩放 / 点设备看明细卡。判据就是线上场景那一份（缺数据不亮、不编）。</p>
+  <p class="hint">本地调试页（不部署）。点一个工况 → <b style="color:#2ee6c8">三群一起</b>按这组数据跑；
+    也可以选「编辑机组」单独拖某一群的滑杆。左键拖拽旋转 / 滚轮缩放 / 点设备看明细卡。
+    三号现在在二号正前方（右墙齐平），并网线沿厂房西侧上塔。判据就是线上场景那一份（缺数据不亮、不编）。</p>
   <div id="presets"></div>
 
   <h2>编辑机组（单独调某一群）</h2>
@@ -82,16 +89,31 @@
   </table>
   <div id="mode">—</div>
 
+  <h2>本群亮线（与三维逐条对应）</h2>
+  <div id="lines"></div>
+  <div style="font-size:10.5px;color:#7fa8a2;line-height:1.6">
+    亮线 = 场景里会流动的线。六工况是关系叠加、不是互斥模式；工况 5 只在光伏不足以覆盖充电功率时出现，
+    工况 6 必须有负荷。若出现「储能放电 + 负荷≈0 + 关口送电」，场景会点亮上塔线，但六工况里没有
+    「储能→电网」这一项——那属于现场策略/口径异常。
+  </div>
+
   <div id="legend">
     六种能量关系：<b>1</b> 光伏→储能 ｜ <b>2</b> 光伏→厂房 ｜ <b>3</b> 光伏卖电上网<br>
     <b>4</b> 电网→厂房 ｜ <b>5</b> 电网→储能 ｜ <b>6</b> 储能→厂房<br>
+    判据：①PV&gt;0 且充电；②PV 扣掉充电后仍有余量且负荷&gt;0；③PV&gt;0 且关口送电；
+    ④关口取电且负荷&gt;0；⑤充电、取电且 PV&lt;充电功率；⑥放电且负荷&gt;0。<br>
     关口表按每群"负载 − 光伏 − 储能"自动算（正=取电 / 负=送电）；铁塔按三群合计显示"送出中 / 受电中"。<br>
-    浮标与明细卡是 <b>js/junyong-scene3d.js 的真实判据</b>判出来的；右表是同一判据的复算，两边应一致。
+    浮标与明细卡是 <b>js/junyong-scene3d.js 的真实判据</b>判出来的；右表是同一判据的复算，两边应一致。<br>
+    演示里的“今日电量”按当前功率 ×4h 粗估，只为把浮标填满，不是真实现场数据。
   </div>
 </div>
 
 <script>
 /* 依次加载场景依赖（带时间戳，避免调试时吃到旧缓存），最后初始化 */
+window.__demoErrs = [];
+window.addEventListener('error', function (e) {
+  window.__demoErrs.push((e.message || '') + ' @ ' + (e.filename || '').split('/').pop() + ':' + e.lineno);
+});
 (function () {
   var V = '?v=' + Date.now();
   document.getElementById('demo-css').href += V;   /* 样式同样带时间戳，不吃缓存 */
@@ -99,7 +121,7 @@
     'libs/three.min.js', 'libs/OrbitControls.js', 'libs/CSS2DRenderer.js',
     'libs/CopyShader.js', 'libs/LuminosityHighPassShader.js', 'libs/EffectComposer.js',
     'libs/RenderPass.js', 'libs/ShaderPass.js', 'libs/UnrealBloomPass.js',
-    'js/junyong-scene3d.js'
+    'js/scene-preset.js', 'js/junyong-scene3d.js'
   ];
   var i = 0;
   function next() {
@@ -131,6 +153,10 @@
     ['2+3', '供厂房 + 卖电', { pv: 200, st: 0, load: 60 }],
     ['4+5', '电网供厂房 + 充储能', { pv: 0, st: -60, load: 40 }],
     ['4+6', '储能供厂房 + 电网补缺', { pv: 0, st: 40, load: 80 }],
+    ['1+4', '光伏充储能 + 电网供负荷（不计 5）', { pv: 100, st: -100, load: 80 }],
+    ['1+4+5', '光伏不足 + 电网补充电/负荷', { pv: 50, st: -100, load: 80 }],
+    ['2+3+6', '光伏供厂房+卖电 + 储能放电', { pv: 150, st: 60, load: 50 }],
+    ['6-', '储能放电、负荷≈0（异常数据）', { pv: 0, st: 60, load: 0.1 }],
     ['混合', '各群不同：一充 / 二卖 / 三放', [
       { pv: 100, st: -100, load: 0.1, soc: 50 },
       { pv: 200, st: 0, load: 0.1, soc: 70 },
@@ -141,21 +167,44 @@
 
   function gridKw(g) { return g.load - g.pv - g.st; }      /* 正 = 取电 */
 
-  /* 与 js/junyong-scene3d.js 的 cond() 同一套判据（这里是复算，用于右侧表格） */
+  /* 与 js/junyong-scene3d.js 的 cond() 同一套判据（这里是复算，用于右侧表格）：
+     光伏先满足储能充电，剩余出力才供厂房；电网→储能只在光伏不足以覆盖充电功率时成立；
+     储能→厂房必须有负荷。 */
   function judge(g) {
     var grid = gridKw(g);
     var surplus = -grid;                                  /* 正 = 送电（卖） */
     var loadEff = Math.max(0, g.pv + g.st - surplus);
     var pvOn = g.pv > .5, chg = g.st < -.5, dis = g.st > .5;
     var sell = surplus > .3, buy = surplus < -.3;
+    var charge = chg ? -g.st : 0;
+    var pvToLoad = pvOn && loadEff > .3 && (!chg || g.pv > charge + .3);
+    var gridToStorage = chg && buy && g.pv < charge - .3;
+    var dataWarn = (dis && sell && loadEff <= .3) ? '储能放电但负荷≈0、关口送电（储能不卖电口径）' : '';
     var its = [];
     if (pvOn && chg) its.push('1');
-    if (pvOn && loadEff > .3) its.push('2');
+    if (pvToLoad) its.push('2');
     if (pvOn && sell) its.push('3');
     if (buy && loadEff > .3) its.push('4');
-    if (chg && buy) its.push('5');
-    if (dis) its.push('6');
-    return { its: its, grid: grid, sell: sell, buy: buy };
+    if (gridToStorage) its.push('5');
+    if (dis && loadEff > .3) its.push('6');
+    return { its: its, grid: grid, sell: sell, buy: buy, pvOn: pvOn, chg: chg, dis: dis,
+      charge: charge, pvToLoad: pvToLoad, gridToStorage: gridToStorage, dataWarn: dataWarn, loadEff: loadEff };
+  }
+
+  /* 九条线的亮灭（与场景 updateFlows 的 lit 条件逐条对应） */
+  function lineStates(g) {
+    var j = judge(g);
+    return {
+      pv: j.pvOn,
+      pvlow: j.pvOn && (j.chg || j.sell),
+      pvh: j.pvToLoad,
+      sto: j.pvOn && j.chg,
+      gsto: j.gridToStorage,
+      grid: j.pvOn && j.sell,
+      stoh: j.dis && j.loadEff > .3,
+      gl: j.buy && j.loadEff > .3,
+      tower: j.sell || j.buy
+    };
   }
 
   function pushData() {
@@ -163,8 +212,9 @@
     var js = [];
     groups.forEach(function (g, i) {
       JunyongScene.setGroup(i, {
-        pv: g.pv, pvSeen: true, st: g.st, soc: g.soc, load: g.load,
-        grid: gridKw(g)
+        pv: g.pv, pvSeen: true, pvToday: g.pv * 4,   /* 演示：今日电量按当前功率 ×4h 粗估 */
+        st: g.st, soc: g.soc, load: g.load, grid: gridKw(g),
+        chg: g.st < 0 ? -g.st * 4 : 0, dis: g.st > 0 ? g.st * 4 : 0
       });
       js.push(judge(g));
     });
@@ -178,15 +228,18 @@
       var stTxt = g.st > .5 ? '放 ' + Math.abs(g.st).toFixed(0) : (g.st < -.5 ? '充 ' + Math.abs(g.st).toFixed(0) : '0');
       var gTxt = (Math.abs(j.grid) <= .3 ? '≈0' : ((j.grid >= 0 ? '取 ' : '送 ') + Math.abs(j.grid).toFixed(1)));
       return '<tr><td>' + GN[i] + '</td><td>' + g.pv.toFixed(0) + '</td><td>' + stTxt + '</td><td>' + g.load.toFixed(0)
-        + '</td><td>' + gTxt + '</td><td class="mode">' + (j.its.length ? ('工况 ' + j.its.join('+')) : '待机') + '</td></tr>';
+        + '</td><td>' + gTxt + '</td><td class="mode">'
+        + (j.dataWarn ? '数据矛盾' : (j.its.length ? ('工况 ' + j.its.join('+')) : '待机')) + '</td></tr>';
     }).join('');
     var anySell = js.some(function (j) { return j.sell; });
     var anyBuy = js.some(function (j) { return j.buy; });
     var anyMode = js.some(function (j) { return j.its.length; });
+    var anyWarn = js.some(function (j) { return !!j.dataWarn; });
     document.getElementById('mode').innerHTML =
       '并网铁塔：<b>' + (anySell ? '送出中（有群在卖电）' : (anyBuy ? '受电中（有群在买电）' : '待机')) + '</b>'
       + '　<span style="color:#7fa8a2">共 ' + groups.length + ' 群；'
-      + (anyMode ? '浮标上应显示各群自己的「工况 x+x」' : '各群都无工况 → 浮标显示「待机」') + '</span>';
+      + (anyWarn ? '<b style="color:#ffb020">有群数据矛盾（储能放电但负荷≈0且送电）</b>；'
+        : (anyMode ? '浮标上应显示各群自己的「工况 x+x」' : '各群都无工况 → 浮标显示「待机」')) + '</span>';
     syncSliders();
   }
 
@@ -200,6 +253,21 @@
     document.getElementById('sSt').value = g.st;
     document.getElementById('sLoad').value = g.load;
     document.getElementById('sSoc').value = g.soc;
+    renderLines();
+  }
+
+  function renderLines() {
+    var box = document.getElementById('lines');
+    if (!box) return;
+    var ls = lineStates(groups[cur]);
+    var defs = [
+      ['pv', '①光伏干线'], ['pvlow', '②光伏下段'], ['pvh', '③光伏→厂房'],
+      ['sto', '④光伏→储能'], ['gsto', '⑤电网→储能'], ['grid', '⑥卖电/并网'],
+      ['stoh', '⑦储能→厂房'], ['gl', '⑧电网直供'], ['tower', '⑨上塔线']
+    ];
+    box.innerHTML = defs.map(function (d) {
+      return '<span class="' + (ls[d[0]] ? 'on' : '') + '">' + d[1] + '</span>';
+    }).join('');
   }
 
   function applyPreset(p) {
@@ -264,7 +332,11 @@
   }
 
   function start() {
-    if (!window.JunyongScene) { document.getElementById('mode').textContent = '场景脚本未就绪'; return; }
+    if (!window.JunyongScene) {
+      document.getElementById('mode').textContent = '场景脚本未就绪'
+        + (window.__demoErrs.length ? '：' + window.__demoErrs.join(' / ') : '');
+      return;
+    }
     buildPanel();
     JunyongScene.init(function () {
       /* 夜间晴天（和演示工况的"夜里静止"一致），天气只影响光照氛围 */
