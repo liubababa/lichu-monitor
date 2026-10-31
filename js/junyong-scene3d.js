@@ -872,9 +872,12 @@ window.JunyongScene = (function () {
       /* 标签：厂房 = 本群工况 + 关口；储能柜 = 功率 / SOC / 今日充放；屋顶光伏 = 分群（暂无）与全站口径 */
       var dd = data[i];
       if (u.tagBld) {
-        /* 只显示受电类型（谁在给厂房供电），不再写光伏功率 / 关口数值 */
-        u.tagBld.querySelector('i').textContent = supplyType(c);
-        u.tagBld.querySelector('em').style.display = 'none';
+        /* 版式同洙边卫生院：受电功率 + 受电类型（不是只写光伏） */
+        var hasAny = c.hasPv || c.hasSt || c.hasGrid;
+        u.tagBld.querySelector('i').textContent = '受电 '
+          + (hasAny ? (+c.loadEff).toFixed(1) : '--') + ' kW';
+        u.tagBld.querySelector('em').textContent = supplyType(c);
+        u.tagBld.querySelector('em').style.display = '';
       }
       if (u.tagSt) {
         u.tagSt.querySelector('i').textContent = (dd.st == null ? '--kW'
@@ -1111,9 +1114,8 @@ window.JunyongScene = (function () {
       var ccx = 0, ccz = 0;
       cw.forEach(function (v) { ccx += v.x; ccz += v.z; });
       ccx /= cw.length; ccz /= cw.length;
-      u.tagBld = label('<b>' + GB[i] + '（工厂用电）</b><i>受电：--</i><em></em>', 'tag3d-gt',
+      u.tagBld = label('<b>' + GB[i] + '（工厂用电）</b><i>受电 -- kW</i><em>受电：--</em>', 'tag3d-gt',
         p.x, 4.4, p.z + D2 / 2 + 1.0);
-      u.tagBld.querySelector('em').style.display = 'none';
       u.tagSt = label('<b>储能柜 · ' + GCABN[i] + '</b><i>--</i><em>--</em>', 'tag3d-gt',
         ccx, CAB.h + 1.5, ccz);
       /* 光伏标签挂屋面北沿并抬高：前排三号的屋面标签原来看起来压在南立面的厂房标签上 */
