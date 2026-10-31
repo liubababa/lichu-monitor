@@ -393,14 +393,9 @@ window.GaoteScene3D = (function () {
     });
     const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, seg, .105, 8, false), tubeMat);
     (parent || scene).add(tube);
-    /* 地面光溢：同一条线外套一根很粗很淡的加色管。电缆是贴地走的，
-       所以这根粗管看着就是"线把脚下照亮了一点"，线有了落点而不是飘在坪上 */
-    const spill = window.ScenePreset.spillTube(THREE, curve, seg, .34, 0x2ee6c8, .06);
-    spill.renderOrder = 1;
-    (parent || scene).add(spill);
 
     const fl = {
-      curve: curve, len: len, map: tubeMat.map, tubeMat: tubeMat, tube: tube, core: core, spill: spill,
+      curve: curve, len: len, map: tubeMat.map, tubeMat: tubeMat, tube: tube, core: core,
       stack: (stack === undefined ? -1 : stack), dir: 0, speed: 0
     };
     flows.push(fl);
@@ -423,11 +418,6 @@ window.GaoteScene3D = (function () {
         ? (sd > 0 ? p.flowSell : (sd < 0 ? p.flowChg : p.flowIdle))
         : (sd > 0 ? p.flowDis : (sd < 0 ? p.flowChg : p.flowIdle));
       fl.tubeMat.color.setHex(col);
-      /* 光溢跟光纹同色，但有电流才亮；待机时几乎收掉，避免全场泛一层绿雾 */
-      if (fl.spill) {
-        fl.spill.material.color.setHex(col);
-        fl.spill.material.opacity = on ? .16 : .04;
-      }
       /* 有电流时全亮（夜里再加一层加色发光），待机时暗下来但管线还在 */
       fl.tubeMat.opacity = on ? 1 : (p.flowBlend ? .26 : .42);
       if (on) fl.map.offset.x -= fl.dir * fl.speed * dt * .35;     // 光纹沿电缆滚动

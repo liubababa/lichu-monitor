@@ -1055,12 +1055,7 @@ window.SolarScene = (function () {
       blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false
     });
     root.add(new THREE.Mesh(new THREE.TubeGeometry(curve, seg, (radius || .05) * 2.0, 8, false), tubeMat));
-    /* 地面光溢：同一条线外套一根很粗很淡的加色管。电缆贴地走，
-       这根粗管看着就是"线把脚下照亮了一点"，线有了落点而不是飘在坪上 */
-    const spill = SP.spillTube(THREE_(), curve, seg, (radius || .05) * 6.8, 0x2ee6c8, .06);
-    spill.renderOrder = 1;
-    root.add(spill);
-    flows.push({ map: tubeMat.map, tubeMat: tubeMat, spill: spill, kind: kind, on: false, speed: 0, dir: 1, tint: 0 });
+    flows.push({ map: tubeMat.map, tubeMat: tubeMat, kind: kind, on: false, speed: 0, dir: 1, tint: 0 });
   }
 
   /* ---------------- 电线一键隐藏（截图对走向用） ----------------
@@ -1686,12 +1681,6 @@ window.SolarScene = (function () {
     for (let i = 0; i < flows.length; i++) {
       const fl = flows[i];
       fl.tubeMat.opacity = fl.on ? .95 : .22;
-      /* 光溢只在这里同步：颜色和明暗一律跟着光纹管走，
-         上面那十几处按工况取色的逻辑就不用各改一遍，也不会漏 */
-      if (fl.spill) {
-        fl.spill.material.color.copy(fl.tubeMat.color);
-        fl.spill.material.opacity = fl.on ? .16 : .04;
-      }
       if (!fl.on) continue;
       fl.map.offset.x -= (fl.dir || 1) * fl.speed * dt * .35;
       if (fl.tint) fl.tubeMat.color.setHex(fl.tint);

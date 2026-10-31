@@ -216,16 +216,6 @@ window.ScenePreset = (function () {
     if (s) s.material.color.copy(bar.material.color);
   }
 
-  /* 电缆的地面光溢：同一条曲线再套一根很粗很淡的加色管。
-     线是贴地走的，所以这根粗管看着就是"线把地面照亮了一点"，
-     比沿线铺几十片光池便宜得多（每条线只多一个网格）。 */
-  function spillTube(T, curve, seg, r, color, opacity) {
-    const m = new T.Mesh(new T.TubeGeometry(curve, Math.max(12, Math.round(seg * .5)), r, 6, false),
-      new T.MeshBasicMaterial({ color: color, transparent: true, opacity: opacity,
-        blending: T.AdditiveBlending, depthWrite: false, toneMapped: false }));
-    return m;
-  }
-
   /* ---------------- 暗角 ----------------
      四角压暗 + 冷调，视线收到中间的设备上。三站同一份 GLSL。 */
   function vignetteShader() {
@@ -383,7 +373,7 @@ window.ScenePreset = (function () {
     LBL: LBL, scaleLabelTo: scaleLabelTo,
     paveTexture: paveTexture,
     contactTexture: contactTexture, contact: contact,
-    glowSleeve: glowSleeve, syncSleeve: syncSleeve, spillTube: spillTube,
+    glowSleeve: glowSleeve, syncSleeve: syncSleeve,
     vignetteShader: vignetteShader,
     compose: compose, resizeComposer: resizeComposer, applyThemeToPasses: applyThemeToPasses,
     setupRenderer: setupRenderer, setExposure: setExposure,

@@ -921,7 +921,9 @@ window.JunyongUI = (function () {
         st: g.power == null ? null : +g.power,
         soc: g.soc == null ? null : +g.soc,
         grid: g.gridP == null ? null : +g.gridP,
-        load: null
+        load: null,
+        chg: g.dayChg == null ? null : +g.dayChg,
+        dis: g.dayDis == null ? null : +g.dayDis
       });
     }
     if (JunyongScene.setStationPv) {

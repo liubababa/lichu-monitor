@@ -50,6 +50,8 @@ window.JunyongScene = (function () {
   var COLS = 5, MW = 2.28, MD = 1.13, MT = .045, TILT = .49, ROW_Y = .62, RAIL_Z = .40, RAIL_DROP = .0525;
   var ROWZ = [-2.55, -1.05, 1.05, 2.55], rowW = COLS * MW + (COLS - 1) * .06;
   var GN = ['一号机组', '二号机组', '三号机组'], GCAB = [1, 1, 3];
+  /* 三维标签用：厂房名 / 每群那台（组）柜的现场编号，与平台「储能机组」表一致 */
+  var GB = ['一号厂房', '二号厂房', '三号厂房'], GCABN = ['6号柜', '7号柜', '3-5号柜'];
   /* 品字：一号（柜列镜像到右）、二号在后排，三号在前排居中；塔在三群中心 */
   var SLOT = 20, SITE = [{ x: -SLOT, z: -12, m: true }, { x: SLOT, z: -12, m: false }, { x: 0, z: 14, m: false }];
   var TWR_AT = { x: 0, z: -3.33 };
@@ -681,11 +683,7 @@ window.JunyongScene = (function () {
     var tm = new T.MeshBasicMaterial({ map: map, color: FLOWC[theme].idle, transparent: true, opacity: .22,
       blending: T.AdditiveBlending, depthWrite: false, toneMapped: false });
     parent.add(new T.Mesh(new T.TubeGeometry(curve, seg, r * 2.1, 8, false), tm));
-    /* 地面光溢：同一条线外套一根很粗很淡的加色管。电缆贴地走，
-       这根粗管看着就是"线把脚下照亮了一点"，线有了落点而不是飘在坪上 */
-    var spill = SP.spillTube(T, curve, seg, r * 6.8, 0x2ee6c8, .06);
-    spill.renderOrder = 1; parent.add(spill);
-    var f = { kind: kind, gi: gi, map: map, tubeMat: tm, spill: spill, dir: 1, spd: .06, len: len };
+    var f = { kind: kind, gi: gi, map: map, tubeMat: tm, dir: 1, spd: .06, len: len };
     flows.push(f);
     return f;
   }
@@ -827,11 +825,26 @@ window.JunyongScene = (function () {
         ud.glow.material.color.setHex(cc);
         ud.glow.material.opacity = (c.dis || c.chg) ? (theme === 'day' ? .07 : .13) : .03;
       });
-      if (u.tagEl) {
-        u.tagEl.querySelector('i').textContent = c.provChg ? '工况 1（暂按光伏充储能）'
+      /* 标签：厂房 = 本群工况 + 关口；储能柜 = 功率 / SOC / 今日充放；屋顶光伏 = 分群（暂无）与全站口径 */
+      var dd = data[i];
+      if (u.tagBld) {
+        u.tagBld.querySelector('i').textContent = c.provChg ? '工况 1（暂按光伏充储能）'
           : (c.its.length ? '工况 ' + c.its.join('+')
             : (c.stationPv ? '全站光伏' : ((c.hasPv || c.hasSt || c.hasGrid) ? '本群待机' : '无数据')));
-        u.tagEl.querySelector('em').textContent = fmtRow(data[i]);
+        u.tagBld.querySelector('em').textContent = '关口 ' + (dd.grid == null ? '--kW'
+          : ((dd.grid >= 0 ? '取 ' : '送 ') + Math.abs(+dd.grid).toFixed(1) + 'kW'));
+      }
+      if (u.tagSt) {
+        u.tagSt.querySelector('i').textContent = (dd.st == null ? '--kW'
+          : ((dd.st > .5 ? '放电 ' : (dd.st < -.5 ? '充电 ' : '待机 ')) + Math.abs(+dd.st).toFixed(1) + 'kW'))
+          + ' · SOC ' + (dd.soc == null ? '--%' : Math.round(dd.soc) + '%');
+        u.tagSt.querySelector('em').textContent = '今日充 ' + (dd.chg == null ? '--' : (+dd.chg).toFixed(0))
+          + ' / 放 ' + (dd.dis == null ? '--' : (+dd.dis).toFixed(0)) + ' 度';
+      }
+      if (u.tagPv) {
+        u.tagPv.querySelector('i').textContent = dd.pv == null ? '--kW' : num(dd.pv, 'kW');
+        u.tagPv.querySelector('em').textContent = '装机 972.4 kWp · '
+          + (stationPv.seen ? ('全站 ' + num(stationPv.kw, 'kW')) : '全站 --kW');
       }
     });
     /* 组件发光：全站光伏 / 装机容量；没数据就回暗态 */
@@ -855,11 +868,6 @@ window.JunyongScene = (function () {
     refreshCards();
   }
   function num(v, unit) { return v == null ? '--' + (unit || '') : (+v).toFixed(1) + (unit || ''); }
-  function fmtRow(d) {
-    var c = cond(d);
-    return '光 ' + num(d.pv, 'kW') + ' / 储 ' + (d.st == null ? '--kW' : (d.st > 0 ? '+' : '') + (+d.st).toFixed(1) + 'kW')
-      + ' / 关口 ' + (d.grid == null ? '--' : (d.grid >= 0 ? '取' : '送') + Math.abs(+d.grid).toFixed(1) + 'kW');
-  }
   function refreshCards() {
     if (!activeCard) return;
     units.forEach(function (u, i) {
@@ -1022,12 +1030,21 @@ window.JunyongScene = (function () {
       root.add(u.grp);
       u.grp.updateMatrixWorld(true);
       u.tbWorld = u.tbLocal.clone().applyMatrix4(u.grp.matrixWorld);
-      u.tagEl = label('<b>' + GN[i] + ' · ' + GCAB[i] + ' 柜</b><i>--</i><em>--</em>', 'tag3d-gt',
-        p.x, roofY + 2.6, p.z);
+      var cw = u.cabs.map(function (c) { return u.grp.localToWorld(new T.Vector3(c.x, 0, c.z)); });
+      /* 三块标签各归其位（版式同洙边 / 东明）：厂房 = 南立面（同洙边「卫生院」那块）、
+         储能柜 = 柜列正上方、屋顶光伏阵列 = 屋面正上方 */
+      var ccx = 0, ccz = 0;
+      cw.forEach(function (v) { ccx += v.x; ccz += v.z; });
+      ccx /= cw.length; ccz /= cw.length;
+      u.tagBld = label('<b>' + GB[i] + '（工厂用电）</b><i>--</i><em>--</em>', 'tag3d-gt',
+        p.x, 4.4, p.z + D2 / 2 + 1.0);
+      u.tagSt = label('<b>储能柜 · ' + GCABN[i] + '</b><i>--</i><em>--</em>', 'tag3d-gt',
+        ccx, CAB.h + 1.5, ccz);
+      u.tagPv = label('<b>屋顶光伏阵列</b><i>--kW</i><em>装机 972.4 kWp</em>', 'tag3d-gt',
+        p.x, roofY + 1.7, p.z);
       addCard('g' + i, p.x, roofY + 1.2, p.z);
       u.grp.userData.cardKey = 'g' + i;
       units.push(u);
-      var cw = u.cabs.map(function (c) { return u.grp.localToWorld(new T.Vector3(c.x, 0, c.z)); });
       /* 落地阴影走世界坐标：一号群是 scale.x=-1 的镜像组，往里面塞平面会被翻转成背面 */
       groundContact(root, p.x, p.z, W2 + 3.6, D2 + 3.4);
       cw.forEach(function (v) { groundContact(root, v.x, v.z, CAB.w * 1.55, CAB.d * 1.95); });
@@ -1190,12 +1207,6 @@ window.JunyongScene = (function () {
     var spd = 1;
     flows.forEach(function (f) {
       f.map.offset.x = (f.map.offset.x - dt * f.spd * spd * .35 * f.dir) % 1;
-      /* 光溢只在这里同步：颜色和明暗一律跟着光纹管走，
-         上面按工况取色的那几处就不用各改一遍，也不会漏 */
-      if (f.spill) {
-        f.spill.material.color.copy(f.tubeMat.color);
-        f.spill.material.opacity = f.tubeMat.opacity > .5 ? .16 : .04;
-      }
     });
     beacons.forEach(function (b) {
       var k = .45 + .45 * Math.sin(ts / 520);
