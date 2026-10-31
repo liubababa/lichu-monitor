@@ -803,6 +803,24 @@ window.JunyongScene = (function () {
       loadEff: loadEff, pvOn: pvOn, chg: chg, dis: dis, sell: sell, buy: buy,
       charge: charge, pvToLoad: pvToLoad, gridToStorage: gridToStorage, dataWarn: dataWarn, its: its };
   }
+  /* 厂房浮标只写受电类型：按实际亮起的受电支路（光伏 / 储能 / 电网）组合，不写具体功率。
+     光伏在充电且没有余量供厂房时不会算作受电来源。 */
+  function supplyType(c) {
+    if (!(c.hasPv || c.hasSt || c.hasGrid)) return '无数据';
+    if (c.dataWarn) return '数据矛盾';
+    if (c.loadEff == null || c.loadEff <= .3) return '无受电';
+    var src = [];
+    if (c.pvToLoad) src.push('光伏');
+    if (c.buy) src.push('电网');
+    if (c.dis) src.push('储能');
+    if (!src.length) {
+      if (c.provChg || c.hasPv) src.push('光伏');
+      else if (c.hasSt) src.push('储能');
+      else if (c.hasGrid) src.push('电网');
+    }
+    return src.length ? ('受电：' + src.join(' + ')) : '受电类型未知';
+  }
+
   function updateFlows() {
     var F = FLOWC[theme];
     units.forEach(function (u, i) {
@@ -854,13 +872,9 @@ window.JunyongScene = (function () {
       /* 标签：厂房 = 本群工况 + 关口；储能柜 = 功率 / SOC / 今日充放；屋顶光伏 = 分群（暂无）与全站口径 */
       var dd = data[i];
       if (u.tagBld) {
-        u.tagBld.querySelector('i').textContent = c.dataWarn ? '数据矛盾 · 储能→网'
-          : (c.provChg ? '工况 1（暂按光伏充储能）'
-            : (c.its.length ? '工况 ' + c.its.join('+')
-              : (c.stationPv ? '全站光伏' : ((c.hasPv || c.hasSt || c.hasGrid) ? '本群待机' : '无数据'))));
-        u.tagBld.querySelector('em').textContent = '光伏 ' + (dd.pv == null ? '--kW' : num(dd.pv, 'kW'))
-          + ' · 关口 ' + (dd.grid == null ? '--kW'
-            : ((dd.grid >= 0 ? '取 ' : '送 ') + Math.abs(+dd.grid).toFixed(1) + 'kW'));
+        /* 只显示受电类型（谁在给厂房供电），不再写光伏功率 / 关口数值 */
+        u.tagBld.querySelector('i').textContent = supplyType(c);
+        u.tagBld.querySelector('em').style.display = 'none';
       }
       if (u.tagSt) {
         u.tagSt.querySelector('i').textContent = (dd.st == null ? '--kW'
@@ -910,6 +924,7 @@ window.JunyongScene = (function () {
       /* 厂房：用电侧详情 */
       if (activeCard === 'g' + i) {
         setCard('g' + i, GB[i] + '（工厂用电）', [
+          ['受电类型', supplyType(c).replace(/^受电：/, '')],
           ['当前工况', itsTxt],
           ['光伏出力', num(d.pv, ' kW')],
           ['储能功率', d.st == null ? '-- kW' : ((d.st > 0 ? '放电 ' : d.st < 0 ? '充电 ' : '待机 ') + Math.abs(d.st).toFixed(1) + ' kW')],
@@ -1096,8 +1111,9 @@ window.JunyongScene = (function () {
       var ccx = 0, ccz = 0;
       cw.forEach(function (v) { ccx += v.x; ccz += v.z; });
       ccx /= cw.length; ccz /= cw.length;
-      u.tagBld = label('<b>' + GB[i] + '（工厂用电）</b><i>--</i><em>--</em>', 'tag3d-gt',
+      u.tagBld = label('<b>' + GB[i] + '（工厂用电）</b><i>受电：--</i><em></em>', 'tag3d-gt',
         p.x, 4.4, p.z + D2 / 2 + 1.0);
+      u.tagBld.querySelector('em').style.display = 'none';
       u.tagSt = label('<b>储能柜 · ' + GCABN[i] + '</b><i>--</i><em>--</em>', 'tag3d-gt',
         ccx, CAB.h + 1.5, ccz);
       /* 光伏标签挂屋面北沿并抬高：前排三号的屋面标签原来看起来压在南立面的厂房标签上 */
