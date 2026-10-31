@@ -286,6 +286,19 @@ button{font-family:inherit;cursor:pointer;background:none;border:none;color:inhe
 /* 浮标本身可点开对应详情卡；标签渲染层是 pointer-events:none，这里只打开标签自己 */
 .tag3d.clickable{pointer-events:auto;cursor:pointer}
 .tag3d.clickable:hover{border-color:var(--teal);box-shadow:0 0 16px var(--acc-3)}
+/* 显卡上下文丢失时的兜底提示（canvas 空了但 HTML 浮标还在，避免被当成“三维坏了”） */
+.gl-lost{
+  position:absolute;inset:0;z-index:20;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:8px;text-align:center;
+  background:rgba(4,12,14,.86);border:1px solid var(--acc-2);
+}
+.gl-lost b{font-size:18px;font-weight:normal;color:var(--teal);letter-spacing:1px}
+.gl-lost span{font-size:12px;color:var(--dim)}
+.gl-lost button{
+  margin-top:8px;padding:11px 22px;min-height:44px;font-size:13px;color:#04231d;cursor:pointer;
+  border:0;background:linear-gradient(120deg,#35f0cf,#1cc9a8);
+}
+html[data-theme="day"] .gl-lost{background:rgba(255,255,255,.9)}
 /* 高特场景浮标：名称 / 数值 / 状态三行；数值用等宽数字（此前 <i><em> 没吃到样式，
    数字是浏览器默认斜体、状态还跟在数值后面挤在同一行） */
 .tag3d-gt>i{display:block;font-style:normal;font-family:var(--num);font-size:11px;color:#d9fff6;letter-spacing:.4px;margin-top:2px}

@@ -1273,6 +1273,10 @@ window.JunyongUI = (function () {
       new MutationObserver(syncSceneInset).observe(jr, { attributes: true, attributeFilter: ['class'] });
     }
     syncSceneInset();
+    /* 大屏长时间开着，浏览器休眠/切前后台后 60 秒轮询可能被节流，回到前台立刻补一次 */
+    document.addEventListener('visibilitychange', function () {
+      if (!document.hidden && byId('jyView') && !byId('jyView').classList.contains('hidden')) refresh();
+    });
     new MutationObserver(function () {
       setTimeout(function () {
         applyChartTheme();

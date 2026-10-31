@@ -1240,12 +1240,20 @@ window.JunyongScene = (function () {
     });
   }
 
+  /* CSS2D 浮标/卡片是独立 HTML 层，scene.remove(root) 不会递归触发子对象的 removed 事件，
+     不主动清就会每切一次主题叠一层旧浮标（切 7 次能留下 90 个）。 */
+  function clearCss2dLayers() {
+    if (!labelR) return;
+    while (labelR.domElement.firstChild) labelR.domElement.removeChild(labelR.domElement.firstChild);
+  }
+
   function applyTheme() {
     theme = document.documentElement.getAttribute('data-theme') === 'day' ? 'day' : 'night';
     var th = THEMES[theme], M = mats(theme);
     /* 换材质：整场重建（构件材质上百个，逐个换更容易漏；重建一次比留错值划算） */
     disposeRoot(root);
     scene.remove(root);
+    clearCss2dLayers();
     root = null; flows = []; units = []; labelPairs = []; cards = {}; occluders = []; beacons = [];
     contacts = [];
     cloudMats = [];
@@ -1259,6 +1267,15 @@ window.JunyongScene = (function () {
     refreshSkyLight();
     updateFlows();
     applyLabelVisibility();
+    /* 大屏重建要几百毫秒，立刻补一帧：否则会有一瞬间只剩 HTML 浮标、canvas 还是空的 */
+    renderNow();
+  }
+
+  function renderNow() {
+    if (!renderer || !scene || !camera) return;
+    renderer.setScissorTest(false); renderer.setViewport(0, 0, W, H);
+    if (composer) composer.render(); else renderer.render(scene, camera);
+    if (labelR) labelR.render(scene, camera);
   }
 
   /* ---------------- 循环 ---------------- */
@@ -1301,9 +1318,7 @@ window.JunyongScene = (function () {
     }
     scaleLabels();
     updateOcclusion();
-    renderer.setScissorTest(false); renderer.setViewport(0, 0, W, H);
-    if (composer) composer.render(); else renderer.render(scene, camera);
-    if (labelR) labelR.render(scene, camera);
+    renderNow();
   }
 
   /* ---------------- 初始化 ---------------- */
@@ -1333,9 +1348,27 @@ window.JunyongScene = (function () {
       labelR.domElement.style.pointerEvents = 'none';
       host.appendChild(labelR.domElement);
     }
+    /* 4K + 泛光长时间跑，偶发显卡上下文丢失：canvas 会空、HTML 浮标还留着，
+       看起来就是“只剩一堆标签”。这里拦下并给一个明确的重载入口。 */
+    renderer.domElement.addEventListener('webglcontextlost', function (e) {
+      e.preventDefault();
+      if (!host.querySelector('.gl-lost')) {
+        var d = document.createElement('div');
+        d.className = 'gl-lost';
+        d.innerHTML = '<b>三维渲染已中断</b><span>显卡上下文丢失，场景暂停。重新加载即可恢复。</span>'
+          + '<button type="button">重新加载</button>';
+        d.querySelector('button').addEventListener('click', function () { location.reload(); });
+        host.appendChild(d);
+      }
+    });
+    renderer.domElement.addEventListener('webglcontextrestored', function () { location.reload(); });
     controls = new T.OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true; controls.dampingFactor = .08;
-    controls.maxPolarAngle = Math.PI * .495;
+    /* 与另两站一致：禁用平移、限制俯角；否则双指一推能把目标点移到地面以下，
+       画面只剩浮标、模型全被场坪挡住，看起来就像“三维坏了” */
+    controls.enablePan = false;
+    controls.maxPolarAngle = 1.35;
+    controls.minPolarAngle = .15;
     controls.minDistance = 12; controls.maxDistance = 320;
 
     try {
@@ -1411,10 +1444,11 @@ window.JunyongScene = (function () {
   function setViewInset(px) {
     viewInset = Math.max(0, Math.min(900, +px || 0));
     applyViewInset();
+    renderNow();
   }
   function setLabels(on) { labelsOn = !!on; applyLabelVisibility(); }
   function setRotate(on) { rotating = !!on; }
-  function setActive(on) { active = !!on; if (on) resize(); }
+  function setActive(on) { active = !!on; if (on) { resize(); renderNow(); } }
   function setDuis(on) { duisOn = !!on; applyTheme(); }
   function setGroup(i, d) {
     if (i < 0 || i > 2 || !d) return;
