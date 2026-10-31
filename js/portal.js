@@ -19,21 +19,26 @@ window.PortalUI = (function () {
   const STATIONS = [
     {
       group: '旭日东明站', name: '旭日东明储能电站', sn: 'R250907J0038', psn: 'kp23bhcpmt91n2v8',
-      tag: '储能 · 高特 CCU', note: '250kW / 522kWh'
+      tag: '储能 · 高特 CCU', note: '储能 250kW / 522kWh', source: '高特 CCU'
     },
     {
       kind: 'solar', group: '洙边卫生院光储电站', name: '洙边卫生院光储电站', sn: '', psn: '',
-      tag: '光储 · 阳光云 + 日升云', note: '光伏 110.16kWp；储能 100kW / 215kWh'
+      tag: '光储 · 阳光云 + 日升云', note: '光伏 110.16kWp；储能 100kW / 215kWh',
+      source: '阳光云 + 日升云'
     },
     {
       kind: 'junyong', group: '山东峻涌光储电站', name: '山东峻涌光储电站', sn: '', psn: '',
-      tag: '光储 · 阳光云 + 高特 CCU', note: '光伏 972.4kWp；储能 625kW / 1305kWh'
+      tag: '光储 · 阳光云 + 高特 CCU', note: '光伏 972.4kWp；储能 625kW / 1305kWh',
+      source: '阳光云 + 高特 CCU'
     }
   ];
   const OTHER_GROUP = '其他电站';
-  /* 已登记电站自己的设备：峻涌的三台高特 CCU 归入「山东峻涌光储电站」，
-     不再在目录里重复出现在「其他电站（自动发现）」 */
-  const HIDDEN_DSN = ['R260616J0069', 'R250907J0037', 'R260812J0066'];
+  /* 自动发现卡片用现场柜号做标题，DSN 留在“设备号”行，别只挂一串编号 */
+  const AUTO_LABEL = {
+    R260616J0069: '峻涌 · 6号柜',
+    R250907J0037: '峻涌 · 7号柜',
+    R260812J0066: '峻涌 · 3-5号柜'
+  };
 
   /* ---------------- 工具 ---------------- */
   function devList() {
@@ -116,8 +121,7 @@ window.PortalUI = (function () {
     if (st.note) c.appendChild(el('div', 'pt-crow', '<span>装机容量</span>' + st.note));
     const stat = el('div', 'pt-cstat');
     stat.innerHTML = '<i class="pt-dot ' + state + '"></i>' + stateText
-      + (st.kind === 'solar' ? '　数据源 阳光云（5 分钟）+ 日升云（1 分钟）'
-        : (st.kind === 'junyong' ? '　数据源 阳光云（5 分钟）+ 高特 CCU（30 秒）' : ''));
+      + (st.source ? '　数据源 ' + st.source : '');
     c.appendChild(stat);
     const btn = el('button', 'mq-btn primary pt-enter', (hosted || st.sn) ? '进入监控' : '未接入');
     btn.disabled = !hosted && !st.sn;
@@ -159,22 +163,23 @@ window.PortalUI = (function () {
     });
 
     /* 其他电站：自动发现、且不在上面登记表里的设备。
-       属于已登记电站自己的设备（如峻涌的三台 CCU）不在这里重复出现；
-       没有发现任何"其它"设备时，整组隐藏。 */
+       用户要求把这块恢复出来，目录页下半部分才不空；
+       没有发现任何"其它"设备时仍整组隐藏。 */
     const known = STATIONS.map(function (s) { return s.sn; }).filter(Boolean);
     const others = devList().filter(function (d) {
-      return known.indexOf(d.dsn) < 0 && HIDDEN_DSN.indexOf(d.dsn) < 0;
+      return known.indexOf(d.dsn) < 0;
     });
     if (others.length) {
-      const gw = el('div', 'pt-group');
+      const gw = el('div', 'pt-group pt-auto');
       gw.appendChild(el('div', 'pt-gtitle', '<i></i>' + OTHER_GROUP + '<em>自动发现 ' + others.length + ' 台</em>'));
       const cards = el('div', 'pt-cards');
       others.forEach(function (d) {
         const c = el('div', 'pt-card pt-' + (d.online ? 'on' : 'off'));
         const head = el('div', 'pt-chead');
-        head.appendChild(el('b', '', d.dsn));
-        head.appendChild(el('span', 'pt-tag', '自动发现'));
+        head.appendChild(el('b', '', AUTO_LABEL[d.dsn] || d.dsn));
+        head.appendChild(el('span', 'pt-tag', '自动发现 · 高特 CCU'));
         c.appendChild(head);
+        c.appendChild(el('div', 'pt-crow', '<span>设备号</span>' + d.dsn));
         c.appendChild(el('div', 'pt-crow', '<span>产品号</span>' + (d.psn || '—')));
         const stat = el('div', 'pt-cstat');
         stat.innerHTML = '<i class="pt-dot ' + (d.online ? 'on' : 'off') + '"></i>' + (d.online ? '在线' : '离线')

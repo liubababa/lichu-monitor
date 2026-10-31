@@ -993,8 +993,19 @@ html[data-theme="day"] .gl-lost{background:rgba(255,255,255,.9)}
 /* ==================== 站点目录（进门页） + 设备列表页 ==================== */
 #portal{position:fixed;inset:0;z-index:200;display:flex;flex-direction:column;
   padding:clamp(18px,1.3vw,44px) clamp(20px,1.7vw,56px) clamp(14px,1vw,30px);
-  background:radial-gradient(1200px 600px at 18% -10%,var(--acc-1),transparent 60%),
-             linear-gradient(180deg,#04191b,#020d0e 55%,#041416);overflow:auto}
+  background:
+    linear-gradient(rgba(46,230,200,.026) 1px,transparent 1px) 0 0/52px 52px,
+    linear-gradient(90deg,rgba(46,230,200,.026) 1px,transparent 1px) 0 0/52px 52px,
+    radial-gradient(1200px 600px at 18% -10%,var(--acc-1),transparent 60%),
+    radial-gradient(900px 500px at 100% 110%,rgba(46,230,200,.055),transparent 65%),
+    linear-gradient(180deg,#04191b,#020d0e 55%,#041416);
+  overflow:auto}
+/* 右下角淡品牌水印：目录页站点少，给下半屏一点视觉重量 */
+#portal::after{
+  content:"";position:fixed;right:2vw;bottom:2vh;width:min(32vw,600px);height:min(32vw,600px);
+  background:url(../libs/logo-180.png) center/contain no-repeat;opacity:.045;pointer-events:none;z-index:0;
+}
+.pt-head,.pt-body,.pt-foot{position:relative;z-index:1}
 #portal.hidden{display:none}
 .pt-head{display:flex;align-items:center;gap:clamp(12px,.9vw,26px);padding-bottom:clamp(14px,1vw,26px);border-bottom:1px solid var(--acc-2);margin-bottom:clamp(16px,1.2vw,32px)}
 .pt-logo img{height:clamp(42px,2.1vw,76px);display:block}
@@ -1006,12 +1017,17 @@ html[data-theme="day"] .gl-lost{background:rgba(255,255,255,.9)}
 .pt-mqtt.on{color:var(--teal);border-color:var(--acc-3);box-shadow:0 0 10px var(--acc-2)}
 /* 站点分组：宽屏按列铺开（auto-fit 折叠空列，单站时卡片撑满所在分栏）；
    字号 / 间距随视口宽度放大，4K 大屏远看也清楚（1920 下与原尺寸基本一致） */
-.pt-body{flex:1;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:clamp(20px,1.5vw,44px);align-content:start;align-items:start}
+.pt-body{flex:1;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:clamp(20px,1.5vw,44px);align-content:start;align-items:start}
+@media (max-width:1180px){.pt-body{grid-template-columns:1fr}}
 .pt-group{margin-bottom:0}
 .pt-gtitle{display:flex;align-items:center;gap:9px;font-size:15px;color:var(--teal);letter-spacing:2px;margin-bottom:clamp(10px,.8vw,18px)}
 .pt-gtitle i{width:3px;height:14px;background:linear-gradient(180deg,var(--teal),var(--acc-1));display:block}
 .pt-gtitle em{font-style:normal;font-size:12px;color:var(--dim);letter-spacing:0}
 .pt-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:clamp(14px,1vw,26px)}
+/* 自动发现整组单独占一行，卡片与上面三张站点卡同宽对齐 */
+.pt-group.pt-auto{grid-column:1/-1}
+.pt-auto .pt-cards{grid-template-columns:repeat(3,minmax(0,1fr))}
+@media (max-width:1000px){.pt-auto .pt-cards{grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr))}}
 .pt-card{position:relative;display:flex;flex-direction:column;gap:clamp(8px,.55vw,15px);padding:clamp(14px,.9vw,28px) clamp(16px,1vw,30px);cursor:pointer;
   min-height:clamp(170px,10vw,300px);   /* 大屏下卡片有"面板"体量，按钮沉底，不至于压成一条 */
   border:1px solid var(--acc-2);background:rgba(8,32,34,.55);transition:.18s}
