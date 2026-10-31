@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>旭日东明站 · 厂房门口叉车造型对照（本地演示页，未部署）</title>
+<link rel="icon" href="data:,">
+<style>
+  /* 本地评审页：不依赖 css/style.css；按 4K 大屏手点设计，可点元素 min-height 46px */
+  :root { --cy: #2ee6c8; --line: rgba(140,170,185,.24); --txt: #cfe8e4; --dim: #7fa8a2; --pw: 420px; }
+  html, body { margin: 0; height: 100%; background: #050b0d; overflow: hidden; color: var(--txt);
+    font-family: "Inter", "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif; }
+  #stage { position: absolute; left: 0; top: 0; bottom: 0; right: var(--pw); }
+  body.nopanel #stage { right: 0; }
+  #stage canvas { display: block; width: 100%; height: 100%; }
+
+  #panel { position: absolute; right: 0; top: 0; bottom: 0; width: var(--pw); z-index: 20; overflow-y: auto;
+    background: linear-gradient(165deg, rgba(7,22,24,.96), rgba(4,11,13,.94));
+    border-left: 1px solid rgba(46,230,200,.4); padding: 14px 16px 22px; }
+  body.nopanel #panel { display: none; }
+  #panel h1 { font-size: 15px; color: var(--cy); margin: 0 0 4px; letter-spacing: .04em; font-weight: 600; }
+  .hint { font-size: 11.5px; color: var(--dim); line-height: 1.7; margin: 0 0 10px; }
+  .grp { border-top: 1px solid rgba(140,170,185,.16); padding: 11px 0 2px; }
+  .grp > h2 { font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; color: #a9bdc6;
+    margin: 0 0 8px; font-weight: 600; }
+  .rows { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+  .rows.c3 { grid-template-columns: repeat(3, 1fr); }
+  .rows.c4 { grid-template-columns: repeat(4, 1fr); }
+  button { min-height: 46px; padding: 6px 8px; font: inherit; font-size: 12.5px; color: #dfeeea; cursor: pointer;
+    background: rgba(20,44,48,.6); border: 1px solid var(--line); border-radius: 3px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; }
+  button small { font-size: 10.5px; color: var(--dim); }
+  button.on { background: var(--cy); color: #04231d; border-color: var(--cy); font-weight: 600; }
+  button.on small { color: rgba(4,35,29,.72); }
+  #desc { font-size: 12px; line-height: 1.75; color: #bcd6d2; background: rgba(10,26,30,.7);
+    border: 1px solid var(--line); border-left: 2px solid var(--cy); padding: 9px 11px; margin: 10px 0 0; }
+  #desc b { color: #eafffa; }
+  #desc ul { margin: 5px 0 0; padding-left: 16px; }
+  #desc li { margin: 2px 0; }
+  #err { position: absolute; left: 12px; top: 12px; z-index: 40; color: #ff8a6a; font-size: 13px; }
+  #badge { position: absolute; left: 14px; bottom: 12px; z-index: 15; font-size: 12.5px; color: var(--dim);
+    letter-spacing: .06em; pointer-events: none; }
+  #badge b { color: var(--cy); font-size: 15px; letter-spacing: .1em; }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<div id="err"></div>
+<div id="badge"><b id="badgeOpt">方案2</b> <span id="badgeSub">电动平衡重 · 夜间</span></div>
+<div id="panel">
+  <h1>厂房门口叉车 · 造型对照</h1>
+  <p class="hint">旭日东明站（高特）三维页：厂房装卸货台门前那条车道。尺寸按真实米制 ——
+    参照人 1.4 m、货台面 .32 m、大门洞 3.6×2.2 m。灯光/泛光/曝光走 js/scene-preset.js 同一套，
+    所以这里的观感就等于线上观感。可拖动画面转视角。</p>
+
+  <div class="grp"><h2>方案</h2><div class="rows c3" id="optRows"></div></div>
+  <div class="grp"><h2>机位</h2><div class="rows c3" id="camRows"></div></div>
+  <div class="grp"><h2>环境</h2><div class="rows c3" id="envRows"></div></div>
+  <div id="desc"></div>
+</div>
+
+<script>
+/* 依赖仓库里已有的 libs/ 与 js/scene-preset.js，不新增库；带时间戳不吃缓存 */
+(function () {
+  var V = '?v=' + Date.now();
+  var FILES = ['libs/three.min.js', 'libs/OrbitControls.js',
+    'libs/CopyShader.js', 'libs/LuminosityHighPassShader.js', 'libs/EffectComposer.js',
+    'libs/RenderPass.js', 'libs/ShaderPass.js', 'libs/UnrealBloomPass.js',
+    'js/scene-preset.js'];
+  var i = 0;
+  function next() {
+    if (i >= FILES.length) { try { start(); } catch (e) {
+      document.getElementById('err').textContent = '启动出错：' + e.message; throw e; } return; }
+    var s = document.createElement('script');
+    s.src = FILES[i++] + V;
+    s.onload = next;
+    s.onerror = function () { document.getElementById('err').textContent = '依赖加载失败：' + s.src; };
+    document.head.appendChild(s);
+  }
+  next();
+
+  function start() {
+    var T = window.THREE, SP = window.ScenePreset;
+    if (!T) { document.getElementById('err').textContent = 'THREE 未就绪'; return; }
+
+    /* ---------------- 状态（深链：?opt=2&cam=near&theme=day&anim=0&lift=.3&mix=1&nopanel=1） ----- */
+    var state = { opt: '2', cam: 'near', theme: 'night', anim: true, man: true, mix: false, lift: .3 };
+    try {
+      var q = new URLSearchParams(location.search);
+      ['opt', 'cam', 'theme', 'lift'].forEach(function (k) { if (q.get(k)) state[k] = q.get(k); });
+      if (q.get('anim') === '0') state.anim = false;
+      if (q.get('man') === '0') state.man = false;
+      if (q.get('mix') === '1') state.mix = true;
+      if (q.get('nopanel') === '1') document.body.classList.add('nopanel');
+      state.lift = parseFloat(state.lift); if (!(state.lift >= 0)) state.lift = .3;
+    } catch (e) {}
+
+    /* ---------------- 主题（色值与 js/gaote-scene3d.js 的 THEMES 对齐） ---------------- */
+    function paint(night) {
+      /* 夜里厂房白墙会被灯光打到近白（同一套 preset 的曝光与光量决定的），
+         叉车要压得比墙暗两档才读得出轮廓 —— 所以夜间的黄比线上现在那版深不少 */
+      return night
+        ? { body: 0x8f6a17, bodyLo: 0x63490f, steel: 0x8fa0a6, steelLo: 0x4e5f66, dark: 0x162126,
+            band: 0x0f1719, tyre: 0x0a1013, rim: 0x55656c, wood: 0x4b3c27, carton: 0x5a4830,
+            cartonLo: 0x42351f, seat: 0x1b252a, wall: 0x8d9799, trim: 0x404a4d, base: 0x161d20 }
+        : { body: 0xd9a13a, bodyLo: 0xa87c22, steel: 0xc2ccd0, steelLo: 0x8b979c, dark: 0x2c3a40,
+            band: 0x232b2e, tyre: 0x1d2428, rim: 0xa8b4b8, wood: 0xa8845a, carton: 0xb8925f,
+            cartonLo: 0x93744a, seat: 0x3a4750, wall: 0xe8ecee, trim: 0x8d9598, base: 0x2c3438 };
+    }
+    var THEMES = {
+      night: { bg: 0x04090c, fog: 0x0b1c24, fogNear: 55, fogFar: 175,
+        sky: [[0, '#04080c'], [.42, '#071219'], [.66, '#0d2530'], [.84, '#123743'], [1, '#17505f']],
+        hemi: [0xbfe9ff, 0x0a1a1e], key: 0xcfe8ff, fill: 0x2ee6c8, win: 0xffe2bd, winI: .22 },
+      day: { bg: 0xdbe9f0, fog: 0xd3e3ec, fogNear: 70, fogFar: 210,
+        sky: [[0, '#2f74b8'], [.45, '#5fa6d8'], [.62, '#9ccbe4'], [.78, '#cfe2ec'], [1, '#dbe9f0']],
+        hemi: [0xdff0ff, 0x76815f], key: 0xfff2d0, fill: 0xbfe0ff, win: 0xfff3e2, winI: .1 }
+    };
+    var PT = paint(state.theme === 'night');
+
+    /* ---------------- 渲染器 / 相机 / 灯光 ---------------- */
+    var stage = document.getElementById('stage');
+    var scene = new T.Scene();
+    var camera = new T.PerspectiveCamera(34, 1, .05, 400);
+    var renderer = new T.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+    SP.setupRenderer(T, renderer, state.theme);
+    renderer.shadowMap.enabled = false;              /* 线上叉车本来就不投影（阴影图冻结），这里也不投 */
+    stage.insertBefore(renderer.domElement, stage.firstChild);
+
+    var PE0 = SP.env(state.theme);
+    var hemi = new T.HemisphereLight(0xbfe9ff, 0x0a1a1e, PE0.lights.hemi);
+    var key = new T.DirectionalLight(0xffffff, PE0.lights.key);
+    var fill = new T.DirectionalLight(0x2ee6c8, PE0.lights.fill);
+    key.position.set(9, 14, 7); fill.position.set(-8, 6, -6);
+    scene.add(hemi, key, fill);
+    var composer = null, bloomPass = null, vigPass = null, envRT = null;
+
+    function skyTexture(stops) {
+      var c = document.createElement('canvas'); c.width = 16; c.height = 256;
+      var g = c.getContext('2d');
+      var grd = g.createLinearGradient(0, 0, 0, 256);
+      stops.forEach(function (s) { grd.addColorStop(s[0], s[1]); });
+      g.fillStyle = grd; g.fillRect(0, 0, 16, 256);
+      return new T.CanvasTexture(c);
+    }
+
+    /* ---------------- 小工具 ---------------- */
+    function mk(c, o) {
+      return new T.MeshStandardMaterial(Object.assign({ color: c, roughness: .6, metalness: .35,
+        envMapIntensity: SP.env(state.theme).envInt }, o || {}));
+    }
+    function R(w, h, d, m, x, y, z, r) {
+      var mesh = new T.Mesh(SP.roundedBoxCached(T, w, h, d, r === undefined ? .03 : r), m);
+      mesh.position.set(x, y, z); return mesh;
+    }
+    function B(w, h, d, m, x, y, z) {
+      var mesh = new T.Mesh(new T.BoxGeometry(Math.abs(w), Math.abs(h), Math.abs(d)), m);
+      mesh.position.set(x, y, z); return mesh;
+    }
+    function CYL(rt, rb, h, seg, m, x, y, z) {
+      var mesh = new T.Mesh(new T.CylinderGeometry(rt, rb, h, seg), m);
+      mesh.position.set(x, y, z); return mesh;
+    }
+    function lit(color, x, y, z, w, h, d) {
+      return B(w || .05, h || .09, d || .16,
+        new T.MeshBasicMaterial({ color: color, toneMapped: false }), x, y, z);
+    }
+    /* 轮胎：胎体 + 轮辋 + 中心盖 + 5 颗螺栓（螺栓才让人看出轮子在滚） */
+    function wheel(M, r, w, x, y, z) {
+      var g = new T.Group();
+      var ty = CYL(r, r, w, 22, M.tyre, 0, 0, 0); ty.rotation.x = Math.PI / 2;
+      var rm = CYL(r * .6, r * .6, w * .92, 18, M.rim, 0, 0, 0); rm.rotation.x = Math.PI / 2;
+      var cp = CYL(r * .22, r * .22, w * 1.04, 12, M.steelLo, 0, 0, 0); cp.rotation.x = Math.PI / 2;
+      g.add(ty, rm, cp);
+      for (var k = 0; k < 5; k++) {
+        var a = k / 5 * Math.PI * 2;
+        g.add(B(r * .13, r * .13, w * .16, M.dark, Math.cos(a) * r * .42, Math.sin(a) * r * .42, w * .5));
+      }
+      g.position.set(x, y, z);
+      return g;
+    }
+    /* 并排对比时给每台顶个头牌 */
+    function tag(text) {
+      var c = document.createElement('canvas'); c.width = 512; c.height = 128;
+      var g = c.getContext('2d');
+      g.fillStyle = 'rgba(6,20,24,.82)'; g.fillRect(0, 24, 512, 80);
+      g.strokeStyle = '#2ee6c8'; g.lineWidth = 4; g.strokeRect(2, 26, 508, 76);
+      g.fillStyle = '#eafffa'; g.font = '600 52px "Segoe UI","Microsoft YaHei",sans-serif';
+      g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(text, 256, 66);
+      var t = new T.CanvasTexture(c);
+      var s = new T.Sprite(new T.SpriteMaterial({ map: t, toneMapped: false, depthTest: false, transparent: true }));
+      s.scale.set(2.2, .55, 1);
+      return s;
+    }
+
+    /* ============================================================
+     * 现状：js/gaote-scene3d.js 里那一台，原样复刻（含 bug）做对照
+     * ============================================================ */
+    function buildCurrent(M) {
+      var fl = new T.Group();
+      [[1.5, .5, .95, M.body, 0, .52, .06], [1.0, .55, .9, M.dark, 0, .6, -.4],
+        [.9, .28, .84, M.dark, 0, .2, .05]].forEach(function (a) { fl.add(B(a[0], a[1], a[2], a[3], a[4], a[5], a[6])); });
+      [[-.52, .36, .40, .16, .10], [.52, .36, .40, .16, .10],
+        [-.56, .30, -.42, .13, .09], [.56, .30, -.42, .13, .09]].forEach(function (a) {
+        var w = CYL(a[4], a[4], a[3], 10, M.tyre, a[0], a[1], a[2]); w.rotation.x = Math.PI / 2; fl.add(w);
+      });
+      /* 门架立柱：线上这里把高度 1.5 当成"材质"传进 box()，材质不是 Material
+         → three 判 material.visible 为假 → 两根立柱整根不渲染，画面上只剩那根悬浮顶梁。原样照抄 */
+      [[-.66, .8, .12, 1.5, .12, M.steel, 1.05, -.28], [-.66, .8, .12, 1.5, .12, M.steel, 1.05, .28]]
+        .forEach(function (a) { fl.add(B(a[0], a[1], a[2], a[3], 0, a[6], a[7])); });
+      fl.add(B(.1, .09, .78, M.steel, 0, 1.72, 0));
+      var car = new T.Group();
+      [[-.30, -.20], [-.30, .20]].forEach(function (a) { car.add(B(.85, .09, .09, M.steel, 0, .10, a[1])); });
+      car.add(B(.48, .40, .56, M.wood, .12, .34, 0));
+      car.position.set(-.52, .16, 0); fl.add(car);
+      fl.add(lit(0xffb020, -.35, 1.62, 0, .1, .1, .1));
+      return { g: fl, car: car, wheels: [], liftMax: .38 };
+    }
+
+    /* 共用的"一板货"：木托盘 + 两层纸箱 + 打包带（纸箱要压得住深色，别和白墙糊一起） */
+    function palletLoad(M) {
+      var g = new T.Group();
+      g.add(R(1.02, .045, .96, M.wood, 0, .125, 0, .012));               /* 上面板 */
+      [-.36, 0, .36].forEach(function (x) { g.add(B(.15, .075, .9, M.wood, x, .075, 0)); });
+      g.add(R(1.02, .03, .96, M.wood, 0, .03, 0, .01));                   /* 下面板 */
+      var strap = mk(PT.band, { roughness: .8, metalness: 0 });
+      g.add(R(.94, .44, .86, M.carton, 0, .37, 0, .018));                 /* 下层纸箱 */
+      [-.2, .2].forEach(function (x) { g.add(B(.035, .46, .88, strap, x, .37, 0)); });
+      g.add(B(.96, .02, .035, strap, 0, .595, 0));
+      g.add(R(.68, .34, .6, M.cartonLo, .04, .76, .02, .016));            /* 上层小箱 */
+      g.add(B(.7, .02, .03, strap, .04, .93, .02));
+      g.add(B(.02, .36, .62, strap, .04, .76, 0));
+      return g;
+    }
+    /* 共用的 L 形货叉：竖直叉跟 + 水平叉臂 + 叉尖下倾（不是两根等截面方条） */
+    function forks(M, zOff, len) {
+      var g = new T.Group();
+      [zOff, -zOff].forEach(function (z) {
+        g.add(R(.085, .5, .125, M.steel, 0, .3, z, .02));                 /* 叉跟（竖直） */
+        g.add(R(len, .07, .125, M.steel, len / 2 - .04, .035, z, .014));  /* 叉臂（水平） */
+        var tip = R(.1, .05, .125, M.steelLo, len - .08, .02, z, .012);
+        tip.rotation.z = -.22; g.add(tip);
+      });
+      return g;
+    }
+    /* 共用的门架：双 C 型钢立柱 + 顶横梁 + 下横梁 + 链条 */
+    function mast(M, x, h, halfW) {
+      var g = new T.Group(), ch = [];
+      [halfW, -halfW].forEach(function (z) {
+        g.add(R(.12, h, .18, M.steelLo, 0, h / 2 + .16, z, .028));
+        g.add(B(.05, h - .12, .07, M.band, .075, h / 2 + .16, z));         /* C 型钢开口槽 */
+        [h * .28, h * .72].forEach(function (yy) { g.add(B(.15, .05, .185, M.band, 0, yy + .16, z)); });
+        var c = B(.038, h * .62, .038, M.dark, .09, h * .45, z); g.add(c); ch.push(c);
+      });
+      g.add(R(.14, .12, halfW * 2 + .22, M.steelLo, 0, h + .18, 0, .03));  /* 顶横梁 */
+      g.add(R(.13, .09, halfW * 2 + .16, M.steelLo, 0, .22, 0, .025));
+      g.position.x = x;
+      return { g: g, chain: ch };
+    }
+    /* 共用的护顶架：四柱收细、顶板做薄并带前檐（原来那块"厚桌板"就是显丑的主因） */
+    function guard(M, y0, y1, x0, x1, hw, body) {
+      var g = new T.Group();
+      [[x0, hw], [x0, -hw], [x1, hw], [x1, -hw]].forEach(function (a) {
+        g.add(R(.07, y1 - y0, .07, body, a[0], (y0 + y1) / 2, a[1], .022));
+      });
+      var cx = (x0 + x1) / 2, w = (x1 - x0) + .3, d = hw * 2 + .22;
+      g.add(R(w, .045, d, body, cx, y1 + .02, 0, .02));
+      g.add(R(w - .1, .05, .07, M.dark, cx, y1 - .04, d / 2 - .04, .018));
+      g.add(R(w - .1, .05, .07, M.dark, cx, y1 - .04, -(d / 2 - .04), .018));
+      g.add(R(w - .16, .02, d - .16, M.band, cx, y1 + .05, 0, .01));
+      return g;
+    }
+    /* 顶警示灯（半球 + 底座 + 呼吸光晕） */
+    function beacon(M, x, y) {
+      var g = new T.Group();
+      var bm = new T.MeshBasicMaterial({ color: 0xffb020, toneMapped: false });
+      var dome = new T.Mesh(new T.SphereGeometry(.075, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), bm);
+      g.add(dome, CYL(.1, .115, .04, 14, bm, 0, -.01, 0));
+      var halo = new T.Mesh(new T.SphereGeometry(.17, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2),
+        new T.MeshBasicMaterial({ color: 0xffb020, toneMapped: false, transparent: true, opacity: .14,
+          blending: T.AdditiveBlending, depthWrite: false }));
+      halo.position.y = -.02; g.add(halo);
+      g.position.set(x, y, 0);
+      return { g: g, halo: halo };
+    }
+
+    /* ============================================================
+     * 方案1「修形」：保留现在的抽象块面语言，只把轮廓与比例修对
+     * ============================================================ */
+    function buildV1(M) {
+      var fl = new T.Group(), wheels = [];
+      fl.add(R(1.58, .44, .94, M.body, -.06, .54, 0, .06));               /* 车身 */
+      fl.add(R(.7, .6, .94, M.body, -.72, .68, 0, .11));                   /* 后配重 */
+      fl.add(R(1.74, .18, .96, M.dark, -.06, .28, 0, .05));                /* 下裙 */
+      fl.add(B(.04, .28, .72, M.band, -.36, .78, 0));                       /* 侧缝 */
+      wheels.push(wheel(M, .3, .17, .48, .3, .49), wheel(M, .3, .17, .48, .3, -.49));
+      wheels.push(wheel(M, .25, .15, -.74, .25, .44), wheel(M, .25, .15, -.74, .25, -.44));
+      wheels.forEach(function (w) { fl.add(w); });
+      fl.add(guard(M, .76, 1.84, -.56, .3, .48, M.body));
+      var mt = mast(M, .62, 2.06, .42); fl.add(mt.g);
+      var car = new T.Group();
+      car.add(R(.07, .66, .84, M.steel, .74, .33, 0, .028));
+      var fk = forks(M, .32, 1.02); fk.position.x = .8; car.add(fk);
+      var load = palletLoad(M); load.position.set(1.42, .08, 0); car.add(load);
+      car.position.set(0, .2, 0); fl.add(car);
+      var bc = beacon(M, -.14, 1.92); fl.add(bc.g);
+      fl.add(lit(0xff4d4d, -.92, .62, .24), lit(0xff4d4d, -.92, .62, -.24));
+      return { g: fl, car: car, wheels: wheels, chain: mt.chain, halo: bc.halo, liftMax: .8 };
+    }
+
+    /* ============================================================
+     * 方案2「电动平衡重」：现场同款三段剪影（配重 / 驾驶舱 / 门架）
+     * ============================================================ */
+    function buildV2(M) {
+      var fl = new T.Group(), wheels = [];
+      /* 后段配重：顶面后掠 + 尾面内收，剪影不再是板砖 */
+      fl.add(R(.96, .66, 1.0, M.body, -.66, .7, 0, .15));
+      fl.add(R(.34, .38, .96, M.body, -1.18, .56, 0, .1));
+      fl.add(B(.05, .3, .76, M.band, -1.36, .72, 0));                       /* 尾面格栅 */
+      [-.16, 0, .16].forEach(function (z) { fl.add(B(.44, .04, .06, M.band, -1.02, 1.02, z)); });
+      /* 底盘 + 中部电池舱 */
+      fl.add(R(1.9, .19, 1.02, M.dark, -.16, .27, 0, .05));
+      fl.add(R(1.14, .38, .98, M.bodyLo, .1, .5, 0, .06));
+      fl.add(B(.02, .3, .86, M.band, .64, .5, 0));
+      /* 驾驶位：座椅 + 靠背 + 仪表台 + 方向盘（有"人在开"的落点） */
+      fl.add(R(.42, .08, .46, M.seat, -.36, .9, 0, .03));
+      var bk = R(.085, .48, .46, M.seat, -.6, 1.14, 0, .03); bk.rotation.z = .1; fl.add(bk);
+      fl.add(R(.26, .42, .5, M.bodyLo, -.02, 1.06, 0, .05));                /* 仪表台/中控 */
+      var col = CYL(.028, .028, .26, 10, M.steelLo, .12, 1.24, 0); col.rotation.z = 1.1; fl.add(col);
+      var rw = new T.Mesh(new T.TorusGeometry(.125, .022, 8, 18), M.dark);
+      rw.position.set(.24, 1.32, 0); rw.rotation.y = Math.PI / 2; rw.rotation.x = .55; fl.add(rw);
+      fl.add(R(.34, .04, .44, M.steelLo, .06, .83, 0, .015));               /* 地板 */
+      /* 护顶架 + 前檐双照灯 */
+      fl.add(guard(M, .86, 1.94, -.62, .3, .52, M.body));
+      fl.add(lit(0xdff0ff, -.62, 1.9, .3, .05, .08, .18), lit(0xdff0ff, -.62, 1.9, -.3, .05, .08, .18));
+      /* 门架（双级：外架 + 内架滑道） */
+      var mt = mast(M, .8, 2.1, .44); fl.add(mt.g);
+      [.44, -.44].forEach(function (z) { fl.add(R(.07, 1.9, .1, M.steel, .7, 1.1, z, .02)); });
+      /* 载货架 + 货叉 + 一板货 */
+      var car = new T.Group();
+      car.add(R(.07, .72, .9, M.steel, .92, .36, 0, .03));
+      [.34, -.34].forEach(function (z) {
+        car.add(R(.11, .07, .11, M.steelLo, .84, .72, z, .02));             /* 滑架滚轮座 */
+      });
+      var fk = forks(M, .33, 1.06); fk.position.x = .98; car.add(fk);
+      var load = palletLoad(M); load.position.set(1.58, .08, 0); car.add(load);
+      car.position.set(0, .2, 0); fl.add(car);
+      /* 四轮：前大后小 */
+      wheels.push(wheel(M, .335, .2, .48, .335, .57), wheel(M, .335, .2, .48, .335, -.57));
+      wheels.push(wheel(M, .255, .16, -.84, .255, .47), wheel(M, .255, .16, -.84, .255, -.47));
+      wheels.forEach(function (w) { fl.add(w); });
+      var bc = beacon(M, -.16, 2.0); fl.add(bc.g);
+      fl.add(lit(0xff4d4d, -1.4, .6, .24), lit(0xff4d4d, -1.4, .6, -.24));
+      fl.add(B(.05, .11, .66, M.band, -1.4, .82, 0));
+      return { g: fl, car: car, wheels: wheels, chain: mt.chain, halo: bc.halo, liftMax: .95 };
+    }
+
+    /* ============================================================
+     * 方案3「前移式」：窄巷道电动前移叉车，瘦高、带液压油缸与前伸支腿
+     * ============================================================ */
+    function buildV3(M) {
+      var fl = new T.Group(), wheels = [];
+      fl.add(R(.84, 1.0, .74, M.body, -.48, .8, 0, .09));
+      fl.add(R(.48, .14, .78, M.dark, -.48, .17, 0, .04));
+      fl.add(R(.42, .48, .66, M.bodyLo, -.08, 1.0, 0, .05));
+      fl.add(R(.4, .05, .4, M.seat, -.4, 1.34, 0, .025));
+      var bk = R(.075, .44, .4, M.seat, -.68, 1.56, 0, .025); bk.rotation.z = .08; fl.add(bk);
+      var con = R(.22, .48, .56, M.body, .04, 1.3, 0, .045); con.rotation.z = -.16; fl.add(con);
+      var rw = new T.Mesh(new T.TorusGeometry(.115, .02, 8, 16), M.dark);
+      rw.position.set(.22, 1.5, 0); rw.rotation.y = Math.PI / 2; rw.rotation.x = .6; fl.add(rw);
+      var mt = mast(M, .44, 2.66, .34); fl.add(mt.g);
+      [.34, -.34].forEach(function (z) {
+        fl.add(CYL(.055, .055, 1.1, 12, M.rim, .3, 1.0, z));
+        fl.add(CYL(.03, .03, .62, 10, M.steel, .3, 1.86, z));
+      });
+      var car = new T.Group();
+      car.add(R(.065, .58, .7, M.steel, .56, .3, 0, .026));
+      var fk = forks(M, .27, .94); fk.position.x = .62; car.add(fk);
+      var load = palletLoad(M); load.scale.set(.86, .86, .86); load.position.set(1.1, .08, 0); car.add(load);
+      car.position.set(0, .22, 0); fl.add(car);
+      [.42, -.42].forEach(function (z) {
+        fl.add(R(1.2, .12, .15, M.bodyLo, .96, .18, z, .04));
+        var w = wheel(M, .155, .12, 1.48, .155, z); fl.add(w); wheels.push(w);
+      });
+      var back = wheel(M, .29, .2, -.7, .29, 0); fl.add(back); wheels.push(back);
+      var bc = beacon(M, -.48, 1.32); fl.add(bc.g);
+      fl.add(lit(0xdff0ff, -.48, 1.28, .3, .05, .08, .14), lit(0xdff0ff, -.48, 1.28, -.3, .05, .08, .14));
+      return { g: fl, car: car, wheels: wheels, chain: mt.chain, halo: bc.halo, liftMax: 1.5 };
+    }
+
+    var BUILDERS = { '0': buildCurrent, '1': buildV1, '2': buildV2, '3': buildV3 };
+    var OPTS = [
+      { id: '0', name: '现状', short: '线上这一版', desc: '线上 js/gaote-scene3d.js 原样复刻。',
+        bad: ['门架两根立柱整根没渲染：代码把高度 1.5 当成材质传进 box()，材质不是 Material，three 判不可见就跳过 —— 所以画面里只剩一根 1.72 m 的悬浮顶梁',
+          '车身是一整块 1.5×0.5 的板砖，配重与底盘同宽同色，剪影读不出"车"',
+          '轮子半径只有 .13~.16 m（真车 .3 m 上下），车像浮在地上',
+          '货叉是两根等截面方条，没有竖直叉跟，货物像悬空贴在车侧',
+          '没有护顶架/驾驶位，跟旁边 1.4 m 的工人比不出主次'] },
+      { id: '1', name: '方案1 修形', short: '抽象块面·最省',
+        desc: '保留现在这套抽象块面语言，只把轮廓和比例修对。',
+        plus: ['改动最小，和旁边两个工人、机柜是同一套模型语言',
+          '门架/货叉/护顶架剪影补齐，线上默认机位（约 30 m 外）就已经成立',
+          '件数最少（约 55 个），帧率零影响'] },
+      { id: '2', name: '方案2 电动平衡重', short: '现场同款·推荐',
+        desc: '现场最常见的电动平衡重叉车：配重 / 驾驶舱 / 门架三段剪影 + 木托盘载货。',
+        plus: ['剪影最像真车：后配重圆弧、护顶架、座椅方向盘、前大后小四轮',
+          '载货是木托盘 + 两层纸箱 + 打包带，和货台、电池堆的"仓储"叙事接得上',
+          '轮毂螺栓齐全，来回跑时看得出轮子在滚',
+          '顶警示灯带呼吸光晕、前照/尾灯齐全，夜里拉远也有一个可读的高光点'],
+        minus: ['件数最多（约 110 个，共用同一批材质），仍是抽象块面没有五官级细节'] },
+      { id: '3', name: '方案3 前移式', short: '瘦高·仓库味',
+        desc: '窄巷道电动前移叉车：机身收成一条立柱式机舱，门架 2.66 m，前伸双支腿。',
+        plus: ['体积最瘦，不挡货台和门，画面最清爽',
+          '门架高一截，和两层厂房（6.2 m）的比例更协调',
+          '液压油缸 + 前移支腿，"设备感"比平衡重更强'],
+        minus: ['支腿贴地，和场坪 .18 m 台座的接缝要单独处理',
+          '瘦高剪影在远机位偏小，门口"干活"的热闹感不如方案2'] }
+    ];
+
+    /* ---------------- 上下文：场坪 + 厂房正面 + 货台 + 参照人 ---------------- */
+    var world = new T.Group(); scene.add(world);
+    function buildContext(M) {
+      var g = new T.Group();
+      var pave = SP.paveTexture(T, state.theme, { grid: false, cells: 3, gridCells: 4 });
+      pave.repeat.set(120 / 4, 120 / 4);
+      var floor = new T.Mesh(new T.PlaneGeometry(120, 120),
+        new T.MeshStandardMaterial({ map: pave, roughness: .78, metalness: .05,
+          envMapIntensity: SP.env(state.theme).envInt }));
+      floor.rotation.x = -Math.PI / 2; g.add(floor);
+      /* 车道虚线：压暗，别抢设备 */
+      var lineM = mk(state.theme === 'night' ? 0x3a3a26 : 0xbdb79a, { roughness: .95, metalness: 0 });
+      for (var k = -3; k <= 3; k++) g.add(B(1.1, .008, .1, lineM, k * 1.9, .004, 1.75));
+      /* 厂房正面（生产里在叉车后方 3 m）：白墙 + 深色基座 + 上层窗带 + 大门 + 雨棚 */
+      var wz = -3.0, th = THEMES[state.theme];
+      g.add(R(13.2, 6.0, .3, M.wall, -2.4, 3.0, wz, .05));
+      g.add(R(13.4, .42, .36, M.base, -2.4, .21, wz, .05));
+      g.add(R(13.4, .16, .2, M.trim, -2.4, 3.15, wz + .1, .04));
+      var winMat = mk(0x20262a, { emissive: th.win, emissiveIntensity: th.winI, roughness: .35, metalness: .2 });
+      g.add(R(9.0, 2.15, .22, M.base, -2.4, 4.35, wz + .06, .04));
+      [-3.3, -1.1, 1.1, 3.3].forEach(function (x) {
+        g.add(R(1.7, 1.6, .1, winMat, x - 2.4, 4.35, wz + .16, .02));
+        g.add(B(.07, 1.7, .12, M.trim, x - 2.4, 4.35, wz + .17));        /* 中梃，避免整块白洞 */
+        g.add(B(1.75, .06, .12, M.trim, x - 2.4, 4.35, wz + .17));
+      });
+      var doorX = -2.4;
+      g.add(B(3.6, 2.2, .06, mk(0x0d1417, { roughness: .95, metalness: 0 }), doorX, 1.37, wz + .17));
+      g.add(B(3.3, 1.9, .04, winMat, doorX, 1.31, wz + .2));
+      g.add(R(3.75, .38, .26, M.trim, doorX, 2.68, wz + .2, .05));
+      /* 装卸货台（面板顶 .32）+ 防撞柱 + 雨棚 */
+      g.add(R(4.6, .32, 1.2, mk(0x394347, { roughness: .85, metalness: .15 }), doorX, .16, wz + 1.55, .04));
+      g.add(R(4.6, .05, .26, M.steelLo, doorX, .33, wz + 2.08, .018));
+      g.add(R(1.8, .12, 1.05, M.steel, doorX + 3.0, .06, wz + 2.0, .025));
+      [doorX + 2.6, doorX - 2.6].forEach(function (x) {
+        g.add(CYL(.09, .09, .8, 12, mk(state.theme === 'night' ? 0x6b5f22 : 0xd8c25a), x, .4, wz + 1.5));
+      });
+      var canopy = R(4.4, .1, 1.5, M.trim, doorX, 2.6, wz + 1.05, .03);
+      canopy.rotation.x = -.12; g.add(canopy);
+      [doorX - 1.9, doorX + 1.9].forEach(function (x) { g.add(B(.08, .55, .08, M.steel, x, 2.3, wz + 1.7)); });
+      return g;
+    }
+    function buildWorker() {
+      /* 线上同款"车机风"小人，身高 1.4 m，用来看比例 */
+      var p = new T.Group();
+      var bodyMat = mk(0xdfe7e9, { roughness: .55, metalness: 0 }),
+        limbMat = mk(0xbcc7cb, { roughness: .6, metalness: 0 }),
+        headMat = mk(0xe9eff1, { roughness: .5, metalness: 0 });
+      function limb(r, len, m) {
+        var gp = new T.Group();
+        gp.add(CYL(r * .8, r, len, 10, m, 0, -len / 2, 0));
+        var cap = new T.Mesh(new T.SphereGeometry(r * .8, 10, 8), m); cap.position.y = -len;
+        gp.add(cap); return gp;
+      }
+      var torso = new T.Group();
+      torso.add(CYL(.095, .125, .4, 12, bodyMat, 0, 0, 0));
+      var t1 = new T.Mesh(new T.SphereGeometry(.095, 12, 10), bodyMat); t1.position.y = .16;
+      var t2 = new T.Mesh(new T.SphereGeometry(.125, 12, 10), bodyMat); t2.position.y = -.2;
+      torso.add(t1, t2); torso.scale.z = .85; torso.position.y = .95;
+      var head = new T.Mesh(new T.SphereGeometry(.115, 14, 12), headMat); head.position.y = 1.28;
+      var aL = limb(.042, .32, limbMat); aL.position.set(-.155, 1.06, 0);
+      var aR = limb(.042, .32, limbMat); aR.position.set(.155, 1.06, 0);
+      var lL = limb(.058, .46, limbMat); lL.position.set(-.07, .6, 0);
+      var lR = limb(.058, .46, limbMat); lR.position.set(.07, .6, 0);
+      p.add(torso, head, aL, aR, lL, lR);
+      var hi = mk(0xd98f1e, { roughness: .8, metalness: 0 });
+      p.add(CYL(.128, .146, .05, 12, hi, 0, 1.0, 0), CYL(.112, .128, .05, 12, hi, 0, .87, 0));
+      var helmet = new T.Mesh(new T.SphereGeometry(.135, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2),
+        mk(0xe8c33a, { roughness: .5, metalness: .1 }));
+      helmet.position.y = 1.33; p.add(helmet);
+      return p;
+    }
+
+    /* ---------------- 组装 ---------------- */
+    var rigs = [];
+    var MIX = [{ id: '0', x: -7.4, t: '现状' }, { id: '1', x: -2.5, t: '方案1 修形' },
+      { id: '2', x: 2.5, t: '方案2 平衡重' }, { id: '3', x: 7.4, t: '方案3 前移式' }];
+    function clearWorld() {
+      /* 倒角盒/铺装贴图都是 ScenePreset 的缓存，整场重建不 dispose，换引用即可 */
+      scene.remove(world); world = new T.Group(); scene.add(world); rigs = [];
+    }
+    function matsFor() {
+      return {
+        body: mk(PT.body, { roughness: .55, metalness: .28 }),
+        bodyLo: mk(PT.bodyLo, { roughness: .65, metalness: .22 }),
+        steel: mk(PT.steel, { roughness: .45, metalness: .55 }),
+        steelLo: mk(PT.steelLo, { roughness: .5, metalness: .5 }),
+        dark: mk(PT.dark, { roughness: .7, metalness: .3 }),
+        band: mk(PT.band, { roughness: .8, metalness: .1 }),
+        tyre: mk(PT.tyre, { roughness: .95, metalness: .02 }),
+        rim: mk(PT.rim, { roughness: .5, metalness: .45 }),
+        wood: mk(PT.wood, { roughness: .88, metalness: 0 }),
+        carton: mk(PT.carton, { roughness: .9, metalness: 0 }),
+        cartonLo: mk(PT.cartonLo, { roughness: .9, metalness: 0 }),
+        seat: mk(PT.seat, { roughness: .78, metalness: .08 }),
+        wall: mk(PT.wall, { roughness: .72, metalness: .1 }),
+        trim: mk(PT.trim, { roughness: .6, metalness: .28 }),
+        base: mk(PT.base, { roughness: .55, metalness: .32 })
+      };
+    }
+    function buildAll() {
+      clearWorld();
+      PT = paint(state.theme === 'night');
+      var M = matsFor();
+      world.add(buildContext(M));
+      if (state.mix) {
+        MIX.forEach(function (slot) {
+          var rig = BUILDERS[slot.id](M);
+          rig.anchor = slot.x; rig.g.position.x = slot.x;
+          var tg = tag(slot.t); tg.position.set(slot.x, 3.3, 0); world.add(tg);
+          world.add(rig.g); rigs.push(rig);
+        });
+      } else {
+        var rig2 = BUILDERS[state.opt](M);
+        rig2.anchor = 0; world.add(rig2.g); rigs.push(rig2);
+        if (state.man) {
+          var w1 = buildWorker(); w1.position.set(-1.5, 0, 2.0); world.add(w1);
+          var w2 = buildWorker(); w2.position.set(2.9, 0, -1.2); w2.rotation.y = 2.4; world.add(w2);
+        }
+      }
+      applyTheme();
+    }
+
+    /* ---------------- 主题 ---------------- */
+    function applyTheme() {
+      var th = THEMES[state.theme], PE = SP.env(state.theme), night = state.theme === 'night';
+      scene.background = new T.Color(th.bg);
+      scene.fog = new T.Fog(th.fog, th.fogNear, th.fogFar);
+      var dome = new T.Mesh(new T.SphereGeometry(150, 24, 16),
+        new T.MeshBasicMaterial({ map: skyTexture(th.sky), side: T.BackSide, depthWrite: false,
+          fog: false, toneMapped: false }));
+      dome.renderOrder = -1; world.add(dome);
+      envRT = SP.buildEnvironment(T, renderer, scene, dome.material.map, envRT);
+      hemi.color.set(th.hemi[0]); hemi.groundColor.set(th.hemi[1]); hemi.intensity = PE.lights.hemi;
+      key.color.set(th.key); key.intensity = PE.lights.key;
+      fill.color.set(th.fill); fill.intensity = PE.lights.fill;
+      SP.setExposure(renderer, state.theme);
+      SP.applyThemeToPasses(bloomPass, vigPass, state.theme);
+    }
+
+    /* ---------------- 机位 ---------------- */
+    var CAMS = {
+      near: { pos: [5.2, 2.6, 5.6], tgt: [.7, 1.0, 0], fov: 34 },
+      side: { pos: [.3, 1.4, 7.6], tgt: [.3, 1.05, 0], fov: 34 },
+      front: { pos: [7.6, 1.7, .8], tgt: [.7, 1.1, 0], fov: 34 },
+      low: { pos: [3.6, .75, 3.6], tgt: [.5, .9, 0], fov: 38 },
+      site: { pos: [14, 9, 26], tgt: [1.5, 2.6, -1], fov: 46 }
+    };
+    var controls = null;
+    function setCam(k) {
+      var c = CAMS[k] || CAMS.near;
+      camera.fov = state.mix ? 40 : c.fov;
+      if (state.mix) {
+        camera.position.set(6.5, 4.2, 15.5);
+        var tgt = new T.Vector3(0, 1.2, 0);
+        camera.lookAt(tgt); if (controls) { controls.target.copy(tgt); controls.update(); }
+      } else {
+        camera.position.set(c.pos[0], c.pos[1], c.pos[2]);
+        var t2 = new T.Vector3(c.tgt[0], c.tgt[1], c.tgt[2]);
+        camera.lookAt(t2); if (controls) { controls.target.copy(t2); controls.update(); }
+      }
+      camera.updateProjectionMatrix();
+    }
+
+    /* ---------------- 动画 ---------------- */
+    var clock = { last: 0, t: 0 };
+    function tick(dt) {
+      clock.t += state.anim ? dt : 0;
+      rigs.forEach(function (rig, idx) {
+        var base = rig.anchor, span = 6.2, fwd = true, d = span / 2;
+        if (state.anim && !state.mix) {
+          var per = span * 2 / 1.35;                     /* 与线上同速 1.35 m/s */
+          var ph = (clock.t + idx * 1.7) % per;
+          d = ph <= span ? ph : span * 2 - ph; fwd = ph <= span;
+          rig.g.position.x = base + (-span / 2 + d);
+          rig.g.rotation.y = fwd ? 0 : Math.PI;
+          kf = Math.abs(Math.sin((-span / 2 + d) / span * Math.PI));
+        } else {
+          rig.g.position.x = base; rig.g.rotation.y = 0;
+          kf = state.anim ? .55 : state.lift;            /* 并排=固定中位；动画关=按 lift 摆姿势 */
+        }
+        var kf2 = kf * (rig.liftMax || .38);
+        rig.lift = kf * (rig.liftMax || .38);
+        if (rig.car) {
+          if (rig.carBase === undefined) rig.carBase = rig.car.position.y;
+          rig.car.position.y = rig.carBase + kf2;
+        }
+        if (rig.chain) rig.chain.forEach(function (c) { c.scale.y = 1 + kf2 * .55; });
+        if (rig.wheels.length && state.anim) {
+          rig.wheels.forEach(function (w) { w.rotation.z -= dt * (fwd ? 1 : -1) * 1.35 / .3; });
+        }
+        if (rig.halo) rig.halo.material.opacity = .06 + .16 * (.5 + .5 * Math.sin(clock.t * 4.2));
+      });
+    }
+    function resize() {
+      var w = stage.clientWidth || 900, h = stage.clientHeight || 600;
+      camera.aspect = w / h; camera.updateProjectionMatrix();
+      renderer.setSize(w, h);
+      SP.resizeComposer(composer, bloomPass, w, h);
+    }
+    function loop(now) {
+      requestAnimationFrame(loop);
+      var dt = Math.min(.05, (now - clock.last) / 1000 || 0); clock.last = now;
+      tick(dt);
+      if (controls) controls.update();
+      if (composer) composer.render(); else renderer.render(scene, camera);
+    }
+
+    /* ---------------- 面板 ---------------- */
+    function btn(host, label, sub, on, fn) {
+      var b = document.createElement('button');
+      b.innerHTML = label + (sub ? '<small>' + sub + '</small>' : '');
+      if (on) b.classList.add('on');
+      b.addEventListener('click', fn); host.appendChild(b); return b;
+    }
+    function renderPanel() {
+      var oR = document.getElementById('optRows'); oR.innerHTML = '';
+      OPTS.forEach(function (o) {
+        btn(oR, o.name, o.short, !state.mix && state.opt === o.id, function () {
+          state.mix = false; state.opt = o.id; buildAll(); setCam(state.cam); renderPanel();
+        });
+      });
+      btn(oR, '并排对比', '4 台同框', state.mix, function () {
+        state.mix = true; buildAll(); setCam(state.cam); renderPanel();
+      });
+      var cR = document.getElementById('camRows'); cR.innerHTML = '';
+      [['near', '近景 3/4'], ['side', '侧视剪影'], ['front', '正面'], ['low', '低机位'],
+        ['site', '全场远机位']].forEach(function (c) {
+        btn(cR, c[1], '', state.cam === c[0], function () { state.cam = c[0]; setCam(c[0]); renderPanel(); });
+      });
+      var eR = document.getElementById('envRows'); eR.innerHTML = '';
+      btn(eR, '夜晚', '', state.theme === 'night', function () {
+        state.theme = 'night'; buildAll(); renderPanel(); });
+      btn(eR, '白天', '', state.theme === 'day', function () {
+        state.theme = 'day'; buildAll(); renderPanel(); });
+      btn(eR, state.anim ? '动画 开' : '动画 关', '行走/升降/滚轮', state.anim, function () {
+        state.anim = !state.anim; renderPanel(); });
+      var cur = OPTS.filter(function (o) { return o.id === state.opt; })[0];
+      var html = '<b>' + cur.name + '｜' + cur.short + '</b><br>' + cur.desc;
+      [['bad', '— '], ['plus', '· '], ['minus', '— ']].forEach(function (grp) {
+        if (cur[grp[0]]) html += '<ul>' + cur[grp[0]].map(function (s) { return '<li>' + s + '</li>'; }).join('') + '</ul>';
+      });
+      document.getElementById('desc').innerHTML = html;
+      document.getElementById('badgeOpt').textContent = state.mix ? '并排（现状/1/2/3）' : cur.name;
+      document.getElementById('badgeSub').textContent = (state.theme === 'night' ? '夜间' : '白天') + ' · ' +
+        ({ near: '近景', side: '侧视', front: '正面', low: '低机位', site: '全场' }[state.cam]);
+    }
+
+    /* ---------------- 启动 ---------------- */
+    if (typeof T.OrbitControls === 'function') {
+      controls = new T.OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true; controls.dampingFactor = .08;
+    }
+    var cp = SP.compose(T, renderer, scene, camera, state.theme,
+      { width: stage.clientWidth || 900, height: stage.clientHeight || 600 });
+    composer = cp.composer; bloomPass = cp.bloomPass; vigPass = cp.vigPass;
+    buildAll(); renderPanel(); resize(); setCam(state.cam);
+    window.addEventListener('resize', resize);
+    requestAnimationFrame(loop);
+    window.__FORK = function () { return { state: state, scene: scene, camera: camera,
+      renderer: renderer, rigs: rigs, composer: composer }; };
+  }
+})();
+</script>
+</body>
+</html>

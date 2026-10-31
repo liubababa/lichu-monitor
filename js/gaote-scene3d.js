@@ -934,51 +934,136 @@ window.GaoteScene3D = (function () {
     }
     addWorker(-3.5, 6.0, 1.6, 6.0, 0, .72);                    /* 货台前的人行道（厂房局部坐标） */
     addWorker(-1.0, 6.0, 2.4, 6.0, .55, .95);
-    /* 叉车（升级）：底盘 + 后配重 + 四轮 + 门架顶棚 + 货叉随行程升降托一板货 + 顶灯；
-       仍是抽象块面拼装、不投影，在货台前那条独立车道上来回跑（不跟人重叠） */
+    /* 叉车（重做）：现场同款电动平衡重叉车 —— 后配重 / 驾驶舱 / 门架三段剪影，
+       货叉上是一板托盘货。原来那版"难看"的直接原因是门架两根立柱把高度 1.5
+       当成材质传进了 box()：材质不是 Material，three 判 material.visible 为假就整根不画，
+       所以画面上只剩一根 1.72 m 的悬浮顶梁。
+       仍是抽象块面拼装、不投影（阴影图是冻结的，动的东西投影会留鬼影）；
+       货叉一律朝 +x，行进方向靠 rotation.y 翻，跑货台前那条独立车道（不跟人重叠）。
+       车色夜里压到 0x8f6a17：厂房白墙在同一套灯光下会打到近白，不压两档就是一块浅色斑。 */
     const fl = new THREE.Group();
-    const flBody = regMat(std(0xd9a13a, { roughness: .6, metalness: .3 }), { color: 0xb8862c }, { color: 0xd9a13a });
-    const flDark = std(0x1d2a2e, { roughness: .7, metalness: .35 });
-    const flSteel = std(0x9fb0b6, { roughness: .45, metalness: .6 });
-    const flWheel = std(0x141d21, { roughness: .9 });
-    const flCrate = regMat(std(0x8a6f4a, { roughness: .85 }), { color: 0x6e5a3e }, { color: 0x8a6f4a });
-    [[1.5, .5, .95, flBody, 0, .52, .06], [1.0, .55, .9, flDark, 0, .6, -.4],
-     [.9, .28, .84, flDark, 0, .2, .05]].forEach(function (a) {
-      const m = box(a[0], a[1], a[2], a[3], a[4], a[5], a[6]);
-      m.castShadow = false;
-      fl.add(m);
+    function fB(w, h, d, m, x, y, z) { const o = box(w, h, d, m, x, y, z); o.castShadow = o.receiveShadow = false; return o; }
+    function fR(w, h, d, m, x, y, z, r) { const o = rbox(w, h, d, m, x, y, z, r); o.castShadow = o.receiveShadow = false; return o; }
+    function fC(rt, rb, h, seg, m, x, y, z) {
+      const o = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, seg), m);
+      o.position.set(x, y, z); return o;
+    }
+    function fLit(color, w, h, d, x, y, z) {
+      const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d),
+        new THREE.MeshBasicMaterial({ color: color, toneMapped: false }));
+      o.position.set(x, y, z); return o;
+    }
+    const flBody = regMat(std(0x8f6a17, { roughness: .55, metalness: .28 }), { color: 0x8f6a17 }, { color: 0xd9a13a });
+    const flBodyLo = regMat(std(0x63490f, { roughness: .65, metalness: .22 }), { color: 0x63490f }, { color: 0xa87c22 });
+    const flSteel = regMat(std(0x8fa0a6, { roughness: .45, metalness: .55 }), { color: 0x8fa0a6 }, { color: 0xc2ccd0 });
+    const flMast = regMat(std(0x4e5f66, { roughness: .5, metalness: .5 }), { color: 0x4e5f66 }, { color: 0x8b979c });
+    const flDark = regMat(std(0x162126, { roughness: .7, metalness: .3 }), { color: 0x162126 }, { color: 0x2c3a40 });
+    const flSeam = regMat(std(0x0f1719, { roughness: .8, metalness: .1 }), { color: 0x0f1719 }, { color: 0x232b2e });
+    const flTyre = regMat(std(0x0a1013, { roughness: .95, metalness: .02 }), { color: 0x0a1013 }, { color: 0x1d2428 });
+    const flRim = regMat(std(0x55656c, { roughness: .5, metalness: .45 }), { color: 0x55656c }, { color: 0xa8b4b8 });
+    const flWood = regMat(std(0x4b3c27, { roughness: .88, metalness: 0 }), { color: 0x4b3c27 }, { color: 0xa8845a });
+    const flCarton = regMat(std(0x5a4830, { roughness: .9, metalness: 0 }), { color: 0x5a4830 }, { color: 0xb8925f });
+    const flCarton2 = regMat(std(0x42351f, { roughness: .9, metalness: 0 }), { color: 0x42351f }, { color: 0x93744a });
+    const flSeat = regMat(std(0x1b252a, { roughness: .78, metalness: .08 }), { color: 0x1b252a }, { color: 0x3a4750 });
+    /* 轮子：胎 + 轮辋 + 中心盖 + 5 颗螺栓（螺栓是"轮子在滚"唯一的读数） */
+    function fWheel(r, w, x, y, z) {
+      const gp = new THREE.Group();
+      const ty = fC(r, r, w, 22, flTyre, 0, 0, 0); ty.rotation.x = Math.PI / 2;
+      const rm = fC(r * .6, r * .6, w * .92, 18, flRim, 0, 0, 0); rm.rotation.x = Math.PI / 2;
+      const cp = fC(r * .22, r * .22, w * 1.04, 12, flMast, 0, 0, 0); cp.rotation.x = Math.PI / 2;
+      gp.add(ty, rm, cp);
+      const sgn = z > 0 ? 1 : -1;
+      for (let k = 0; k < 5; k++) {
+        const a = k / 5 * Math.PI * 2;
+        gp.add(fB(r * .13, r * .13, w * .16, flSeam, Math.cos(a) * r * .42, Math.sin(a) * r * .42, sgn * w * .5));
+      }
+      gp.position.set(x, y, z);
+      return gp;
+    }
+    const flWheels = [];
+    /* 后段配重：顶面后掠 + 尾面内收，剪影不再是板砖 */
+    fl.add(fR(.96, .66, .84, flBody, -.66, .7, 0, .15));
+    fl.add(fR(.34, .38, .8, flBody, -1.18, .56, 0, .1));
+    fl.add(fB(.05, .3, .66, flSeam, -1.36, .72, 0));
+    [-.14, 0, .14].forEach(function (z) { fl.add(fB(.44, .04, .06, flSeam, -1.02, 1.02, z)); });
+    /* 底盘 + 中部电池舱 */
+    fl.add(fR(1.9, .19, .86, flDark, -.16, .27, 0, .05));
+    fl.add(fR(1.14, .38, .84, flBodyLo, .1, .5, 0, .06));
+    fl.add(fB(.02, .3, .74, flSeam, .64, .5, 0));
+    /* 驾驶位：座椅 / 靠背 / 仪表台 / 方向盘 / 地板 */
+    fl.add(fR(.42, .08, .44, flSeat, -.36, .9, 0, .03));
+    const flBack = fR(.085, .48, .44, flSeat, -.6, 1.14, 0, .03); flBack.rotation.z = .1; fl.add(flBack);
+    fl.add(fR(.26, .42, .46, flBodyLo, -.02, 1.06, 0, .05));
+    const flCol = fC(.028, .028, .26, 10, flSteel, .12, 1.24, 0); flCol.rotation.z = 1.1; fl.add(flCol);
+    const flWheelRing = new THREE.Mesh(new THREE.TorusGeometry(.125, .022, 8, 18), flDark);
+    flWheelRing.position.set(.24, 1.32, 0); flWheelRing.rotation.y = Math.PI / 2; flWheelRing.rotation.x = .55;
+    fl.add(flWheelRing);
+    fl.add(fR(.34, .04, .42, flSteel, .06, .83, 0, .015));
+    /* 护顶架：四柱收细 + 薄顶板 + 前后檐（原来那块"厚桌板"是显丑的主因之一） */
+    [[-.62, .46], [-.62, -.46], [.3, .46], [.3, -.46]].forEach(function (a) {
+      fl.add(fR(.07, 1.08, .07, flBody, a[0], 1.4, a[1], .022));
     });
-    /* 四轮（前二后二，圆柱横置） */
-    [[-.52, .36, .40, .16, .10], [.52, .36, .40, .16, .10],
-     [-.56, .30, -.42, .13, .09], [.56, .30, -.42, .13, .09]].forEach(function (a) {
-      const w = new THREE.Mesh(new THREE.CylinderGeometry(a[4], a[4], a[3], 10), flWheel);
-      w.rotation.x = Math.PI / 2;
-      w.position.set(a[0], a[1], a[2]);
-      fl.add(w);
+    fl.add(fR(1.22, .045, 1.14, flBody, -.16, 1.96, 0, .02));
+    fl.add(fR(1.12, .05, .07, flDark, -.16, 1.9, .53, .018));
+    fl.add(fR(1.12, .05, .07, flDark, -.16, 1.9, -.53, .018));
+    fl.add(fR(1.06, .02, 1.0, flSeam, -.16, 1.99, 0, .01));
+    fl.add(fLit(0xdff0ff, .05, .08, .18, -.62, 1.9, .3), fLit(0xdff0ff, .05, .08, .18, -.62, 1.9, -.3));
+    /* 门架：双 C 型钢立柱 + 顶/下横梁 + 链条（这次真的会渲染）+ 内架滑道 */
+    const flChains = [];
+    [.34, -.34].forEach(function (z) {
+      fl.add(fR(.12, 2.1, .18, flMast, .8, 1.21, z, .028));
+      fl.add(fB(.05, 1.98, .07, flSeam, .875, 1.21, z));
+      fl.add(fB(.15, .05, .185, flSeam, .8, .75, z));
+      fl.add(fB(.15, .05, .185, flSeam, .8, 1.67, z));
+      const ch = fB(.038, 1.3, .038, flDark, .89, .95, z); fl.add(ch); flChains.push(ch);
+      fl.add(fR(.07, 1.9, .1, flSteel, .7, 1.1, z, .02));
     });
-    /* 门架（双立柱 + 顶梁，固定）+ 货叉升降架（随行程起落，托一板货） */
-    const mast = new THREE.Group();
-    [[-.66, .8, .12, 1.5, .12, flSteel, 1.05, -.28], [-.66, .8, .12, 1.5, .12, flSteel, 1.05, .28]].forEach(function (a) {
-      const m = box(a[0], a[1], a[2], a[3], 0, a[6], a[7]);
-      m.castShadow = false;
-      mast.add(m);
-    });
-    mast.add(box(.1, .09, .78, flSteel, 0, 1.72, 0));
-    fl.add(mast);
+    fl.add(fR(.14, .12, .82, flMast, .8, 2.28, 0, .03));
+    fl.add(fR(.13, .09, .7, flMast, .8, .22, 0, .025));
+    /* 载货架 + L 形货叉 + 一板货（随行程升降） */
     const carriage = new THREE.Group();
-    [[-.30, -.20], [-.30, .20]].forEach(function (a) {
-      const f = box(.85, .09, .09, flSteel, 0, .10, a[1]);
-      carriage.add(f);
+    carriage.add(fR(.07, .72, .8, flSteel, .92, .36, 0, .03));
+    carriage.add(fR(.11, .07, .11, flMast, .84, .72, .3, .02));
+    carriage.add(fR(.11, .07, .11, flMast, .84, .72, -.3, .02));
+    [.3, -.3].forEach(function (z) {
+      carriage.add(fR(.085, .5, .125, flSteel, .98, .3, z, .02));                 /* 叉跟 */
+      carriage.add(fR(1.06, .07, .125, flSteel, 1.47, .035, z, .014));            /* 叉臂 */
+      const tip = fR(.1, .05, .125, flMast, 1.96, .02, z, .012); tip.rotation.z = -.22;
+      carriage.add(tip);
     });
-    carriage.add(box(.48, .40, .56, flCrate, .12, .34, 0));
-    carriage.position.set(-.52, .16, 0);
+    const flLoad = new THREE.Group();
+    flLoad.add(fR(1.02, .045, .96, flWood, 0, .125, 0, .012));
+    [-.36, 0, .36].forEach(function (x) { flLoad.add(fB(.15, .075, .9, flWood, x, .075, 0)); });
+    flLoad.add(fR(1.02, .03, .96, flWood, 0, .03, 0, .01));
+    flLoad.add(fR(.94, .44, .86, flCarton, 0, .37, 0, .018));
+    flLoad.add(fB(.035, .46, .88, flSeam, -.2, .37, 0));
+    flLoad.add(fB(.035, .46, .88, flSeam, .2, .37, 0));
+    flLoad.add(fB(.96, .02, .035, flSeam, 0, .595, 0));
+    flLoad.add(fR(.68, .34, .6, flCarton2, .04, .76, .02, .016));
+    flLoad.add(fB(.7, .02, .03, flSeam, .04, .93, .02));
+    flLoad.add(fB(.02, .36, .62, flSeam, .04, .76, 0));
+    flLoad.position.set(1.58, .08, 0);
+    carriage.add(flLoad);
+    carriage.position.set(0, .12, 0);
     fl.add(carriage);
-    const flLamp = new THREE.Mesh(new THREE.SphereGeometry(.075, 8, 6),
-      new THREE.MeshBasicMaterial({ color: 0xffb020, toneMapped: false }));
-    flLamp.position.set(-.35, 1.62, 0);
-    fl.add(flLamp);
+    /* 四轮：前大后小（轮子内缘要让开车身和门架，别穿模） */
+    [[.48, .335, .18, .55], [.48, .335, .18, -.55], [-.84, .255, .15, .52], [-.84, .255, .15, -.52]]
+      .forEach(function (a) { const w = fWheel(a[1], a[2], a[0], a[1], a[3]); fl.add(w); flWheels.push(w); });
+    /* 顶警示灯：半球 + 底座 + 呼吸光晕（夜里拉远也有一个可读的高光点） */
+    const flBeaconMat = new THREE.MeshBasicMaterial({ color: 0xffb020, toneMapped: false });
+    const flBeacon = new THREE.Mesh(new THREE.SphereGeometry(.075, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), flBeaconMat);
+    flBeacon.position.set(-.16, 2.01, 0);
+    const flBeaconBase = fC(.1, .115, .04, 14, flBeaconMat, -.16, 2, 0);
+    const flHalo = new THREE.Mesh(new THREE.SphereGeometry(.17, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2),
+      new THREE.MeshBasicMaterial({ color: 0xffb020, toneMapped: false, transparent: true, opacity: .12,
+        blending: THREE.AdditiveBlending, depthWrite: false }));
+    flHalo.position.set(-.16, 1.99, 0);
+    fl.add(flBeacon, flBeaconBase, flHalo);
+    fl.add(fLit(0xff4d4d, .05, .11, .17, -1.4, .6, .24), fLit(0xff4d4d, .05, .11, .17, -1.4, .6, -.24));
+    fl.add(fB(.05, .11, .6, flSeam, -1.4, .82, 0));
     g.add(fl);
-    facFork = { g: fl, car: carriage, liftBase: .2, x0: -4.9, x1: 1.3, dist: 0, speed: 1.35 };
+    facFork = { g: fl, car: carriage, wheels: flWheels, chains: flChains, halo: flHalo,
+      liftBase: .12, x0: -4.9, x1: 1.3, dist: 0, speed: 1.35 };
 
     /* 落水管（正面两根，从檐口顺墙到基座） */
     [-1, 1].forEach(function (sx) {
@@ -1654,10 +1739,18 @@ window.GaoteScene3D = (function () {
       const span = facFork.x1 - facFork.x0;
       const mm = facFork.dist % (span * 2);
       const fwd = mm <= span;
-      facFork.g.position.set(facFork.x0 + (fwd ? mm : span * 2 - mm), YARD_Y, 7.0);
-      facFork.g.rotation.y = fwd ? Math.PI : 0;          /* 门架朝行进方向 */
-      /* 货叉随行程缓慢起落（搬运感） */
-      facFork.car.position.y = facFork.liftBase + Math.abs(Math.sin(facFork.dist / span * Math.PI)) * .38;
+      const d = fwd ? mm : span * 2 - mm;
+      facFork.g.position.set(facFork.x0 + d, YARD_Y, 7.0);
+      facFork.g.rotation.y = fwd ? 0 : Math.PI;          /* 货叉朝行进方向（模型货叉在 +x 侧） */
+      /* 货叉随行程缓慢起落（搬运感），链条跟着伸长 */
+      const lift = Math.abs(Math.sin(d / span * Math.PI)) * .5;
+      facFork.car.position.y = facFork.liftBase + lift;
+      for (let i = 0; i < facFork.chains.length; i++) facFork.chains[i].scale.y = 1 + lift * 1.1;
+      /* 轮子按行进方向滚（1.35 m/s ÷ 半径 .3） */
+      for (let i = 0; i < facFork.wheels.length; i++) {
+        facFork.wheels[i].rotation.z -= dt * (fwd ? 1 : -1) * facFork.speed / .3;
+      }
+      if (facFork.halo) facFork.halo.material.opacity = .06 + .16 * (.5 + .5 * Math.sin(t / 1000 * 4.2));
     }
     if (composer) composer.render(); else renderer.render(scene, camera);
     labelRenderer.render(scene, camera);
