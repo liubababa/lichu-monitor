@@ -33,12 +33,9 @@ window.PortalUI = (function () {
     }
   ];
   const OTHER_GROUP = '其他电站';
-  /* 自动发现卡片用现场柜号做标题，DSN 留在“设备号”行，别只挂一串编号 */
-  const AUTO_LABEL = {
-    R260616J0069: '峻涌 · 6号柜',
-    R250907J0037: '峻涌 · 7号柜',
-    R260812J0066: '峻涌 · 3-5号柜'
-  };
+  /* 已登记电站自己的设备：峻涌的三台高特 CCU 归入「山东峻涌光储电站」，
+     不在「其他电站（自动发现）」里重复列卡片；这块只留一个空占位框。 */
+  const HIDDEN_DSN = ['R260616J0069', 'R250907J0037', 'R260812J0066'];
 
   /* ---------------- 工具 ---------------- */
   function devList() {
@@ -162,24 +159,26 @@ window.PortalUI = (function () {
       box.appendChild(gw);
     });
 
-    /* 其他电站：自动发现、且不在上面登记表里的设备。
-       用户要求把这块恢复出来，目录页下半部分才不空；
-       没有发现任何"其它"设备时仍整组隐藏。 */
+    /* 其他电站：自动发现区永远保留一个框。已登记站自己的设备（峻涌三台 CCU）
+       不在这里重复列；真发现其它设备时再按旧方案列卡片。 */
     const known = STATIONS.map(function (s) { return s.sn; }).filter(Boolean);
     const others = devList().filter(function (d) {
-      return known.indexOf(d.dsn) < 0;
+      return known.indexOf(d.dsn) < 0 && HIDDEN_DSN.indexOf(d.dsn) < 0;
     });
-    if (others.length) {
-      const gw = el('div', 'pt-group pt-auto');
-      gw.appendChild(el('div', 'pt-gtitle', '<i></i>' + OTHER_GROUP + '<em>自动发现 ' + others.length + ' 台</em>'));
-      const cards = el('div', 'pt-cards');
+    const gw = el('div', 'pt-group pt-auto');
+    gw.appendChild(el('div', 'pt-gtitle', '<i></i>' + OTHER_GROUP
+      + '<em>' + (others.length ? '自动发现 ' + others.length + ' 台' : '自动发现') + '</em>'));
+    const cards = el('div', 'pt-cards');
+    if (!others.length) {
+      cards.appendChild(el('div', 'pt-empty',
+        '还没有发现其它设备。<br/>连接 MQTT 后，正在上报的设备会自动出现在这里。'));
+    } else {
       others.forEach(function (d) {
         const c = el('div', 'pt-card pt-' + (d.online ? 'on' : 'off'));
         const head = el('div', 'pt-chead');
-        head.appendChild(el('b', '', AUTO_LABEL[d.dsn] || d.dsn));
-        head.appendChild(el('span', 'pt-tag', '自动发现 · 高特 CCU'));
+        head.appendChild(el('b', '', d.dsn));
+        head.appendChild(el('span', 'pt-tag', '自动发现'));
         c.appendChild(head);
-        c.appendChild(el('div', 'pt-crow', '<span>设备号</span>' + d.dsn));
         c.appendChild(el('div', 'pt-crow', '<span>产品号</span>' + (d.psn || '—')));
         const stat = el('div', 'pt-cstat');
         stat.innerHTML = '<i class="pt-dot ' + (d.online ? 'on' : 'off') + '"></i>' + (d.online ? '在线' : '离线')
@@ -191,9 +190,9 @@ window.PortalUI = (function () {
         c.addEventListener('click', function () { enter({ sn: d.dsn, psn: d.psn, name: d.dsn }); });
         cards.appendChild(c);
       });
-      gw.appendChild(cards);
-      box.appendChild(gw);
     }
+    gw.appendChild(cards);
+    box.appendChild(gw);
 
     /* 页脚：上次选择 + 当前 MQTT 状态 */
     const sel = savedSel();
