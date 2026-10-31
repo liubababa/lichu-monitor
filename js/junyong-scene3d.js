@@ -14,7 +14,8 @@
  *   亮线判据与洙边一致（agent-pack/07 六种工况）：
  *     ① 光伏干线 pv ② 光伏下段 pvlow ③ 光伏→厂房 pvh ④ 光伏→储能 sto
  *     ⑤ 国网→储能 gsto ⑥ 并网段 grid ⑦ 铁塔段 tower ⑧ 储能→厂房 stoh ⑨ 电网直供 gl
- *   数据缺失一律不亮（光伏 null≠0；关口没上报就不判买卖电），不编数据。
+ *   缺数据的那条线不亮（光伏 null≠0；关口没上报就不判买卖电），不编数据；
+ *   受电/负荷要分群光伏、储能、关口三量齐全才算，缺一个就显示「数据不全」。
  *
  *   对外接口：JunyongScene.init / setGroup(i, d) / setStationPv(kw, seen) / setWeather(w) / setTheme(t)
  *            resize / setActive / setLabels / setRotate / resetView
@@ -772,58 +773,65 @@ window.JunyongScene = (function () {
 
   /* ---------------- 六工况判据（洙边口径；缺数据的路不亮） ---------------- */
   function cond(d) {
-    var hasGroupPv = !!(d.pvSeen && d.pv != null);
-    var hasPv = hasGroupPv || stationPv.seen;
-    var pv = hasGroupPv ? d.pv : (stationPv.seen ? stationPv.kw : 0);
+    /* 只有分群光伏参与本群工况；全站光伏只做屋面发光和铁塔提示，不摊到每个群 */
+    var hasPv = !!(d.pvSeen && d.pv != null);
+    var pv = hasPv ? +d.pv : 0;
     var hasSt = d.st != null, hasGrid = d.grid != null;
-    var st = hasSt ? d.st : 0;
+    var st = hasSt ? +d.st : 0;
     var surplus = hasGrid ? -d.grid : null;              /* 正 = 送电（卖） */
-    var loadEff = hasGrid ? Math.max(0, pv + st - surplus) : (d.load != null ? Math.max(0, pv + st) : 0);
-    /* 储能数据未接入时的暂定显示：按「工况 1 · 光伏充储能」点亮，数字仍为 -- */
-    var provChg = !hasSt && hasPv;
-    var pvOn = hasPv && pv > .5, chg = hasSt ? (st < -.5) : provChg, dis = hasSt && st > .5;
+    var complete = hasPv && hasSt && hasGrid;
+    /* 负荷由 光伏 + 储能 + 关口 反算；三个量缺一个就不知道负荷，宁可 -- 不编
+       （尤其分群光伏没上报时，不能拿 PV=0 去算） */
+    var hasLoad = d.load != null || complete;
+    var loadEff = d.load != null ? Math.max(0, +d.load)
+      : (hasLoad ? Math.max(0, pv + st - surplus) : null);
+    var pvOn = hasPv && pv > .5, chg = hasSt && st < -.5, dis = hasSt && st > .5;
     var sell = hasGrid && surplus > .3, buy = hasGrid && surplus < -.3;
-    var charge = chg && hasSt ? -st : 0;
-    /* 光伏先满足储能充电，剩余出力才供厂房（与场景里 sto / pvh 两条线的画法一致）：
-       · 充电时 PV 全额被充电吃掉，就不再判「光伏→厂房」；
-       · 只有 PV 小于充电功率、且关口在取电，才判「电网→储能」。 */
-    var pvToLoad = pvOn && loadEff > .3 && (!chg || pv > charge + .3);
-    var gridToStorage = !!(chg && buy && (hasSt ? pv < charge - .3 : true));
-    /* 储能放电但负荷≈0、关口却在送电：六工况里没有「储能→电网」，按现场“储能不卖电”口径属于数据/策略矛盾 */
-    var dataWarn = (dis && sell && loadEff <= .3) ? '储能放电但负荷≈0、关口送电（储能不卖电口径）' : '';
+    /* 充电：光伏先充储能，剩余才供厂房；放电：储能先顶厂房，不够的才由光伏补。
+       与画面 pvh / stoh 两条线的画法一致，避免光伏和储能都说自己在供同一份负荷 */
+    var loadLeft = loadEff == null ? 0
+      : Math.max(0, loadEff - (dis ? Math.min(st, loadEff) : 0));
+    var charge = chg ? -st : 0;
+    var pvToLoad = pvOn && loadEff != null && loadLeft > .3 && (!chg || pv > charge + .3);
+    /* 没有分群光伏就判断不了“电网是不是在补充电”，5 不硬猜 */
+    var gridToStorage = !!(hasPv && chg && buy && pv < charge - .3);
+    /* 储能放电超过本群负荷：多出来的只能上送；六工况里没有「储能→电网」，
+       按现场“储能不卖电”口径属于数据/策略矛盾 */
+    var stoSellW = (dis && sell && loadEff != null) ? st - loadEff : 0;
+    var dataWarn = stoSellW > .3 ? '储能放电超过本群负荷，多余电量上送（储能不卖电口径）' : '';
     var its = [];
     if (pvOn && chg) its.push('1');
     if (pvToLoad) its.push('2');
     if (pvOn && sell) its.push('3');
-    if (buy && loadEff > .3) its.push('4');
+    if (buy && loadEff != null && loadEff > .3) its.push('4');
     if (gridToStorage) its.push('5');
-    if (dis && loadEff > .3) its.push('6');
-    return { hasPv: hasPv, hasSt: hasSt, hasGrid: hasGrid, pv: pv, st: st, surplus: surplus,
-      stationPv: !hasGroupPv && stationPv.seen, provChg: provChg,
-      loadEff: loadEff, pvOn: pvOn, chg: chg, dis: dis, sell: sell, buy: buy,
+    if (dis && loadEff != null && loadEff > .3) its.push('6');
+    return { hasPv: hasPv, hasSt: hasSt, hasGrid: hasGrid, complete: complete,
+      pv: pv, st: st, surplus: surplus, loadEff: loadEff,
+      pvOn: pvOn, chg: chg, dis: dis, sell: sell, buy: buy,
       charge: charge, pvToLoad: pvToLoad, gridToStorage: gridToStorage, dataWarn: dataWarn, its: its };
   }
   /* 厂房受电支路：只取 2（光伏→厂房）/ 4（电网直供）/ 6（储能→厂房）三条。
-     光伏在充电且没有余量供厂房时不算光伏受电。 */
+     放电时储能先顶负荷，剩余负荷才轮到光伏。 */
   function loadSources(c) {
     var out = { codes: [], names: [] };
     if (c.pvToLoad) { out.codes.push('2'); out.names.push('光伏'); }
-    if (c.buy && c.loadEff > .3) { out.codes.push('4'); out.names.push('电网'); }
-    if (c.dis && c.loadEff > .3) { out.codes.push('6'); out.names.push('储能'); }
+    if (c.buy && c.loadEff != null && c.loadEff > .3) { out.codes.push('4'); out.names.push('电网'); }
+    if (c.dis && c.loadEff != null && c.loadEff > .3) { out.codes.push('6'); out.names.push('储能'); }
     return out;
   }
   function supplyType(c) {
     if (!(c.hasPv || c.hasSt || c.hasGrid)) return '无数据';
-    if (c.dataWarn) return '数据矛盾';
-    if (c.loadEff == null || c.loadEff <= .3) return '无受电';
+    if (c.loadEff == null) return '数据不全';
+    if (c.loadEff <= .3) return '无受电';
     var s = loadSources(c);
     return s.names.length ? ('受电：' + s.names.join(' + ')) : '受电类型未知';
   }
   /* 厂房浮标第二行：洙边卫生院同款「工况 2+4+6 · 光伏/电网/储能供电」 */
   function buildingModeLine(c) {
     if (!(c.hasPv || c.hasSt || c.hasGrid)) return '--';
-    if (c.dataWarn) return '数据矛盾';
-    if (c.loadEff == null || c.loadEff <= .3) return '本群待机 · 无进线';
+    if (c.loadEff == null) return '受电数据不全';
+    if (c.loadEff <= .3) return '本群待机 · 无进线';
     var s = loadSources(c);
     return s.names.length ? ('工况 ' + s.codes.join('+') + ' · ' + s.names.join('/') + '供电')
       : '本群待机 · 无进线';
@@ -877,22 +885,25 @@ window.JunyongScene = (function () {
         ud.glow.material.color.setHex(cc);
         ud.glow.material.opacity = (c.dis || c.chg) ? (theme === 'day' ? .07 : .13) : .03;
       });
-      /* 标签：厂房 = 本群工况 + 关口；储能柜 = 功率 / SOC / 今日充放；屋顶光伏 = 分群（暂无）与全站口径 */
+      /* 标签：厂房 = 本群工况 + 关口；储能柜 = 功率 / SOC / 今日充放；屋顶光伏 = 分群实时与今日电量 */
       var dd = data[i];
       if (u.tagBld) {
-        /* 版式同洙边卫生院：受电功率 + 受电类型（不是只写光伏） */
-        var hasAny = c.hasPv || c.hasSt || c.hasGrid;
+        /* 版式同洙边卫生院：受电功率 + 受电类型（不是只写光伏）；缺数据就 -- */
         u.tagBld.querySelector('i').textContent = '受电 '
-          + (hasAny ? (+c.loadEff).toFixed(1) : '--') + ' kW';
+          + (c.loadEff == null ? '--' : (+c.loadEff).toFixed(1)) + ' kW';
         u.tagBld.querySelector('em').textContent = buildingModeLine(c);
         u.tagBld.querySelector('em').style.display = '';
       }
       if (u.tagSt) {
-        /* 洙边储能柜浮标同款：第一行带符号功率（正放负充），第二行 工况 · SOC */
+        /* 洙边储能柜浮标同款：第一行带符号功率（正放负充），第二行 工况 · SOC；
+           储能数据没接入时不拿工况去猜，直接写「数据未接入」 */
         u.tagSt.querySelector('i').textContent = dd.st == null ? '-- kW' : (+dd.st).toFixed(1) + ' kW';
-        var stMode = c.dataWarn ? '数据矛盾'
-          : (c.its.length ? '工况 ' + c.its.join('+')
-            : ((c.hasPv || c.hasSt || c.hasGrid) ? '本群待机' : '--'));
+        var stMode;
+        if (dd.st == null) stMode = '数据未接入';
+        else if (c.dataWarn) stMode = '数据矛盾';
+        else if (c.its.length) stMode = '工况 ' + c.its.join('+');
+        else if (c.hasPv || c.hasSt || c.hasGrid) stMode = c.complete ? '本群待机' : '数据不全';
+        else stMode = '--';
         u.tagSt.querySelector('em').textContent = stMode + ' · SOC '
           + (dd.soc == null ? '--%' : Math.round(dd.soc) + '%');
       }
@@ -914,16 +925,19 @@ window.JunyongScene = (function () {
         : .1;
     });
     if (tower && tower.tagEl) {
-      /* 洙边铁塔同款：写全站送出 / 受电功率；有光伏余电时补一句 */
-      var gridSum = 0, gridKnown = 0, pvOnAny = stationPv.seen && stationPv.kw > .5;
+      /* 洙边铁塔同款：写全站送出 / 受电功率；有光伏余电时补一句。
+         任一存在数据矛盾的群就不写“光伏余电上网”，避免把储能上送也归到光伏 */
+      var gridSum = 0, gridKnown = 0, pvOnAny = stationPv.seen && stationPv.kw > .5, anyWarn = false;
       units.forEach(function (u, i) {
         var cc = cond(data[i]);
         if (cc.hasGrid) { gridKnown++; gridSum += (+data[i].grid || 0); }
         if (cc.pvOn) pvOnAny = true;
+        if (cc.dataWarn) anyWarn = true;
       });
       var twTxt;
       if (gridKnown < units.length) twTxt = '--';
-      else if (gridSum < -.3) twTxt = '送出 ' + Math.abs(gridSum).toFixed(1) + ' kW' + (pvOnAny ? ' · 光伏余电上网' : '');
+      else if (gridSum < -.3) twTxt = '送出 ' + Math.abs(gridSum).toFixed(1) + ' kW'
+        + (pvOnAny && !anyWarn ? ' · 光伏余电上网' : '');
       else if (gridSum > .3) twTxt = '受电 ' + gridSum.toFixed(1) + ' kW';
       else twTxt = '无交换';
       tower.tagEl.querySelector('em').textContent = twTxt;
@@ -935,11 +949,18 @@ window.JunyongScene = (function () {
     if (!activeCard) return;
     units.forEach(function (u, i) {
       var d = data[i], c = cond(d);
-      var itsTxt = c.dataWarn ? '数据矛盾' : (c.its.length ? c.its.join('+') : '待机');
-      var condTxt = c.dataWarn ? ('数据矛盾：' + c.dataWarn)
-        : (c.provChg ? '当前工况：1（暂按光伏充储能，储能数据未接入）'
-          : (c.its.length ? '当前工况：' + c.its.join(' + ')
-            : ((c.hasPv || c.hasSt || c.hasGrid) ? '本群待机（数据已接入，当前无工况）' : '数据未接入')));
+      var itsTxt = c.dataWarn
+        ? ((c.its.length ? c.its.join('+') + ' · ' : '') + '数据矛盾')
+        : (c.its.length ? c.its.join('+')
+          : (c.loadEff == null && (c.hasPv || c.hasSt || c.hasGrid) ? '数据不全'
+            : ((c.hasPv || c.hasSt || c.hasGrid) ? '待机' : '数据未接入')));
+      var condTxt;
+      if (c.dataWarn) condTxt = '数据矛盾：' + c.dataWarn;
+      else if (c.its.length) condTxt = '当前工况：' + c.its.join(' + ')
+        + (c.loadEff == null ? ' · 受电数据不全' : '');
+      else if (c.loadEff == null && (c.hasPv || c.hasSt || c.hasGrid)) condTxt = '受电数据不全';
+      else if (c.hasPv || c.hasSt || c.hasGrid) condTxt = '本群待机（数据已接入，当前无工况）';
+      else condTxt = '数据未接入';
 
       /* 厂房：用电侧详情 */
       if (activeCard === 'g' + i) {
@@ -948,7 +969,7 @@ window.JunyongScene = (function () {
           ['当前工况', itsTxt],
           ['光伏出力', num(d.pv, ' kW')],
           ['储能功率', d.st == null ? '-- kW' : ((d.st > 0 ? '放电 ' : d.st < 0 ? '充电 ' : '待机 ') + Math.abs(d.st).toFixed(1) + ' kW')],
-          ['厂房负载', (c.hasGrid || c.hasPv || c.hasSt) ? num(c.loadEff, ' kW') : '-- kW'],
+          ['厂房负载', num(c.loadEff, ' kW')],
           ['关口表', d.grid == null ? '-- kW' : ((+d.grid >= 0 ? '取电 ' : '送电 ') + Math.abs(d.grid).toFixed(1) + ' kW')],
           ['SOC', d.soc == null ? '-- %' : (+d.soc).toFixed(0) + ' %']
         ], condTxt);
@@ -965,16 +986,17 @@ window.JunyongScene = (function () {
           ['电池节数', num(d.cellSums, ' 节')],
           ['柜数 / 在线', (d.cabinets || 1) + ' 柜 · ' + (d.online ? '在线' : '离线')]
         ], d.st == null ? '数据未接入'
-          : ((d.st > .5 ? '放电中' : d.st < -.5 ? '充电中' : '待机') + ' · ' + (d.online ? '在线' : '离线')));
+          : (c.dataWarn ? ('数据矛盾：' + c.dataWarn)
+            : ((d.st > .5 ? '放电中' : d.st < -.5 ? '充电中' : '待机') + ' · ' + (d.online ? '在线' : '离线'))));
       }
-      /* 屋顶光伏：实时功率 / 今日发电 / 全站 / 逆变器台数；不展示总装机容量 */
+      /* 屋顶光伏：实时功率 / 今日发电 / 全站 / 逆变器台数；不展示总装机容量。
+         工况是整群的能量关系（可能全是电网/储能），不在光伏卡上重复 */
       if (activeCard === 'pv' + i) {
         setCard('pv' + i, '屋顶光伏阵列', [
           ['本群实时功率', num(d.pv, ' kW')],
           ['今日发电', d.pvToday == null ? '-- 度' : (+d.pvToday).toFixed(1) + ' 度'],
           ['全站实时功率', stationPv.seen ? num(stationPv.kw, ' kW') : '-- kW'],
-          ['逆变器', d.pvCount == null ? '--' : (d.pvCount + ' 台')],
-          ['当前工况', itsTxt]
+          ['逆变器', d.pvCount == null ? '--' : (d.pvCount + ' 台')]
         ], d.pvSeen ? ((+d.pv > .5) ? '发电中 · 本群出力' : '当前无出力') : '功率未上报');
       }
     });

@@ -93,15 +93,16 @@
   <div id="lines"></div>
   <div style="font-size:10.5px;color:#7fa8a2;line-height:1.6">
     亮线 = 场景里会流动的线。六工况是关系叠加、不是互斥模式；工况 5 只在光伏不足以覆盖充电功率时出现，
-    工况 6 必须有负荷。若出现「储能放电 + 负荷≈0 + 关口送电」，场景会点亮上塔线，但六工况里没有
-    「储能→电网」这一项——那属于现场策略/口径异常。
+    工况 6 必须有负荷。若出现「储能放电超过本群负荷、关口在送电」，多出来的电只能上送，六工况里没有
+    「储能→电网」这一项——那属于现场策略/口径异常，场景会标「数据矛盾」。
   </div>
 
   <div id="legend">
     六种能量关系：<b>1</b> 光伏→储能 ｜ <b>2</b> 光伏→厂房 ｜ <b>3</b> 光伏卖电上网<br>
     <b>4</b> 电网→厂房 ｜ <b>5</b> 电网→储能 ｜ <b>6</b> 储能→厂房<br>
-    判据：①PV&gt;0 且充电；②PV 扣掉充电后仍有余量且负荷&gt;0；③PV&gt;0 且关口送电；
-    ④关口取电且负荷&gt;0；⑤充电、取电且 PV&lt;充电功率；⑥放电且负荷&gt;0。<br>
+    判据：①PV&gt;0 且充电；②供厂房的光伏有余量（放电时先扣储能，充电时先扣充电）且负荷&gt;0；
+    ③PV&gt;0 且关口送电；④关口取电且负荷&gt;0；⑤充电、取电且 PV&lt;充电功率；
+    ⑥放电且负荷&gt;0；储能放电大于负荷时标「数据矛盾」。<br>
     关口表按每群"负载 − 光伏 − 储能"自动算（正=取电 / 负=送电）；铁塔按三群合计显示"送出中 / 受电中"。<br>
     浮标与明细卡是 <b>js/junyong-scene3d.js 的真实判据</b>判出来的；右表是同一判据的复算，两边应一致。<br>
     演示里的“今日电量”按当前功率 ×4h 粗估，只为把浮标填满，不是真实现场数据。
@@ -155,8 +156,9 @@ window.addEventListener('error', function (e) {
     ['4+6', '储能供厂房 + 电网补缺', { pv: 0, st: 40, load: 80 }],
     ['1+4', '光伏充储能 + 电网供负荷（不计 5）', { pv: 100, st: -100, load: 80 }],
     ['1+4+5', '光伏不足 + 电网补充电/负荷', { pv: 50, st: -100, load: 80 }],
-    ['2+3+6', '光伏供厂房+卖电 + 储能放电', { pv: 150, st: 60, load: 50 }],
+    ['2+3+6', '储能供厂房 + 光伏卖电（放电小于负荷）', { pv: 150, st: 30, load: 50 }],
     ['6-', '储能放电、负荷≈0（异常数据）', { pv: 0, st: 60, load: 0.1 }],
+    ['3+6-', '储能放电大于负荷（数据矛盾）', { pv: 150, st: 80, load: 50 }],
     ['混合', '各群不同：一充 / 二卖 / 三放', [
       { pv: 100, st: -100, load: 0.1, soc: 50 },
       { pv: 200, st: 0, load: 0.1, soc: 70 },
@@ -168,8 +170,9 @@ window.addEventListener('error', function (e) {
   function gridKw(g) { return g.load - g.pv - g.st; }      /* 正 = 取电 */
 
   /* 与 js/junyong-scene3d.js 的 cond() 同一套判据（这里是复算，用于右侧表格）：
-     光伏先满足储能充电，剩余出力才供厂房；电网→储能只在光伏不足以覆盖充电功率时成立；
-     储能→厂房必须有负荷。 */
+     充电时光伏先充储能，剩余才供厂房；放电时储能先顶厂房，不够的才由光伏补；
+     电网→储能只在光伏不足以覆盖充电功率时成立；储能→厂房必须有负荷。
+     储能放电大于本群负荷时，多出来的只能上送，标「数据矛盾」。 */
   function judge(g) {
     var grid = gridKw(g);
     var surplus = -grid;                                  /* 正 = 送电（卖） */
@@ -177,9 +180,12 @@ window.addEventListener('error', function (e) {
     var pvOn = g.pv > .5, chg = g.st < -.5, dis = g.st > .5;
     var sell = surplus > .3, buy = surplus < -.3;
     var charge = chg ? -g.st : 0;
-    var pvToLoad = pvOn && loadEff > .3 && (!chg || g.pv > charge + .3);
+    /* 充电：光伏先充储能，剩余才供厂房；放电：储能先顶厂房，不够的才由光伏补 */
+    var loadLeft = Math.max(0, loadEff - (dis ? Math.min(g.st, loadEff) : 0));
+    var pvToLoad = pvOn && loadLeft > .3 && (!chg || g.pv > charge + .3);
     var gridToStorage = chg && buy && g.pv < charge - .3;
-    var dataWarn = (dis && sell && loadEff <= .3) ? '储能放电但负荷≈0、关口送电（储能不卖电口径）' : '';
+    var stoSellW = (dis && sell) ? g.st - loadEff : 0;
+    var dataWarn = stoSellW > .3 ? '储能放电超过本群负荷，多余电量上送（储能不卖电口径）' : '';
     var its = [];
     if (pvOn && chg) its.push('1');
     if (pvToLoad) its.push('2');
@@ -234,7 +240,8 @@ window.addEventListener('error', function (e) {
       var gTxt = (Math.abs(j.grid) <= .3 ? '≈0' : ((j.grid >= 0 ? '取 ' : '送 ') + Math.abs(j.grid).toFixed(1)));
       return '<tr><td>' + GN[i] + '</td><td>' + g.pv.toFixed(0) + '</td><td>' + stTxt + '</td><td>' + g.load.toFixed(0)
         + '</td><td>' + gTxt + '</td><td class="mode">'
-        + (j.dataWarn ? '数据矛盾' : (j.its.length ? ('工况 ' + j.its.join('+')) : '待机')) + '</td></tr>';
+        + (j.dataWarn ? ((j.its.length ? '工况 ' + j.its.join('+') + ' · ' : '') + '数据矛盾')
+          : (j.its.length ? ('工况 ' + j.its.join('+')) : '待机')) + '</td></tr>';
     }).join('');
     var anySell = js.some(function (j) { return j.sell; });
     var anyBuy = js.some(function (j) { return j.buy; });
@@ -243,7 +250,7 @@ window.addEventListener('error', function (e) {
     document.getElementById('mode').innerHTML =
       '并网铁塔：<b>' + (anySell ? '送出中（有群在卖电）' : (anyBuy ? '受电中（有群在买电）' : '待机')) + '</b>'
       + '　<span style="color:#7fa8a2">共 ' + groups.length + ' 群；'
-      + (anyWarn ? '<b style="color:#ffb020">有群数据矛盾（储能放电但负荷≈0且送电）</b>；'
+      + (anyWarn ? '<b style="color:#ffb020">有群数据矛盾（储能放电超过本群负荷、多余电量上送）</b>；'
         : (anyMode ? '浮标上应显示各群自己的「工况 x+x」' : '各群都无工况 → 浮标显示「待机」')) + '</span>';
     syncSliders();
   }
