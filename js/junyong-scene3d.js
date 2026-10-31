@@ -831,8 +831,9 @@ window.JunyongScene = (function () {
         u.tagBld.querySelector('i').textContent = c.provChg ? '工况 1（暂按光伏充储能）'
           : (c.its.length ? '工况 ' + c.its.join('+')
             : (c.stationPv ? '全站光伏' : ((c.hasPv || c.hasSt || c.hasGrid) ? '本群待机' : '无数据')));
-        u.tagBld.querySelector('em').textContent = '关口 ' + (dd.grid == null ? '--kW'
-          : ((dd.grid >= 0 ? '取 ' : '送 ') + Math.abs(+dd.grid).toFixed(1) + 'kW'));
+        u.tagBld.querySelector('em').textContent = '光伏 ' + (dd.pv == null ? '--kW' : num(dd.pv, 'kW'))
+          + ' · 关口 ' + (dd.grid == null ? '--kW'
+            : ((dd.grid >= 0 ? '取 ' : '送 ') + Math.abs(+dd.grid).toFixed(1) + 'kW'));
       }
       if (u.tagSt) {
         u.tagSt.querySelector('i').textContent = (dd.st == null ? '--kW'
@@ -1040,8 +1041,9 @@ window.JunyongScene = (function () {
         p.x, 4.4, p.z + D2 / 2 + 1.0);
       u.tagSt = label('<b>储能柜 · ' + GCABN[i] + '</b><i>--</i><em>--</em>', 'tag3d-gt',
         ccx, CAB.h + 1.5, ccz);
+      /* 光伏标签挂屋面北沿并抬高：前排三号的屋面标签原来看起来压在南立面的厂房标签上 */
       u.tagPv = label('<b>屋顶光伏阵列</b><i>--kW</i><em>装机 972.4 kWp</em>', 'tag3d-gt',
-        p.x, roofY + 1.7, p.z);
+        p.x, roofY + 2.7, p.z - D2 / 2 - .8);
       addCard('g' + i, p.x, roofY + 1.2, p.z);
       u.grp.userData.cardKey = 'g' + i;
       units.push(u);

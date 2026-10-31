@@ -1491,7 +1491,7 @@ html[data-theme="day"] #slRight .side-handle{color:#0b8f76;background:linear-gra
 #jyView.page-mode #jyPageBar{display:flex}
 #jyRight{
   --panel-w:clamp(340px,24vw,460px);
-  --strip:34px;
+  --strip:46px;              /* 与洙边同宽：大屏手点，34px 太窄 */
   position:absolute;top:12px;right:0;bottom:12px;z-index:20;width:var(--strip);overflow:hidden;
   transition:width .26s ease;border:1px solid var(--acc-2);border-radius:2px;
   background:linear-gradient(165deg,rgba(10,26,30,.92),rgba(5,13,16,.94));
@@ -1511,6 +1511,105 @@ html[data-theme="day"] #slRight .side-handle{color:#0b8f76;background:linear-gra
 #jyStorView .panel,#jySolarView .panel,#jyInfoView .panel{backdrop-filter:none}
 .jy-note{font-size:12px;line-height:1.85;color:var(--dim);padding:10px 12px;margin-top:10px;
   border:1px dashed var(--acc-2);border-radius:2px;background:rgba(46,230,200,.04)}
+
+/* ---- 峻涌右栏：功率平衡 / 机组卡 / 会话火花线 ---- */
+.jy-balance{margin-top:10px;padding:9px 11px 7px;border:1px solid var(--acc-2);background:var(--acc-1)}
+.jy-bal-title{display:flex;align-items:baseline;justify-content:space-between;gap:8px;font-size:11px;color:var(--dim);letter-spacing:1px;margin-bottom:4px}
+.jy-bal-title em{font-style:normal;font-size:10px;color:var(--dim);letter-spacing:0}
+.jy-bal-row{display:flex;align-items:center;gap:7px;height:22px;font-size:10px;color:var(--dim)}
+.jy-bal-row .jl{width:28px;flex:none;letter-spacing:1px}
+.jy-bal-track{position:relative;flex:1;height:8px;background:rgba(2,10,12,.55);border:1px solid var(--acc-2);overflow:hidden}
+.jy-bal-track .zero{position:absolute;left:50%;top:-1px;bottom:-1px;width:1px;background:rgba(111,154,148,.45)}
+.jy-bal-track .fill{position:absolute;top:0;bottom:0;transition:width .6s var(--ease),left .6s var(--ease)}
+.jy-bal-track .fill.pv{background:#ffb020}
+.jy-bal-track .fill.sto{background:linear-gradient(90deg,#0f8d74,#2ee6c8)}
+.jy-bal-track .fill.chg{background:linear-gradient(90deg,#1f6fae,#8fd8ff)}
+.jy-bal-track .fill.grid{background:linear-gradient(90deg,#3c5fb0,#7aa2ff)}
+.jy-bal-track .fill.sell{background:linear-gradient(90deg,#c47f00,#ffb020)}
+.jy-bal-track .fill.load{background:linear-gradient(90deg,#6d4fb0,#b48cff)}
+.jy-bal-row b{width:58px;flex:none;text-align:right;font-family:var(--num);font-weight:normal;color:#eafffa}
+.jy-bal-row b u{text-decoration:none;font-size:9px;color:var(--dim);margin-left:2px}
+.jy-bal-row b.pv{color:#ffd07a}.jy-bal-row b.sto{color:var(--teal)}.jy-bal-row b.chg{color:#8fd8ff}
+.jy-bal-row b.grid{color:#7aa2ff}.jy-bal-row b.sell{color:#ffb020}.jy-bal-row b.load{color:#b48cff}
+.jy-bal-row em{width:20px;flex:none;font-style:normal;text-align:right;color:var(--dim)}
+.jy-grps{display:flex;flex-direction:column;gap:8px}
+.jy-grp{border:1px solid var(--acc-2);border-left:3px solid var(--acc-3);background:linear-gradient(160deg,var(--acc-1),var(--acc-1));padding:8px 11px 9px}
+.jy-grp.bad{border-left-color:#ff6e50}
+.jy-grp.off{opacity:.62;border-left-color:rgba(111,154,148,.5)}
+.jy-grp-head{display:flex;align-items:center;gap:7px;font-size:12px;color:#d9fff6}
+.jy-grp-head b{font-weight:normal;letter-spacing:1px}
+.jy-grp-head span{font-size:10px;color:var(--dim)}
+.jy-dot{width:8px;height:8px;border-radius:50%;background:#3a5450;flex:none}
+.jy-dot.on{background:var(--teal);box-shadow:0 0 7px var(--teal)}
+.jy-alarm{margin-left:auto;font-style:normal;font-size:10px;color:#ffa08c;border:1px solid rgba(255,110,80,.45);padding:1px 6px;background:rgba(255,110,80,.08)}
+.jy-soc{display:flex;align-items:center;gap:6px;margin-top:6px;font-size:10px;color:var(--dim)}
+.jy-soc>span{letter-spacing:1px}
+.jy-soc>b{margin-left:auto;font-family:var(--num);font-size:13px;font-weight:normal;color:#eafffa}
+.jy-soc-bar{order:2;flex:1;height:6px;margin-left:4px;background:rgba(2,10,12,.55);border:1px solid var(--acc-2);overflow:hidden}
+.jy-soc-bar i{display:block;height:100%;background:linear-gradient(90deg,#0f8d74,var(--teal));transition:width .6s var(--ease);background-size:200% 100%}
+.jy-soc-bar i.chg{background-image:linear-gradient(90deg,#1f6fae,#8fd8ff);animation:jyflow 2.6s linear infinite}
+.jy-soc-bar i.dis{background-image:linear-gradient(90deg,#0f8d74,#2ee6c8);animation:jyflow 2.6s linear infinite}
+.jy-grp-metrics{display:grid;grid-template-columns:1.25fr 1.1fr 1fr;gap:3px 8px;margin-top:6px;font-size:10px;color:var(--dim)}
+.jy-grp-metrics span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.jy-grp-metrics b{font-family:var(--num);font-weight:normal;color:#eafffa}
+.jy-grp-metrics b u{text-decoration:none;font-size:9px;color:var(--dim);margin-left:2px}
+.jy-grp-metrics b.chg{color:#8fd8ff}.jy-grp-metrics b.dis{color:var(--teal)}
+.jy-grp-metrics em{font-style:normal;font-size:9px;color:var(--dim);margin-left:3px}
+.jy-spark{position:relative;height:112px;min-height:112px}
+.jy-spark svg{width:100%;height:86px;display:block}
+.jy-spark .sp-zero{stroke:rgba(111,154,148,.28);stroke-width:1;stroke-dasharray:3 4}
+.jy-spark .sp-p{fill:none;stroke:#2ee6c8;stroke-width:1.6;vector-effect:non-scaling-stroke}
+.jy-spark .sp-soc{fill:none;stroke:#ffb020;stroke-width:1.2;stroke-dasharray:4 3;vector-effect:non-scaling-stroke;opacity:.8}
+.jy-spark .sp-dot{fill:#2ee6c8;filter:drop-shadow(0 0 3px #2ee6c8)}
+.jy-spark-cur{position:absolute;right:0;top:-2px;font-family:var(--num);font-size:11px;color:var(--dim)}
+.jy-spark-cur.dis{color:var(--teal)}.jy-spark-cur.chg{color:#8fd8ff}
+.jy-spark-legend{display:flex;gap:12px;align-items:center;font-size:10px;color:var(--dim);margin-top:2px}
+.jy-spark-legend span{display:flex;align-items:center;gap:4px}
+.jy-spark-legend i{width:12px;height:2px;display:block}
+.jy-spark-legend i.pv{background:#2ee6c8}.jy-spark-legend i.soc{background:#ffb020}
+.jy-spark-legend em{margin-left:auto;font-style:normal;color:var(--dim)}
+.jy-spark-empty{height:100%;display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--dim)}
+.jy-chip-alarm{font-style:normal;color:#ffa08c;margin-left:4px;padding-left:6px;border-left:1px solid rgba(255,110,80,.4)}
+.gv3-dot.chg::before{background:#8fd8ff;box-shadow:0 0 7px #8fd8ff}
+.gv3-dot.dis::before{background:var(--teal);box-shadow:0 0 7px var(--teal)}
+.gv3-socbar i.chg{background:linear-gradient(90deg,#1f6fae,#8fd8ff)}
+.gv3-socbar i.dis{background:linear-gradient(90deg,#0f8d74,#2ee6c8)}
+.gv3-socbar i.on{background-size:200% 100%;animation:jyflow 2.6s linear infinite}
+.gv3-socnum{display:flex;justify-content:space-between;align-items:baseline}
+.gv3-socnum em{font-style:normal;font-size:11px;color:var(--dim);font-family:var(--num)}
+.gv3-badge b.v.chg{color:#8fd8ff}.gv3-badge b.v.dis{color:var(--teal)}
+.gv3-tile.pv::before{background:#ffb020}
+.gv3-tile.partial::before{background:var(--amber)}
+.gv3-stack.fault{border-color:rgba(255,110,80,.5)}
+.gv3-stack .gv3-skv{grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:2px 16px}
+.jy-clu{display:flex;gap:14px;align-items:flex-start}
+.jy-batt{flex:none;width:56px;display:flex;flex-direction:column;align-items:center;gap:2px}
+.jy-batt-shell{position:relative;width:42px;height:82px;border:2px solid var(--acc-3);border-radius:5px;padding:3px;display:flex;align-items:flex-end;background:rgba(2,10,12,.5)}
+.jy-batt-shell::before{content:"";position:absolute;top:-7px;left:50%;transform:translateX(-50%);width:16px;height:5px;border-radius:2px 2px 0 0;background:var(--acc-3)}
+.jy-batt-shell i{display:block;width:100%;border-radius:2px;background:linear-gradient(180deg,#2ee6c8,#0f8d74);transition:height .6s var(--ease)}
+.jy-batt-shell i.chg{background:linear-gradient(180deg,#8fd8ff,#1f6fae)}
+.jy-batt-shell i.dis{background:linear-gradient(180deg,#2ee6c8,#0f8d74)}
+.jy-batt-shell i.fault{background:linear-gradient(180deg,#ff8a72,#a12a16)}
+.jy-batt-shell i.on{background-size:100% 200%;animation:jyflow-y 2.6s linear infinite}
+.jy-batt>b{font-family:var(--num);font-size:13px;font-weight:normal;color:#eafffa}
+.jy-batt>b u{text-decoration:none;font-size:9px;color:var(--dim)}
+.jy-batt>span{font-size:10px;color:var(--dim);letter-spacing:1px}
+.jy-clu-body{flex:1;min-width:0}
+.jy-clu-body .gv3-socnum{margin-bottom:5px}
+@keyframes jyflow-y{from{background-position:0 0}to{background-position:0 -200%}}
+html[data-theme="day"] .jy-batt-shell{background:rgba(15,150,130,.08)}
+html[data-theme="day"] .jy-batt>b{color:#123c3c}
+@keyframes jyflow{from{background-position:0 0}to{background-position:-200% 0}}
+html[data-theme="day"] .jy-grp,html[data-theme="day"] .jy-balance{background:rgba(255,255,255,.65)}
+html[data-theme="day"] .jy-grp-head,html[data-theme="day"] .jy-grp-head b,
+html[data-theme="day"] .jy-grp-metrics b,html[data-theme="day"] .jy-soc>b,
+html[data-theme="day"] .jy-bal-row b{color:#123c3c}
+html[data-theme="day"] .jy-soc-bar,html[data-theme="day"] .jy-bal-track{background:rgba(15,150,130,.10)}
+html[data-theme="day"] .jy-bal-row b.pv,html[data-theme="day"] .jy-bal-row b.sell{color:#a86a00}
+html[data-theme="day"] .jy-bal-row b.grid{color:#2f56a6}
+html[data-theme="day"] .jy-bal-row b.chg{color:#1668c4}
+html[data-theme="day"] .jy-bal-row b.sto{color:#0b8f76}
+html[data-theme="day"] .jy-bal-row b.load{color:#6d4fb0}
 body.jy-mode #mainTabs,body.jy-mode #dsChip{display:none}
 @media (max-width:1500px){#jyStorView .kpi-grid,#jySolarView .kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 html[data-theme="day"] #jyView{background:linear-gradient(165deg,rgba(240,246,247,1),rgba(224,234,237,1))}
