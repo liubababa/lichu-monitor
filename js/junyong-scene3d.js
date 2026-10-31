@@ -843,9 +843,10 @@ window.JunyongScene = (function () {
           + ' / 放 ' + (dd.dis == null ? '--' : (+dd.dis).toFixed(0)) + ' 度';
       }
       if (u.tagPv) {
-        u.tagPv.querySelector('i').textContent = dd.pv == null ? '--kW' : num(dd.pv, 'kW');
-        u.tagPv.querySelector('em').textContent = '装机 972.4 kWp · '
-          + (stationPv.seen ? ('全站 ' + num(stationPv.kw, 'kW')) : '全站 --kW');
+        /* 版式同洙边：实时功率 + 今日发电（不展示总装机容量） */
+        u.tagPv.querySelector('i').textContent = dd.pv == null ? '--kW' : (+dd.pv).toFixed(2) + ' kW';
+        u.tagPv.querySelector('em').textContent = '今日 '
+          + (dd.pvToday == null ? '--' : (+dd.pvToday).toFixed(1)) + ' 度';
       }
     });
     /* 组件发光：全站光伏 / 装机容量；没数据就回暗态 */
@@ -1042,7 +1043,7 @@ window.JunyongScene = (function () {
       u.tagSt = label('<b>储能柜 · ' + GCABN[i] + '</b><i>--</i><em>--</em>', 'tag3d-gt',
         ccx, CAB.h + 1.5, ccz);
       /* 光伏标签挂屋面北沿并抬高：前排三号的屋面标签原来看起来压在南立面的厂房标签上 */
-      u.tagPv = label('<b>屋顶光伏阵列</b><i>--kW</i><em>装机 972.4 kWp</em>', 'tag3d-gt',
+      u.tagPv = label('<b>屋顶光伏阵列</b><i>--kW</i><em>今日 -- 度</em>', 'tag3d-gt',
         p.x, roofY + 2.7, p.z - D2 / 2 - .8);
       addCard('g' + i, p.x, roofY + 1.2, p.z);
       u.grp.userData.cardKey = 'g' + i;

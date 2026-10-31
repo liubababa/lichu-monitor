@@ -304,6 +304,14 @@ window.JunyongUI = (function () {
   ];
   var stor = null, storSig = '', storTimer = null;
 
+  /* 二号机组需量电表（meter-lems-demand）通信故障：只影响需量控制，不影响光伏 / 储能 / 关口读数，
+     也不属于电池 / PCS 安全告警。用户要求先不在界面显示；原始告警保留在 alarmsAll 与 MQTT 报文里。 */
+  function uiAlarms(list) {
+    return (list || []).filter(function (a) {
+      return !(a && a.dim === 'meter-lems-demand' && /通信故障|告警汇总等级/.test(String(a.name || '')));
+    });
+  }
+
   function Ga() { return (typeof GaoteService !== 'undefined') ? GaoteService : null; }
   function storWired() { var g = Ga(); return !!(g && g.tagsOf && g.stateOf); }
   function storConn() { var g = Ga(); return !!(g && g.isConnected && g.isConnected()); }
@@ -450,8 +458,9 @@ window.JunyongUI = (function () {
       base.liquid = firstVals(instOf(def.ccu, 'liqcool'));
       base.fire = firstVals(instOf(def.ccu, 'fire'));
       base.drier = firstVals(instOf(def.ccu, 'drier'));
-      base.alarms = [];
-      try { base.alarms = g.alarmsOf ? (g.alarmsOf(def.ccu) || []) : []; } catch (e) {}
+      base.alarmsAll = [];
+      try { base.alarmsAll = g.alarmsOf ? (g.alarmsOf(def.ccu) || []) : []; } catch (e) {}
+      base.alarms = uiAlarms(base.alarmsAll);
       if (base.power !== null || base.soc !== null || base.gridP !== null) any = true;
       return base;
     });
@@ -524,7 +533,8 @@ window.JunyongUI = (function () {
       return [g.ccu, g.online ? 1 : 0, g.missing ? 'm' : '',
         g.power == null ? '-' : Math.round(g.power),
         g.soc == null ? '-' : Math.round(g.soc),
-        g.gridP == null ? '-' : Math.round(g.gridP)].join(',');
+        g.gridP == null ? '-' : Math.round(g.gridP),
+        (g.alarms || []).map(function (a) { return a.name; }).join('+')].join(',');
     }).join('|') + '#' + (stor.known ? 1 : 0)) : 'none';
     if (sig !== storSig) { storSig = sig; renderStorParts(); } else { pushScene(); }
   }
@@ -1177,6 +1187,7 @@ window.JunyongUI = (function () {
       JunyongScene.setGroup(i, {
         pv: pv && pv.kw != null ? pv.kw : null,
         pvSeen: !!(pv && pv.kw != null),
+        pvToday: pv && pv.today != null ? pv.today : null,
         st: g.power == null ? null : +g.power,
         soc: g.soc == null ? null : +g.soc,
         grid: g.gridP == null ? null : +g.gridP,
