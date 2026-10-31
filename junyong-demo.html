@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="night">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>峻涌 · 模拟工况对照（3D）</title>
+<link rel="stylesheet" href="css/style.css" id="demo-css">
+<style>
+  html, body { margin: 0; height: 100%; background: #050b0d; overflow: hidden; }
+  #jy3d { position: absolute; inset: 0; overflow: hidden; }
+  #panel {
+    position: absolute; left: 14px; top: 14px; bottom: 14px; width: 380px; z-index: 30;
+    overflow-y: auto;
+    background: linear-gradient(160deg, rgba(7,22,24,.94), rgba(4,12,14,.92));
+    border: 1px solid rgba(46,230,200,.45); border-left: 3px solid #2ee6c8;
+    padding: 12px 14px 14px; box-shadow: 0 6px 24px rgba(0,0,0,.55);
+    font-size: 12px; color: #cfe8e4; line-height: 1.6;
+  }
+  #panel h1 { font-size: 14px; font-weight: normal; color: #2ee6c8; letter-spacing: 1px; margin: 0 0 6px; }
+  #panel h2 { font-size: 12px; font-weight: normal; color: #9adfd2; letter-spacing: 1px; margin: 10px 0 4px; }
+  #panel .hint { font-size: 11px; color: #7fa8a2; margin: 0 0 10px; }
+  #presets { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 4px; }
+  #presets button {
+    text-align: left; padding: 6px 8px; font-size: 11.5px; color: #dfeeea;
+    border: 1px solid rgba(46,230,200,.28); background: rgba(46,230,200,.05);
+    cursor: pointer; transition: .15s; border-radius: 2px;
+  }
+  #presets button:hover { background: rgba(46,230,200,.16); border-color: rgba(46,230,200,.6); }
+  #presets button.on { background: rgba(46,230,200,.26); border-color: #2ee6c8; color: #eafffa; }
+  #presets button b { color: #2ee6c8; font-weight: normal; margin-right: 4px; }
+  .rows { display: flex; gap: 6px; flex-wrap: wrap; }
+  .rows button {
+    padding: 4px 10px; font-size: 11.5px; color: #dfeeea; border: 1px solid rgba(46,230,200,.28);
+    background: rgba(46,230,200,.05); cursor: pointer; border-radius: 2px;
+  }
+  .rows button.on { background: rgba(46,230,200,.26); border-color: #2ee6c8; color: #eafffa; }
+  .sld { display: block; margin: 7px 0; font-size: 11.5px; color: #a8c8c2; }
+  .sld input { width: 100%; margin: 2px 0 0; accent-color: #2ee6c8; }
+  .sld .val { color: #eafffa; }
+  #mtab { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 10.5px; }
+  #mtab th, #mtab td { border: 1px solid rgba(46,230,200,.22); padding: 3px 4px; text-align: center; color: #cfe8e4; }
+  #mtab th { color: #7fa8a2; font-weight: normal; background: rgba(46,230,200,.06); }
+  #mtab td.mode { color: #eafffa; }
+  #mode {
+    margin-top: 10px; padding: 8px 10px; font-size: 12.5px; color: #eafffa;
+    border: 1px solid rgba(46,230,200,.4); background: rgba(46,230,200,.08);
+  }
+  #mode b { color: #2ee6c8; }
+  #legend { margin-top: 10px; font-size: 10.5px; color: #7fa8a2; line-height: 1.7; }
+  #legend b { color: #9adfd2; font-weight: normal; }
+</style>
+</head>
+<body>
+<div id="jy3d"></div>
+
+<div id="panel">
+  <h1>山东峻涌 · 模拟工况对照</h1>
+  <p class="hint">点一个工况 → <b style="color:#2ee6c8">三群一起</b>按这组数据跑；也可以选「编辑机组」单独拖某一群的滑杆。
+    左键拖拽旋转 / 滚轮缩放 / 点设备看明细卡。判据就是线上场景那一份（缺数据不亮、不编）。</p>
+  <div id="presets"></div>
+
+  <h2>编辑机组（单独调某一群）</h2>
+  <div class="rows" id="gsel"></div>
+  <label class="sld">光伏出力 <span class="val" id="vPv"></span> kW
+    <input id="sPv" type="range" min="0" max="500" step="5"></label>
+  <label class="sld">储能功率 <span class="val" id="vSt"></span> kW（正=放电 / 负=充电）
+    <input id="sSt" type="range" min="-250" max="250" step="5"></label>
+  <label class="sld">厂房负载 <span class="val" id="vLoad"></span> kW
+    <input id="sLoad" type="range" min="0" max="500" step="5"></label>
+  <label class="sld">柜内 SOC <span class="val" id="vSoc"></span> %
+    <input id="sSoc" type="range" min="0" max="100" step="1"></label>
+
+  <div class="rows" style="margin-top:6px">
+    <button id="btnReset">重置视角</button>
+    <button id="btnLabels" class="on">标签开</button>
+    <button id="btnTheme">切白天</button>
+  </div>
+
+  <table id="mtab">
+    <thead><tr><th>机组</th><th>光伏</th><th>储能</th><th>负载</th><th>关口</th><th>判出的工况</th></tr></thead>
+    <tbody></tbody>
+  </table>
+  <div id="mode">—</div>
+
+  <div id="legend">
+    六种能量关系：<b>1</b> 光伏→储能 ｜ <b>2</b> 光伏→厂房 ｜ <b>3</b> 光伏卖电上网<br>
+    <b>4</b> 电网→厂房 ｜ <b>5</b> 电网→储能 ｜ <b>6</b> 储能→厂房<br>
+    关口表按每群"负载 − 光伏 − 储能"自动算（正=取电 / 负=送电）；铁塔按三群合计显示"送出中 / 受电中"。<br>
+    浮标与明细卡是 <b>js/junyong-scene3d.js 的真实判据</b>判出来的；右表是同一判据的复算，两边应一致。
+  </div>
+</div>
+
+<script>
+/* 依次加载场景依赖（带时间戳，避免调试时吃到旧缓存），最后初始化 */
+(function () {
+  var V = '?v=' + Date.now();
+  document.getElementById('demo-css').href += V;   /* 样式同样带时间戳，不吃缓存 */
+  var FILES = [
+    'libs/three.min.js', 'libs/OrbitControls.js', 'libs/CSS2DRenderer.js',
+    'libs/CopyShader.js', 'libs/LuminosityHighPassShader.js', 'libs/EffectComposer.js',
+    'libs/RenderPass.js', 'libs/ShaderPass.js', 'libs/UnrealBloomPass.js',
+    'js/junyong-scene3d.js'
+  ];
+  var i = 0;
+  function next() {
+    if (i >= FILES.length) { start(); return; }
+    var s = document.createElement('script');
+    s.src = FILES[i++] + V;
+    s.onload = next;
+    s.onerror = function () { document.getElementById('mode').textContent = '依赖加载失败：' + s.src; };
+    document.head.appendChild(s);
+  }
+  next();
+
+  /* ---------------- 三群状态与工况面板 ----------------
+     每群：{ pv 光伏出力, st 储能功率(正放负充), load 厂房负载, soc }；
+     关口自动算：grid = load − pv − st（正=取电），与页面/场景同一口径。 */
+  var GN = ['一号机组', '二号机组', '三号机组'];
+  var groups = GN.map(function () { return { pv: 0, st: 60, load: 60, soc: 65 }; });
+  var cur = 0;                    /* 当前编辑哪一群 */
+
+  var PRESETS = [
+    ['1', '光伏→储能', { pv: 100, st: -100, load: 0.1 }],
+    ['2', '光伏→厂房', { pv: 80, st: 0, load: 80 }],
+    ['3', '光伏卖电', { pv: 200, st: 0, load: 0.1 }],
+    ['4', '电网→厂房', { pv: 0, st: 0, load: 80 }],
+    ['5', '电网→储能', { pv: 0, st: -60, load: 0.1 }],
+    ['6', '储能→厂房', { pv: 0, st: 60, load: 60 }],
+    ['1+2', '充储能 + 供厂房', { pv: 150, st: -100, load: 50 }],
+    ['1+2+3', '充储能 + 供厂房 + 卖电', { pv: 220, st: -100, load: 60 }],
+    ['2+3', '供厂房 + 卖电', { pv: 200, st: 0, load: 60 }],
+    ['4+5', '电网供厂房 + 充储能', { pv: 0, st: -60, load: 40 }],
+    ['4+6', '储能供厂房 + 电网补缺', { pv: 0, st: 40, load: 80 }],
+    ['混合', '各群不同：一充 / 二卖 / 三放', [
+      { pv: 100, st: -100, load: 0.1, soc: 50 },
+      { pv: 200, st: 0, load: 0.1, soc: 70 },
+      { pv: 0, st: 60, load: 60, soc: 80 }
+    ]],
+    ['待机', '全静止（夜间待机）', { pv: 0, st: 0, load: 0.1 }]
+  ];
+
+  function gridKw(g) { return g.load - g.pv - g.st; }      /* 正 = 取电 */
+
+  /* 与 js/junyong-scene3d.js 的 cond() 同一套判据（这里是复算，用于右侧表格） */
+  function judge(g) {
+    var grid = gridKw(g);
+    var surplus = -grid;                                  /* 正 = 送电（卖） */
+    var loadEff = Math.max(0, g.pv + g.st - surplus);
+    var pvOn = g.pv > .5, chg = g.st < -.5, dis = g.st > .5;
+    var sell = surplus > .3, buy = surplus < -.3;
+    var its = [];
+    if (pvOn && chg) its.push('1');
+    if (pvOn && loadEff > .3) its.push('2');
+    if (pvOn && sell) its.push('3');
+    if (buy && loadEff > .3) its.push('4');
+    if (chg && buy) its.push('5');
+    if (dis) its.push('6');
+    return { its: its, grid: grid, sell: sell, buy: buy };
+  }
+
+  function pushData() {
+    if (!window.JunyongScene || !JunyongScene.ready()) return;
+    var js = [];
+    groups.forEach(function (g, i) {
+      JunyongScene.setGroup(i, {
+        pv: g.pv, pvSeen: true, st: g.st, soc: g.soc, load: g.load,
+        grid: gridKw(g)
+      });
+      js.push(judge(g));
+    });
+    renderReadout(js);
+  }
+
+  function renderReadout(js) {
+    var tb = document.querySelector('#mtab tbody');
+    tb.innerHTML = groups.map(function (g, i) {
+      var j = js[i];
+      var stTxt = g.st > .5 ? '放 ' + Math.abs(g.st).toFixed(0) : (g.st < -.5 ? '充 ' + Math.abs(g.st).toFixed(0) : '0');
+      var gTxt = (Math.abs(j.grid) <= .3 ? '≈0' : ((j.grid >= 0 ? '取 ' : '送 ') + Math.abs(j.grid).toFixed(1)));
+      return '<tr><td>' + GN[i] + '</td><td>' + g.pv.toFixed(0) + '</td><td>' + stTxt + '</td><td>' + g.load.toFixed(0)
+        + '</td><td>' + gTxt + '</td><td class="mode">' + (j.its.length ? ('工况 ' + j.its.join('+')) : '待机') + '</td></tr>';
+    }).join('');
+    var anySell = js.some(function (j) { return j.sell; });
+    var anyBuy = js.some(function (j) { return j.buy; });
+    var anyMode = js.some(function (j) { return j.its.length; });
+    document.getElementById('mode').innerHTML =
+      '并网铁塔：<b>' + (anySell ? '送出中（有群在卖电）' : (anyBuy ? '受电中（有群在买电）' : '待机')) + '</b>'
+      + '　<span style="color:#7fa8a2">共 ' + groups.length + ' 群；'
+      + (anyMode ? '浮标上应显示各群自己的「工况 x+x」' : '各群都无工况 → 浮标显示「待机」') + '</span>';
+    syncSliders();
+  }
+
+  function syncSliders() {
+    var g = groups[cur];
+    document.getElementById('vPv').textContent = g.pv.toFixed(0);
+    document.getElementById('vSt').textContent = g.st.toFixed(0);
+    document.getElementById('vLoad').textContent = g.load.toFixed(0);
+    document.getElementById('vSoc').textContent = g.soc.toFixed(0);
+    document.getElementById('sPv').value = g.pv;
+    document.getElementById('sSt').value = g.st;
+    document.getElementById('sLoad').value = g.load;
+    document.getElementById('sSoc').value = g.soc;
+  }
+
+  function applyPreset(p) {
+    if (Array.isArray(p[2])) {
+      p[2].forEach(function (v, i) { groups[i] = { pv: v.pv, st: v.st, load: v.load, soc: v.soc }; });
+    } else {
+      groups = GN.map(function () { return { pv: p[2].pv, st: p[2].st, load: p[2].load, soc: p[2].soc || 65 }; });
+    }
+    pushData();
+  }
+
+  function buildPanel() {
+    var box = document.getElementById('presets');
+    PRESETS.forEach(function (p) {
+      var b = document.createElement('button');
+      b.innerHTML = '<b>' + p[0] + '</b>' + p[1];
+      b.addEventListener('click', function () {
+        [].forEach.call(box.querySelectorAll('button'), function (x) { x.classList.toggle('on', x === b); });
+        applyPreset(p);
+      });
+      box.appendChild(b);
+      if (p[0] === '6') b.classList.add('on');   /* 默认选"储能→厂房" */
+    });
+    var gs = document.getElementById('gsel');
+    GN.forEach(function (name, i) {
+      var b = document.createElement('button');
+      b.textContent = name;
+      b.addEventListener('click', function () {
+        cur = i;
+        [].forEach.call(gs.querySelectorAll('button'), function (x, k) { x.classList.toggle('on', k === i); });
+        syncSliders();
+      });
+      gs.appendChild(b);
+      if (i === 0) b.classList.add('on');
+    });
+    ['sPv', 'sSt', 'sLoad', 'sSoc'].forEach(function (id) {
+      document.getElementById(id).addEventListener('input', function () {
+        var g = groups[cur];
+        g.pv = Number(document.getElementById('sPv').value);
+        g.st = Number(document.getElementById('sSt').value);
+        g.load = Number(document.getElementById('sLoad').value);
+        g.soc = Number(document.getElementById('sSoc').value);
+        [].forEach.call(box.querySelectorAll('button'), function (x) { x.classList.remove('on'); });
+        pushData();
+      });
+    });
+    document.getElementById('btnReset').addEventListener('click', function () {
+      if (window.JunyongScene) JunyongScene.resetView();
+    });
+    var bl = document.getElementById('btnLabels');
+    bl.addEventListener('click', function () {
+      var on = !bl.classList.contains('on');
+      bl.classList.toggle('on', on);
+      bl.textContent = on ? '标签开' : '标签关';
+      if (window.JunyongScene) JunyongScene.setLabels(on);
+    });
+    document.getElementById('btnTheme').addEventListener('click', function () {
+      var day = document.documentElement.getAttribute('data-theme') !== 'day';
+      document.documentElement.setAttribute('data-theme', day ? 'day' : 'night');
+      this.textContent = day ? '切夜晚' : '切白天';
+    });
+  }
+
+  function start() {
+    if (!window.JunyongScene) { document.getElementById('mode').textContent = '场景脚本未就绪'; return; }
+    buildPanel();
+    JunyongScene.init(function () {
+      /* 夜间晴天（和演示工况的"夜里静止"一致），天气只影响光照氛围 */
+      JunyongScene.setWeather({ cloud: 10, precip: 0, is_day: 0, radiation: 0, temp: 24, text: '晴' });
+      pushData();
+    });
+    setTimeout(function () { if (window.JunyongScene) JunyongScene.resize(); }, 150);
+  }
+})();
+</script>
+</body>
+</html>

@@ -178,11 +178,12 @@ window.GaoteService = (function () {
 
   function capFirst(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
 
-  /* 取某维度下某点位值（大小写不敏感；opt.arr 可指定堆号） */
-  function val(dim, key, opt) {
+  /* 取某维度下某点位值（大小写不敏感；opt.arr 可指定堆号）
+     valIn 是"指定一份 state"的版本——别的站（峻涌）按设备读数据时用 */
+  function valIn(state, dim, key, opt) {
     opt = opt || {};
     const want = normDim(dim);
-    const st = activeState();
+    const st = state || {};
     const keys = Object.keys(st).filter(k => k.split('|')[0] === want);
     for (let i = 0; i < keys.length; i++) {
       const b = st[keys[i]];
@@ -195,6 +196,7 @@ window.GaoteService = (function () {
     }
     return null;
   }
+  function val(dim, key, opt) { return valIn(activeState(), dim, key, opt); }
 
   /* ---------------- 高特 → 平台界面字段映射 ---------------- */
   /* [高特维度, 高特点位key, 换算系数(可选)] */
@@ -329,9 +331,9 @@ window.GaoteService = (function () {
 
   /* 电芯：/rtg/data/cell/{arr}/{clu}/{电芯号} → RkCeVolt{序号}(mV) / RkCeTemp{序号}(℃)
      多堆时按 (堆号, 电芯号) 排序统一编号，避免不同堆的同号电芯互相覆盖 */
-  function buildCells() {
+  function buildCellsIn(state) {
     const out = {};
-    const st = activeState();
+    const st = state || {};
     const cells = Object.keys(st).filter(k => k.split('|')[0] === 'cell').map(function (k) {
       const b = st[k];
       const arr = b._meta && b._meta.arr !== '' ? parseInt(b._meta.arr, 10) : 0;
@@ -350,11 +352,12 @@ window.GaoteService = (function () {
     });
     return out;
   }
+  function buildCells() { return buildCellsIn(activeState()); }
 
   /* 按 MAP 生成平台界面用的点位表 */
   /* 同一维度所有实例求和（站点级电量用；单实例取 val() 只拿第一台） */
-  function sumInst(dim, key) {
-    const st = activeState();
+  function sumInstIn(state, dim, key) {
+    const st = state || {};
     let s = null;
     Object.keys(st).forEach(function (k) {
       if (k.split('|')[0] !== normDim(dim)) return;
@@ -366,15 +369,16 @@ window.GaoteService = (function () {
     });
     return s;
   }
+  function sumInst(dim, key) { return sumInstIn(activeState(), dim, key); }
 
-  function buildTags() {
+  function buildTagsIn(state) {
     const out = {};
     Object.keys(MAP).forEach(function (dev) {
       const t = {};
       const defs = MAP[dev];
       Object.keys(defs).forEach(function (tag) {
         const [dim, key, factor] = defs[tag];
-        let v = val(dim, key);
+        let v = valIn(state, dim, key);
         if (v !== null && v !== undefined && factor) v = +(v * factor).toFixed(2);
         if (v !== null && v !== undefined) t[tag] = (typeof v === 'number') ? String(v) : v;
       });
@@ -386,14 +390,14 @@ window.GaoteService = (function () {
       if (out[dev]) out[dev].Online = '1';
     });
     /* 电芯 */
-    const cells = buildCells();
+    const cells = buildCellsIn(state);
     if (Object.keys(cells).length) out.BMS_CELLS = cells;
     /* 全站日电量（今日）：优先各 PCS 交流日电量之和（与厂家口径一致），
        其次各簇日电量之和；某一侧报 0（缺报）时用另一侧兜底 */
-    const pcsChg = sumInst('pcs', 'comchgday_cap');
-    const pcsDis = sumInst('pcs', 'comdisday_cap');
-    const cluChg = sumInst('cluster', 'cludaychg_cap');
-    const cluDis = sumInst('cluster', 'cludaydis_cap');
+    const pcsChg = sumInstIn(state, 'pcs', 'comchgday_cap');
+    const pcsDis = sumInstIn(state, 'pcs', 'comdisday_cap');
+    const cluChg = sumInstIn(state, 'cluster', 'cludaychg_cap');
+    const cluDis = sumInstIn(state, 'cluster', 'cludaydis_cap');
     const pickDay = function (a, b) {
       if (a !== null && a > 0) return a;
       if (b !== null && b > 0) return b;
@@ -409,6 +413,7 @@ window.GaoteService = (function () {
     }
     return out;
   }
+  function buildTags() { return buildTagsIn(activeState()); }
 
   /* 生成"晶农格式"的报文，交给既有渲染链路复用 */
   function buildPseudoReport() {
@@ -522,8 +527,8 @@ window.GaoteService = (function () {
   const ALARM_NAME = /告警|报警|故障|异常|警告|过压|欠压|过温|欠温|过流|缺液/;
   const SKIP_KEY = /^(ccuno|arrno|arrnum|cluno|clunum|devno|ts)$/i;
   const SKIP_PREWARN = /warnlevel$/i;
-  function alarms() {
-    const st = activeState();
+  function alarmsIn(state) {
+    const st = state || {};
     const out = [];
     Object.keys(st).forEach(function (k) {
       const b = st[k];
@@ -544,8 +549,20 @@ window.GaoteService = (function () {
     });
     return out;
   }
+  function alarms() { return alarmsIn(activeState()); }
 
-  /* ---------------- 设备列表 / 切换 ---------------- */
+  /* ---------------- 指定设备的只读访问（峻涌站页面按设备读数据用） ----------------
+     不改"当前设备"的语义：这些函数只读 stateByDev / lastSeenByDev，不影响页面渲染。 */
+  function keyOfDsn(dsn) {
+    const hit = Object.keys(devices).filter(function (k) { return devices[k].dsn === dsn; })[0];
+    return hit || '';
+  }
+  function stateOf(dsn) { const k = keyOfDsn(dsn); return k ? (stateByDev[k] || null) : null; }
+  function valOf(dsn, dim, key, opt) { return valIn(stateOf(dsn) || {}, dim, key, opt); }
+  function tagsOf(dsn) { const st = stateOf(dsn); return st ? buildTagsIn(st) : null; }
+  function cellsOf(dsn) { const st = stateOf(dsn); return st ? buildCellsIn(st) : null; }
+  function alarmsOf(dsn) { const st = stateOf(dsn); return st ? alarmsIn(st) : []; }
+  function seenOf(dsn) { const k = keyOfDsn(dsn); return k ? (lastSeenByDev[k] || {}) : {}; }
 
   /* 发现到的设备（含在线判定：2 分钟内有报文） */
   function devicesList() {
@@ -586,6 +603,8 @@ window.GaoteService = (function () {
     lastSeen: () => activeLastSeen(),
     alarms,
     devicesList, activeDevice, setActive,
+    /* 按编号读任意设备（峻涌站用；不影响"当前设备"） */
+    stateOf, valOf, tagsOf, cellsOf, alarmsOf, seenOf,
     getCfg: () => cfg,
     normUrl
   };
