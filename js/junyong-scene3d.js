@@ -803,22 +803,30 @@ window.JunyongScene = (function () {
       loadEff: loadEff, pvOn: pvOn, chg: chg, dis: dis, sell: sell, buy: buy,
       charge: charge, pvToLoad: pvToLoad, gridToStorage: gridToStorage, dataWarn: dataWarn, its: its };
   }
-  /* 厂房浮标只写受电类型：按实际亮起的受电支路（光伏 / 储能 / 电网）组合，不写具体功率。
-     光伏在充电且没有余量供厂房时不会算作受电来源。 */
+  /* 厂房受电支路：只取 2（光伏→厂房）/ 4（电网直供）/ 6（储能→厂房）三条。
+     光伏在充电且没有余量供厂房时不算光伏受电。 */
+  function loadSources(c) {
+    var out = { codes: [], names: [] };
+    if (c.pvToLoad) { out.codes.push('2'); out.names.push('光伏'); }
+    if (c.buy && c.loadEff > .3) { out.codes.push('4'); out.names.push('电网'); }
+    if (c.dis && c.loadEff > .3) { out.codes.push('6'); out.names.push('储能'); }
+    return out;
+  }
   function supplyType(c) {
     if (!(c.hasPv || c.hasSt || c.hasGrid)) return '无数据';
     if (c.dataWarn) return '数据矛盾';
     if (c.loadEff == null || c.loadEff <= .3) return '无受电';
-    var src = [];
-    if (c.pvToLoad) src.push('光伏');
-    if (c.buy) src.push('电网');
-    if (c.dis) src.push('储能');
-    if (!src.length) {
-      if (c.provChg || c.hasPv) src.push('光伏');
-      else if (c.hasSt) src.push('储能');
-      else if (c.hasGrid) src.push('电网');
-    }
-    return src.length ? ('受电：' + src.join(' + ')) : '受电类型未知';
+    var s = loadSources(c);
+    return s.names.length ? ('受电：' + s.names.join(' + ')) : '受电类型未知';
+  }
+  /* 厂房浮标第二行：洙边卫生院同款「工况 2+4+6 · 光伏/电网/储能供电」 */
+  function buildingModeLine(c) {
+    if (!(c.hasPv || c.hasSt || c.hasGrid)) return '--';
+    if (c.dataWarn) return '数据矛盾';
+    if (c.loadEff == null || c.loadEff <= .3) return '本群待机 · 无进线';
+    var s = loadSources(c);
+    return s.names.length ? ('工况 ' + s.codes.join('+') + ' · ' + s.names.join('/') + '供电')
+      : '本群待机 · 无进线';
   }
 
   function updateFlows() {
@@ -876,15 +884,17 @@ window.JunyongScene = (function () {
         var hasAny = c.hasPv || c.hasSt || c.hasGrid;
         u.tagBld.querySelector('i').textContent = '受电 '
           + (hasAny ? (+c.loadEff).toFixed(1) : '--') + ' kW';
-        u.tagBld.querySelector('em').textContent = supplyType(c);
+        u.tagBld.querySelector('em').textContent = buildingModeLine(c);
         u.tagBld.querySelector('em').style.display = '';
       }
       if (u.tagSt) {
-        u.tagSt.querySelector('i').textContent = (dd.st == null ? '--kW'
-          : ((dd.st > .5 ? '放电 ' : (dd.st < -.5 ? '充电 ' : '待机 ')) + Math.abs(+dd.st).toFixed(1) + 'kW'))
-          + ' · SOC ' + (dd.soc == null ? '--%' : Math.round(dd.soc) + '%');
-        u.tagSt.querySelector('em').textContent = '今日充 ' + (dd.chg == null ? '--' : (+dd.chg).toFixed(0))
-          + ' / 放 ' + (dd.dis == null ? '--' : (+dd.dis).toFixed(0)) + ' 度';
+        /* 洙边储能柜浮标同款：第一行带符号功率（正放负充），第二行 工况 · SOC */
+        u.tagSt.querySelector('i').textContent = dd.st == null ? '-- kW' : (+dd.st).toFixed(1) + ' kW';
+        var stMode = c.dataWarn ? '数据矛盾'
+          : (c.its.length ? '工况 ' + c.its.join('+')
+            : ((c.hasPv || c.hasSt || c.hasGrid) ? '本群待机' : '--'));
+        u.tagSt.querySelector('em').textContent = stMode + ' · SOC '
+          + (dd.soc == null ? '--%' : Math.round(dd.soc) + '%');
       }
       if (u.tagPv) {
         /* 版式同洙边：实时功率 + 今日发电（不展示总装机容量） */
@@ -904,12 +914,19 @@ window.JunyongScene = (function () {
         : .1;
     });
     if (tower && tower.tagEl) {
-      var anySell = units.some(function (u, i) { return cond(data[i]).sell; });
-      var anyBuy = units.some(function (u, i) { return cond(data[i]).buy; });
-      var anyGrid = units.some(function (u, i) { return cond(data[i]).hasGrid; });
-      tower.tagEl.querySelector('em').textContent = (anySell || anyBuy)
-        ? (anySell ? '送出中' : '受电中')
-        : (anyGrid ? '待机' : (stationPv.seen ? ('全站光伏 ' + num(stationPv.kw, 'kW')) : '无数据'));
+      /* 洙边铁塔同款：写全站送出 / 受电功率；有光伏余电时补一句 */
+      var gridSum = 0, gridKnown = 0, pvOnAny = stationPv.seen && stationPv.kw > .5;
+      units.forEach(function (u, i) {
+        var cc = cond(data[i]);
+        if (cc.hasGrid) { gridKnown++; gridSum += (+data[i].grid || 0); }
+        if (cc.pvOn) pvOnAny = true;
+      });
+      var twTxt;
+      if (gridKnown < units.length) twTxt = '--';
+      else if (gridSum < -.3) twTxt = '送出 ' + Math.abs(gridSum).toFixed(1) + ' kW' + (pvOnAny ? ' · 光伏余电上网' : '');
+      else if (gridSum > .3) twTxt = '受电 ' + gridSum.toFixed(1) + ' kW';
+      else twTxt = '无交换';
+      tower.tagEl.querySelector('em').textContent = twTxt;
     }
     refreshCards();
   }
@@ -1114,7 +1131,7 @@ window.JunyongScene = (function () {
       var ccx = 0, ccz = 0;
       cw.forEach(function (v) { ccx += v.x; ccz += v.z; });
       ccx /= cw.length; ccz /= cw.length;
-      u.tagBld = label('<b>' + GB[i] + '（工厂用电）</b><i>受电 -- kW</i><em>受电：--</em>', 'tag3d-gt',
+      u.tagBld = label('<b>' + GB[i] + '（工厂用电）</b><i>受电 -- kW</i><em>--</em>', 'tag3d-gt',
         p.x, 4.4, p.z + D2 / 2 + 1.0);
       u.tagSt = label('<b>储能柜 · ' + GCABN[i] + '</b><i>--</i><em>--</em>', 'tag3d-gt',
         ccx, CAB.h + 1.5, ccz);
@@ -1146,7 +1163,7 @@ window.JunyongScene = (function () {
     groundContact(root, TWR_AT.x, TWR_AT.z, 5.6, 5.6);
     tower.userData.cardKey = 'tower';
     addCard('tower', TWR_AT.x, TWRH - 1.8, TWR_AT.z);
-    tower.tagEl = label('<b>并网铁塔</b><i>10kV 上网线路 · 三回</i><em>--</em>', 'tag3d-gt',
+    tower.tagEl = label('<b>并网铁塔</b><i>10kV 上网线路</i><em>--</em>', 'tag3d-gt',
       TWR_AT.x, TWRH + .5, TWR_AT.z);
     bindLabel(tower.tagEl, 'tower');
     xs.push(TWR_AT.x - 4.5, TWR_AT.x + 4.5); zs.push(TWR_AT.z - 4.5, TWR_AT.z + 4.5);
