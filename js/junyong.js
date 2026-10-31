@@ -51,7 +51,8 @@ window.JunyongUI = (function () {
   var payload = null;            /* 整理后的最近一次成功数据：{ station: {...} }；null = 从没拿到过 */
   var lastErr = '';
   var wx = null, devices = [], trend = [], trendRange = 'today';
-  var chart = null;
+  var chart = null;              /* 光伏页曲线 */
+  var revChart = null, revTrend = null;   /* 详细信息页 近 7 日光伏曲线（独立实例 / 独立数据） */
 
   function n(v) { return (v === null || v === undefined || v === '' || isNaN(+v)) ? null : +v; }
   function fmt(v, dec) {
@@ -89,9 +90,6 @@ window.JunyongUI = (function () {
     return '<section class="ov-sec gv3-sec ' + span + '"><div class="ov-sec-head"><b>' + title + '</b>'
       + (chip ? '<span class="ov-tagchip">' + chip + '</span>' : '')
       + '<i class="ov-online on"></i></div><div class="ov-sec-body gv3-body">' + body + '</div></section>';
-  }
-  function row(k, v) {
-    return '<tr><td style="color:var(--dim)">' + k + '</td><td>' + v + '</td></tr>';
   }
 
   /* 取接口数据：12 秒超时 + 最多 3 次重试（现场网络经代理时偶发卡住）；
@@ -188,9 +186,13 @@ window.JunyongUI = (function () {
     if (title) title.textContent = t === 'monitor' ? '' :
       (t === 'storage' ? '储能' : t === 'solar' ? '光伏' : '详细信息');
     render();
+    if (t === 'revenue') loadRevTrend();
     if (window.JunyongScene) JunyongScene.setActive(t === 'monitor');
     /* 曲线在隐藏容器里初始化时尺寸是 0，切过来后要重算一次 */
-    setTimeout(function () { if (chart && t === 'solar') chart.resize(); }, 80);
+    setTimeout(function () {
+      if (chart && t === 'solar') chart.resize();
+      if (revChart && t === 'revenue') revChart.resize();
+    }, 80);
   }
 
   /* ---------------- 数据 ---------------- */
@@ -335,6 +337,7 @@ window.JunyongUI = (function () {
       base.cellSums = emu('CellSums');
       base.sysStatus = emu('SysStatus');
       base.ctrl = emu('ControlSrc');
+      base.modCod = emu('EmuModCod');
       base.runStatus = emu('RunStatus');
       base.dayChg = n(tags.EMS && tags.EMS.DayCharge);
       base.dayDis = n(tags.EMS && tags.EMS.DayDischarge);
@@ -359,19 +362,44 @@ window.JunyongUI = (function () {
   /* 三群汇总。注意：负载 = 光伏(阳光云全站) + 储能(高特) + 关口(高特) 的合成值，
      属于跨源算出来的数，界面上要带"合成"口径说明，不和任何厂家结算数字混用。 */
   function storSum() {
-    var out = { power: null, soc: null, grid: null, load: null, online: 0, count: 0 };
+    var out = {
+      power: null, soc: null, grid: null, load: null, online: 0, count: 0,
+      cellSums: null, enChg: null, enDis: null, maxChg: null, maxDis: null,
+      avgTemp: null, maxCellV: null, dayChg: null, dayDis: null, gridE1: null, gridE2: null,
+      sysStatus: null, ctrl: null, modCod: null, runStatus: null
+    };
     var gs2 = (stor && stor.groups) || [];
-    var pow = null, grid = null, socW = 0, w = 0;
+    var pow = null, grid = null, socW = 0, w = 0, tempW = 0, tempN = 0;
+    var acc = {};
+    var add = function (k, v) { if (v !== null && v !== undefined && isFinite(+v)) acc[k] = (acc[k] || 0) + +v; };
+    var syss = [], ctrls = [], modes = [], runs = [];
     gs2.forEach(function (g) {
       out.count++;
       if (g.online) out.online++;
       if (g.power !== null && g.power !== undefined) pow = (pow || 0) + +g.power;
       if (g.gridP !== null && g.gridP !== undefined) grid = (grid || 0) + +g.gridP;
       if (g.soc !== null && g.soc !== undefined) { socW += +g.soc * g.cabinets; w += g.cabinets; }
+      add('cellSums', g.cellSums); add('enChg', g.enChg); add('enDis', g.enDis);
+      add('maxChg', g.maxChg == null ? null : Math.abs(g.maxChg)); add('maxDis', g.maxDis);
+      add('dayChg', g.dayChg); add('dayDis', g.dayDis);
+      add('gridE1', g.gridE1); add('gridE2', g.gridE2);
+      if (g.avgTemp !== null && g.avgTemp !== undefined) { tempW += +g.avgTemp * g.cabinets; tempN += g.cabinets; }
+      if (g.maxCellV !== null && g.maxCellV !== undefined && (out.maxCellV === null || +g.maxCellV > out.maxCellV)) out.maxCellV = +g.maxCellV;
+      if (g.sysStatus != null) syss.push('状态码 ' + g.sysStatus);
+      if (g.ctrl != null) ctrls.push(g.ctrl === 1 ? '远程' : g.ctrl === 0 ? '本地' : '其他');
+      if (g.modCod != null) modes.push(MODE_ST[g.modCod] || g.modCod);
+      if (g.runStatus != null) runs.push({ 0: '静置', 1: '充电', 2: '放电' }[g.runStatus] || g.runStatus);
     });
+    var uniq = function (a) { var s = {}, o = []; a.forEach(function (v) { if (!s[v]) { s[v] = 1; o.push(v); } }); return o.length ? o.join(' / ') : null; };
     out.power = pow;
     out.grid = grid;
     out.soc = w ? socW / w : null;
+    out.avgTemp = tempN ? tempW / tempN : null;
+    out.cellSums = acc.cellSums; out.enChg = acc.enChg; out.enDis = acc.enDis;
+    out.maxChg = acc.maxChg; out.maxDis = acc.maxDis;
+    out.dayChg = acc.dayChg; out.dayDis = acc.dayDis;
+    out.gridE1 = acc.gridE1; out.gridE2 = acc.gridE2;
+    out.sysStatus = uniq(syss); out.ctrl = uniq(ctrls); out.modCod = uniq(modes); out.runStatus = uniq(runs);
     if (pow !== null && grid !== null && payload) {
       var pvKw = n(st().power_kw);
       if (pvKw !== null) out.load = pvKw + pow + grid;
@@ -442,7 +470,7 @@ window.JunyongUI = (function () {
       + '<circle class="rfg" cx="48" cy="48" r="40" style="stroke-dasharray:' + c.toFixed(1)
       + ';stroke-dashoffset:' + off.toFixed(1) + '"/></svg>'
       + '<b><span>' + (soc === null ? '--' : Math.round(soc)) + '</span><i>%</i></b>'
-      + '<span class="gv3-ring-label">SOC</span></div>';
+      + '<span class="gv3-ring-label">储能 SOC</span></div>';
   }
   function gvKpi(label, val, unit, tag, cls) {
     return '<div class="gv3-kpi' + (cls ? ' ' + cls : '') + '"><span class="gv3-klabel">' + label + '</span>'
@@ -460,26 +488,50 @@ window.JunyongUI = (function () {
   }
   var PCS_ST = { 0: '停机', 1: '待机', 2: '故障', 3: '充电', 4: '放电' };
   var UNIT_ST = { 0: '静置', 1: '充电', 2: '放电' };
+  var MODE_ST = { 0: '子系统', 1: '计划', 2: '总指令' };
   var DRIER_ST = { 0: '待机', 1: '正在除湿', 2: '外部温度传感器故障', 3: '冷面温度传感器故障', 4: '热面温度传感器故障', 5: '外部环境温度过高', 6: '温度环境温度过高' };
+  /* 东明同款 8 个储能指标（每群 / 全站汇总共用同一套标签） */
+  function heroKpis(g) {
+    var p = g.power;
+    var chg = g.maxChg == null ? null : Math.abs(g.maxChg);
+    return gvKpi('储能功率', p == null ? '--' : fmt(p, 1), 'kW',
+        p == null ? '' : (p < 0 ? '充电中' : (p > 0 ? '放电中' : '待机')),
+        p == null ? '' : (p < 0 ? 'chg' : (p > 0 ? 'dischg' : '')))
+      + gvKpi('允许充电功率', fmt(chg, 0), 'kW', '')
+      + gvKpi('允许放电功率', fmt(g.maxDis, 0), 'kW', '')
+      + gvKpi('电池总节数', fmt(g.cellSums, 0), '节', '')
+      + gvKpi('可充电量', fmt(g.enChg, 1), 'kWh', '')
+      + gvKpi('可放电量', fmt(g.enDis, 1), 'kWh', '')
+      + gvKpi('平均温度', fmt(g.avgTemp, 1), '℃', '')
+      + gvKpi('最高单体', fnum(g.maxCellV, 3), 'V', '');
+  }
+  function badgeHtml(k, v, cls, title) {
+    return '<div class="gv3-badge"' + (title ? ' title="' + title + '"' : '') + '><span>' + k + '</span>'
+      + '<b class="v ' + (cls || '') + '">' + v + '</b></div>';
+  }
+  /* 东明同款 4 个状态徽章；全站汇总时把各群不同的值并列显示 */
+  function heroBadges(g) {
+    var sys = g.sysStatus == null ? '--' : ('状态码 ' + g.sysStatus);
+    var ctrl = g.ctrl == null ? '--' : (g.ctrl === 1 ? '远程' : (g.ctrl === 0 ? '本地' : '其他'));
+    var mode = g.modCod == null ? '--' : (MODE_ST[g.modCod] || g.modCod);
+    var run = g.runStatus == null ? '--' : ({ 0: '静置', 1: '充电', 2: '放电' }[g.runStatus] || g.runStatus);
+    return '<div class="gv3-badges">'
+      + badgeHtml('系统状态', sys, '', '协议点表未定义该点枚举，暂不判定正常/异常')
+      + badgeHtml('控制源', ctrl, g.ctrl === 1 ? 'ok' : 'warn')
+      + badgeHtml('指令模式', mode, '')
+      + badgeHtml('电池状态', run, '')
+      + '</div>';
+  }
   function groupTitle(g) { return g.name + ' · ' + g.dev + '（' + g.cabinets + ' 柜）'; }
   function groupChip(g) {
     if (!stor) return '高特数据未连接';
     if (g.missing) return '无数据';
     return g.online ? ('在线 · 更新 ' + fmtTime(g.lastSeen)) : ('离线 · 最后 ' + fmtTime(g.lastSeen));
   }
+  /* 机组头部：与旭日东明同版式（SOC 环 + 8 指标 + 4 徽章） */
   function groupHero(g) {
-    var cls = g.power == null ? '' : (g.power > .5 ? 'dischg' : (g.power < -.5 ? 'chg' : ''));
-    var dTxt = g.power == null ? '' : (g.power > .5 ? '放电' : (g.power < -.5 ? '充电' : '待机'));
-    return '<div class="gv3-hero">' + socRing(g.soc == null ? null : +g.soc) + '<div class="gv3-kpis">'
-      + gvKpi('实时功率', g.power == null ? '--' : fmt(g.power, 1), 'kW', dTxt, cls)
-      + gvKpi('今日充电', fmt(g.dayChg, 1), '度')
-      + gvKpi('今日放电', fmt(g.dayDis, 1), '度')
-      + gvKpi('允许充 / 放', fnum(g.maxChg, 0) + ' / ' + fnum(g.maxDis, 0), 'kW')
-      + gvKpi('可充 / 可放', fnum(g.enChg, 0) + ' / ' + fnum(g.enDis, 0), 'kWh')
-      + gvKpi('电池平均温度', fmt(g.avgTemp, 1), '℃')
-      + gvKpi('单体电压 高/低', fnum(g.maxCellV, 3) + ' / ' + fnum(g.minCellV, 3), 'V')
-      + gvKpi('电池状态', g.runStatus == null ? '--' : (UNIT_ST[g.runStatus] || ('状态码 ' + g.runStatus)), '')
-      + '</div></div>';
+    return '<div class="gv3-hero">' + socRing(g.soc == null ? null : +g.soc)
+      + '<div class="gv3-kpis">' + heroKpis(g) + '</div>' + heroBadges(g) + '</div>';
   }
   function groupBody(g) {
     var cluRows = (g.clusters || []).map(function (c, i) {
@@ -521,6 +573,7 @@ window.JunyongUI = (function () {
       ['除湿 · 工作状态', D.drier_wholerun == null ? '--' : (DRIER_ST[D.drier_wholerun] || ('状态' + D.drier_wholerun))]
     ]);
     var meterStat = kvBox([
+      ['今日充 / 放', fnum(g.dayChg, 1, '') + ' / ' + fnum(g.dayDis, 1, ' 度')],
       ['关口 · 实时功率', g.gridP == null ? '--' : ((g.gridP >= 0 ? '取电 ' : '送电 ') + Math.abs(g.gridP).toFixed(1) + ' kW')],
       ['关口 · 正向 / 反向电量', fnum(g.gridE1, 0, '') + ' / ' + fnum(g.gridE2, 0, ' kWh')],
       ['储能表 · 实时功率', fnum(g.storP, 1, ' kW')],
@@ -546,16 +599,19 @@ window.JunyongUI = (function () {
     var view = byId('jyStorView');
     var keepTop = body.scrollTop, keepView = view ? view.scrollTop : 0;
     var S = storSum();
+    /* 顶部储能总览：标签口径与旭日东明一致（8 指标 + 4 徽章），全站为三群汇总 */
     var head = sec('sp12', '储能总览', '高特 CCU · 三套机组',
-      '<div class="gv3-flow">'
-      + gvTile('实时功率', S.power == null ? '--' : fmt(S.power, 1), 'kW', S.power == null ? '' : (S.power > .5 ? '放电' : S.power < -.5 ? '充电' : '待机'))
-      + gvTile('SOC', S.soc == null ? '--' : fmt(S.soc, 0), '%', '按柜数加权')
-      + gvTile('关口（三群合计）', S.grid == null ? '--' : fmt(S.grid, 1), 'kW', '正=取电 / 负=送电')
-      + gvTile('在线', S.online + ' / ' + (S.count || 3), '台', storConn() ? 'MQTT 已连接' : 'MQTT 未连接')
-      + gvTile('额定', '625', 'kW', '1305 kWh · 5 柜')
-      + '</div>'
-      + '<div class="jy-note">数据源：高特 CCU（浏览器 MQTT，30 秒上报）。光伏只有全站合计（阳光云），所以分机组光伏显示 --；'
-      + '6/7号柜 ↔ 一号/二号的对应关系待厂家确认（确认后改一行配置即可）。</div>');
+      '<div class="gv3-hero">' + socRing(S.soc == null ? null : +S.soc)
+      + '<div class="gv3-kpis">' + heroKpis(S) + '</div>'
+      + '<div class="gv3-badges">'
+      + badgeHtml('系统状态', S.sysStatus || '--', '', '协议点表未定义该点枚举，暂不判定正常/异常')
+      + badgeHtml('控制源', S.ctrl || '--', S.ctrl === '远程' ? 'ok' : 'warn')
+      + badgeHtml('指令模式', S.modCod || '--', '')
+      + badgeHtml('电池状态', S.runStatus || '--', '')
+      + '</div></div>'
+      + '<div class="jy-note">全站三群汇总：功率 / 电量 / 节数相加，SOC 与温度按柜数加权，单体取最高；'
+      + '各群状态值不同时并列显示。数据源：高特 CCU（浏览器 MQTT，30 秒上报）。'
+      + '光伏只有全站合计（阳光云），所以分机组光伏显示 --；6/7号柜 ↔ 一号/二号的对应关系待厂家确认。</div>');
     var list = (stor && stor.groups) || [];
     body.innerHTML = '<div class="dt-body">' + head + list.map(function (g) {
       return sec('sp12', groupTitle(g), groupChip(g), groupHero(g) + groupBody(g));
@@ -566,9 +622,9 @@ window.JunyongUI = (function () {
     body.scrollTop = keepTop;
   }
 
-  /* 光伏页：真实数据（阳光云第二路） */
+  /* 光伏页：版式与洙边一致（实时概览 / 发电趋势 / 天气 / 设备 / 减排贡献 / 电站信息），数据用峻涌的 */
   function rangeBtns() {
-    var opts = [['today', '今日'], ['yesterday', '昨日'], ['days7', '近七日']];
+    var opts = [['today', '今日'], ['yesterday', '昨日'], ['days3', '近三日']];
     return '<span class="sl-ranges" id="jyRanges">' + opts.map(function (o) {
       return '<button data-jrange="' + o[0] + '"' + (trendRange === o[0] ? ' class="on"' : '') + '>' + o[1] + '</button>';
     }).join('') + '</span>';
@@ -614,46 +670,82 @@ window.JunyongUI = (function () {
         + '<span style="display:block;margin-top:2px">' + extra + '</span></div></div>';
     }).join('') + '</div>';
   }
+  /* 洙边同款 KPI 卡（.kpi-grid 用） */
+  function card(label, value, unit, sub, cls) {
+    return '<div class="kpi ' + (cls || '') + '">'
+      + '<div class="kpi-body">'
+      + '<div class="kpi-num' + (cls === 'hi' ? '' : ' sm') + '"><b>' + value + '</b>' + (unit ? '<u>' + unit + '</u>' : '') + '</div>'
+      + '<div class="kpi-label">' + label + '</div>'
+      + (sub ? '<div class="sl-ks">' + sub + '</div>' : '')
+      + '</div></div>';
+  }
+  /* 洙边同款减排三行（按光伏累计电量折算） */
+  function greenHtml() {
+    var s = st();
+    var tKwh = s.total_kwh;
+    var co2 = tKwh == null ? null : tKwh * CO2_PER_KWH;
+    var coal = tKwh == null ? null : tKwh * COAL_PER_KWH;
+    var trees = co2 === null ? null : Math.round(co2 * TREE_PER_KG);
+    return '<div class="sl-green-row"><b>' + fmt(co2 === null ? null : co2 / 1000, 2) + '</b><u>吨</u><span>CO₂ 减排量</span></div>'
+      + '<div class="sl-green-row"><b>' + fmt(coal === null ? null : coal / 1000, 2) + '</b><u>吨</u><span>节约标准煤</span></div>'
+      + '<div class="sl-green-row"><b>' + (trees === null ? '--' : trees) + '</b><u>棵</u><span>等效植树</span></div>';
+  }
+  /* 洙边同款电站信息行（字段名一致，值为峻涌的） */
+  function pvInfoHtml() {
+    var s = st();
+    var rows = [
+      ['电站名称', STATION.name],
+      ['电站类型', s.type || '分布式光伏'],
+      ['装机容量', s.capacity ? fmt(s.capacity, 2) + ' kWp' : '--'],
+      ['电站地址', s.location || '--'],
+      ['并网日期', s.install_date ? String(s.install_date).slice(0, 10) : '--'],
+      ['电站编号', s.ps_id ? ('ps_id ' + s.ps_id) : '--'],
+      ['告警 / 故障', (n(s.alarms) === null ? '--' : String(s.alarms)) + ' / 0'],
+      ['数据更新', s.updated_at ? fmtTime(s.updated_at) : '--']
+    ];
+    return rows.map(function (r) { return '<div class="sl-row"><span>' + r[0] + '</span><b>' + r[1] + '</b></div>'; }).join('');
+  }
   function renderSolarPage() {
     var box = byId('jySolarBody');
     if (!box) return;
     var s = st();
     var cap = s.capacity;
     var co2 = s.total_kwh == null ? null : s.total_kwh * CO2_PER_KWH;         /* kg */
-    var coal = s.total_kwh == null ? null : s.total_kwh * COAL_PER_KWH;       /* kg */
     var trees = co2 === null ? null : Math.round(co2 * TREE_PER_KG);
+    var kpis = '<div class="kpi-grid">'
+      + card('实时功率', fmt(s.power_kw, 2), 'kW', cap ? ('装机 ' + fmt(cap, 2) + ' kWp') : '', 'hi')
+      + card('当日发电', fmt(s.today_kwh, 1), '度', n(s.hours) === null ? '' : ('等效 ' + fmt(s.hours, 2) + ' 小时'))
+      + card('今日收益', '--', '元', '暂无结算数据源')
+      + card('今日卖电（馈电上网）', '--', '元', '暂无关口日电量')
+      + card('累计发电', fmt(s.total_kwh, 0), '度', s.install_date ? ('并网 ' + String(s.install_date).slice(0, 10)) : '')
+      + card('装机容量', fmt(cap, 2), 'kWp', s.type || '分布式光伏')
+      + card('CO₂减排', fmt(co2 === null ? null : co2 / 1000, 2), '吨', trees === null ? '' : ('等效植树 ' + trees + ' 棵'))
+      + '</div>';
     box.innerHTML = '<div class="dt-body">'
-      + sec('sp12', '光伏总览', '力储峻涌光伏电站 · 阳光云',
-        '<div class="gv3-flow">'
-        + gvTile('实时功率', fmt(s.power_kw, 2), 'kW', '阳光云')
-        + gvTile('设备合计', fmt(s.device_power_kw, 2), 'kW', '8 台逆变器 · 快约 5 分钟')
-        + gvTile('今日发电', fmt(s.today_kwh, 1), '度', '阳光云')
-        + gvTile('累计发电', fmt(s.total_kwh, 0), '度', s.install_date ? ('并网 ' + String(s.install_date).slice(0, 10)) : '')
-        + gvTile('装机容量', fmt(cap, 2), 'kWp', s.type || '分布式光伏')
-        + gvTile('等效利用小时', fmt(s.hours, 2), 'h', '今日')
-        + gvTile('CO₂ 减排', fmt(co2 === null ? null : co2 / 1000, 2), '吨', '累计 · 折算')
-        + gvTile('节约标准煤', fmt(coal === null ? null : coal / 1000, 2), '吨', '累计 · 折算')
-        + gvTile('等效植树', trees === null ? '--' : trees, '棵', '累计 · 折算')
-        + '</div>'
-        + '<div class="jy-note">“实时功率/今日发电”为电站口径（与阳光云概览一致）；'
-        + '“设备合计”来自 8 台逆变器，更新快约 5 分钟。分机组归属待现场确认。</div>')
+      + '<div class="panel"><div class="panel-title"><span>实时概览</span><em>' + srcTag() + '</em></div>'
+      + kpis
+      + '<div class="jy-note">“实时功率 / 当日发电”为电站口径（与阳光云概览一致）；设备级明细见「设备」。'
+      + '今日收益 / 今日卖电：本站暂无关口日电量与结算数据源，按规矩显示 --。</div></div>'
+      + '<div class="panel grow"><div class="panel-title"><span>发电趋势</span><em id="jyTrendMeta">--</em>' + rangeBtns() + '</div>'
+      + '<div class="dt-chart" id="jyTrendChart"></div></div>'
       + '<div class="ov-grid">'
-      + sec('sp12', '发电趋势', rangeBtns() + '<em id="jyTrendMeta" style="margin-left:8px;font-style:normal;font-size:11px;color:var(--dim)">--</em>',
-        '<div class="dt-chart" id="jyTrendChart"></div>')
       + sec('sp6', '天气', 'Open-Meteo', weatherHtml())
-      + sec('sp6', '逆变器 / 通信模块', devices.length ? (devices.length + ' 台 · 设备级') : '--', devicesHtml())
+      + sec('sp6', '设备', devices.length ? (devices.length + ' 台 · 设备级') : '--', devicesHtml())
+      + sec('sp6', '减排贡献', '累计 · 折算', greenHtml())
+      + sec('sp6', '电站信息', '', pvInfoHtml())
       + '</div></div>';
     renderTrendChart();
   }
-  function renderTrendChart() {
-    var el = byId('jyTrendChart');
-    var meta = byId('jyTrendMeta');
-    if (!el) return;
-    if (typeof echarts === 'undefined') { if (meta) meta.textContent = '图表库加载中…'; return; }
-    if (chart && chart.getDom() !== el) { try { chart.dispose(); } catch (_) {} chart = null; }
-    if (!chart) {
-      chart = echarts.init(el);
-      chart.setOption({
+  function trendPts(data) {
+    return (data || []).filter(function (p) { return n(p.power_kw) !== null || n(p.daily_yield_kwh) !== null; });
+  }
+  /* 光伏曲线：光伏页与「详细信息」页各一份实例，同款式同主题 */
+  function paintTrend(inst, el, pts) {
+    if (!el || typeof echarts === 'undefined') return inst;
+    if (inst && inst.getDom() !== el) { try { inst.dispose(); } catch (_) {} inst = null; }
+    if (!inst) {
+      inst = echarts.init(el);
+      inst.setOption({
         grid: { left: 52, right: 54, top: 14, bottom: 26 },
         tooltip: {
           trigger: 'axis', backgroundColor: 'rgba(6,18,20,.92)',
@@ -669,73 +761,122 @@ window.JunyongUI = (function () {
           { name: '当日累计', type: 'line', smooth: true, symbol: 'none', yAxisIndex: 1, lineStyle: { width: 1.4, color: 'rgba(46,230,200,.85)', type: 'dashed' }, data: [] }
         ]
       });
-      applyChartTheme();
     }
-    var pts = (trend || []).filter(function (p) { return n(p.power_kw) !== null || n(p.daily_yield_kwh) !== null; });
-    var peak = pts.reduce(function (m, p) { return Math.max(m, n(p.power_kw) || 0); }, 0);
-    var day = pts.reduce(function (m, p) { return Math.max(m, n(p.daily_yield_kwh) || 0); }, 0);
-    if (meta) {
-      meta.textContent = pts.length
-        ? (pts.length + ' 点 · 峰值 ' + fmt(peak, 2) + ' kW' + (day ? (' · 单日最高 ' + fmt(day, 1) + ' 度') : ''))
-        : '暂无数据（接入后每 5 分钟累积一个点）';
-    }
-    chart.setOption({
+    var ax = isDay() ? '#3d5c5a' : '#6b9490';
+    inst.setOption({
+      xAxis: { axisLabel: { color: ax } },
+      yAxis: [{ axisLabel: { color: ax } }, { axisLabel: { color: ax } }],
       series: [
         { data: pts.map(function (p) { return [p.t, n(p.power_kw)]; }) },
         { data: pts.filter(function (p) { return n(p.daily_yield_kwh) !== null; }).map(function (p) { return [p.t, n(p.daily_yield_kwh)]; }) }
       ]
     }, false, true);
+    return inst;
+  }
+  function renderTrendChart() {
+    var el = byId('jyTrendChart');
+    var meta = byId('jyTrendMeta');
+    if (!el) return;
+    if (typeof echarts === 'undefined') { if (meta) meta.textContent = '图表库加载中…'; return; }
+    var pts = trendPts(trend);
+    chart = paintTrend(chart, el, pts);
+    if (meta) {
+      var peak = pts.reduce(function (m, p) { return Math.max(m, n(p.power_kw) || 0); }, 0);
+      var day = pts.reduce(function (m, p) { return Math.max(m, n(p.daily_yield_kwh) || 0); }, 0);
+      meta.textContent = pts.length
+        ? (pts.length + ' 点 · 峰值 ' + fmt(peak, 2) + ' kW' + (day ? (' · 单日最高 ' + fmt(day, 1) + ' 度') : ''))
+        : '暂无数据（接入后每 5 分钟累积一个点）';
+    }
+  }
+  function renderRevChart() {
+    var el = byId('jyRevChart');
+    if (!el || typeof echarts === 'undefined') return;
+    revChart = paintTrend(revChart, el, trendPts(revTrend));
+  }
+  function loadRevTrend() {
+    getJSON('trend?range=days7', { tries: 1, timeout: 8000 }).then(function (t) {
+      revTrend = (t && t.points) || null;
+    }).catch(function () { revTrend = null; }).then(function () {
+      renderInfoPage();
+    });
   }
   function applyChartTheme() {
-    if (!chart) return;
     var ax = isDay() ? '#3d5c5a' : '#6b9490';
-    chart.setOption({
-      xAxis: { axisLabel: { color: ax } },
-      yAxis: [{ axisLabel: { color: ax } }, { axisLabel: { color: ax } }]
+    [chart, revChart].forEach(function (c) {
+      if (!c) return;
+      c.setOption({
+        xAxis: { axisLabel: { color: ax } },
+        yAxis: [{ axisLabel: { color: ax } }, { axisLabel: { color: ax } }]
+      });
     });
   }
 
-  /* 详细信息页 */
-  function storRow(g) {
-    if (!stor) return '--（高特数据未连接）';
-    if (!g || g.missing) return '无数据';
-    var alm = (g.alarms || []).length;
-    return g.ccu + '（' + g.dev + '）· '
-      + (g.online ? ('在线 · 更新 ' + fmtTime(g.lastSeen)) : ('离线 · 最后 ' + fmtTime(g.lastSeen)))
-      + ' · ' + (g.clusters || []).length + ' 簇 / ' + (g.pcss || []).length + ' PCS'
-      + (alm ? (' · <span class="dt-alarm">告警 ' + alm + ' 条</span>') : ' · 无告警');
-  }
+  /* 详细信息页：版式与洙边「详细信息」一致（结算收益 / 上网与购电 / 近 7 日光伏发电 / 减排贡献 / 光伏发电 / 储能）；
+     数据用峻涌的：光伏 = 阳光云，关口与储能 = 高特 CCU；没有的来源（结算、关口日电量）一律 -- */
   function renderInfoPage() {
     var box = byId('jyInfoBody');
     if (!box) return;
-    var s = st();
-    var src = (payload
-      ? ('光伏 正常（阳光云 · 更新 ' + fmtTime(s.updated_at) + '，ps_id ' + (s.ps_id || '--') + '）')
-      : ('光伏 ' + (lastErr ? ('读不到（' + lastErr + '）') : '未接入')))
-      + '｜储能 ' + (storConn() ? '高特 CCU（浏览器 MQTT）' : '未连接');
-    box.innerHTML = '<div class="dt-body">'
-      + sec('sp12', '电站信息', srcTag(),
-        '<table class="mq-table"><tbody>'
-        + row('电站名称', STATION.name)
-        + row('装机容量 · 光伏', STATION.pvKwp + '（逆变器 ' + STATION.pvInv + ' · ' + STATION.pvNote + '）')
-        + row('装机容量 · 储能', STATION.stor)
-        + row('储能机组', STATION.groups.join('；') + '（共 5 台光储一体柜）')
-        + row('并网方式', STATION.grid)
-        + row('光伏电站编号', s.ps_id ? (s.ps_id + '（' + (s.cloud_name || '阳光云厂家站名') + '）') : '--')
-        + row('并网日期', s.install_date ? String(s.install_date).slice(0, 10) : '--')
-        + row('电站地址', s.location || '--')
-        + row('光伏设备', devices.length ? (devices.length + ' 台（8 台逆变器 + 8 个通信模块）') : '--')
-        + row('储能数据源', (storConn() ? '高特 CCU · MQTT 已连接' : '高特 CCU · <span class="dt-alarm">未连接</span>') + '（30 秒上报）')
-        + STOR_GROUPS.map(function (x, i) {
-          return row('储能 · ' + x.name, storRow((stor && stor.groups && stor.groups[i]) || {}));
-        }).join('')
-        + row('数据源', src)
-        + row('三维场景', '三群品字围合 + 中心铁塔；走线与工况判据同洙边（九条线贴地敷设）')
-        + '</tbody></table>'
-        + '<div class="jy-note">本页不放任何模拟数据：没接入的数据源一律显示 --。'
-        + '光伏为全站合计（阳光云），分机组光伏暂缺（显示 --）；储能按高特 CCU 分机组展示。'
-        + '6/7号柜 ↔ 一号/二号的对应关系待厂家确认。</div>')
+    var s = st(), S = storSum();
+    var co2 = s.total_kwh == null ? null : s.total_kwh * CO2_PER_KWH;
+    var coal = s.total_kwh == null ? null : s.total_kwh * COAL_PER_KWH;
+    var trees = co2 === null ? null : Math.round(co2 * TREE_PER_KG);
+
+    var revTiles = '<div class="gv3-flow">'
+      + gvTile('今日收益', '--', '元', '阳光云 + 储能 · 待结算源')
+      + gvTile('累计收益', '--', '元', '待结算源')
+      + gvTile('储能累计收益', '--', '元', '待结算源')
+      + gvTile('光伏累计收益', '--', '元', '待结算源')
+      + gvTile('储能度电收益', '--', '元/度', '待结算源')
       + '</div>';
+
+    var gridTiles = '<div class="gv3-flow">'
+      + gvTile('今日馈电（卖电）', '--', '度', '关口表 · 待日电量')
+      + gvTile('今日卖电收入', '--', '元', '待结算源')
+      + gvTile('累计馈电（卖电）', fmt(S.gridE2, 0), '度', '高特关口表 · 反向总有功')
+      + gvTile('今日取电（买电）', '--', '度', '关口表 · 待日电量')
+      + gvTile('今日买电支出', '--', '元', '待结算源')
+      + gvTile('累计取电（买电）', fmt(S.gridE1, 0), '度', '高特关口表 · 正向总有功')
+      + gvTile('今日储能充 / 放', fmt(S.dayChg, 1) + ' / ' + fmt(S.dayDis, 1), '度', '高特 CCU')
+      + gvTile('今日光伏发电', fmt(s.today_kwh, 1), '度', '阳光云')
+      + '</div>';
+
+    var pvTiles = '<div class="gv3-flow">'
+      + gvTile('实时功率', fmt(s.power_kw, 2), 'kW', '阳光云')
+      + gvTile('今日发电', fmt(s.today_kwh, 1), '度', '阳光云')
+      + gvTile('累计发电', fmt(s.total_kwh, 0), '度', '阳光云')
+      + gvTile('今日等效小时', fmt(s.hours, 2), 'h', '阳光云')
+      + '</div>';
+
+    var storTiles = '<div class="gv3-flow">'
+      + gvTile('实时功率', fmt(S.power, 1), 'kW', S.power == null ? '' : (S.power > .5 ? '放电' : S.power < -.5 ? '充电' : '待机'))
+      + gvTile('SOC', fmt(S.soc, 0), '%', '按柜数加权')
+      + gvTile('可充 / 可放', fnum(S.enChg, 0) + ' / ' + fnum(S.enDis, 0), 'kWh', '高特 CCU')
+      + gvTile('允许充 / 放', fnum(S.maxChg, 0) + ' / ' + fnum(S.maxDis, 0), 'kW', '高特 CCU')
+      + gvTile('在线', S.online + ' / ' + (S.count || 3), '台', storConn() ? 'MQTT 已连接' : 'MQTT 未连接')
+      + '</div>';
+
+    var green = '<div class="gv3-skv">' + [
+      ['CO₂ 减排', fmt(co2 === null ? null : co2 / 1000, 2) + ' 吨'],
+      ['节约标准煤', fmt(coal === null ? null : coal / 1000, 2) + ' 吨'],
+      ['等效植树', (trees === null ? '--' : trees) + ' 棵'],
+      ['口径', '阳光云累计 · 折算']
+    ].map(function (r) { return kvRow(r[0], r[1]); }).join('') + '</div>';
+
+    box.innerHTML = '<div class="dt-body">'
+      + sec('sp12', '结算收益', '本站暂无结算数据源', revTiles)
+      + sec('sp12', '上网与购电', '高特关口表 + 阳光云', gridTiles)
+      + '<div class="ov-grid">'
+      + sec('sp8', '近 7 日光伏发电', (revTrend && revTrend.length ? revTrend.length + ' 点 · 阳光云' : '--'),
+        '<div class="dt-chart" id="jyRevChart"></div>')
+      + sec('sp4', '减排贡献', '阳光云', green)
+      + sec('sp6', '光伏发电', '阳光云口径', pvTiles)
+      + sec('sp6', '储能', '高特 CCU 口径', storTiles)
+      + '</div>'
+      + '<div class="jy-note">版式与洙边「详细信息」一致；数据用峻涌的：光伏 = 阳光云，关口 / 储能 = 高特 CCU。'
+      + '本站没有日升云那套结算接口，也没有关口日电量（点表暂无日电能），收益与“今日”类数字一律 --（不编数字）。'
+      + '6/7号柜 ↔ 一号/二号的对应关系待厂家确认。</div>'
+      + '</div>';
+    renderRevChart();
   }
 
   function renderAlarm() {
@@ -837,9 +978,14 @@ window.JunyongUI = (function () {
     window.addEventListener('resize', function () {
       if (window.JunyongScene && byId('jyView') && !byId('jyView').classList.contains('hidden')) JunyongScene.resize();
       if (chart && tab === 'solar') chart.resize();
+      if (revChart && tab === 'revenue') revChart.resize();
     });
     new MutationObserver(function () {
-      setTimeout(function () { applyChartTheme(); if (chart && tab === 'solar') chart.resize(); }, 60);
+      setTimeout(function () {
+        applyChartTheme();
+        if (chart && tab === 'solar') chart.resize();
+        if (revChart && tab === 'revenue') revChart.resize();
+      }, 60);
     }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
   }
   return {

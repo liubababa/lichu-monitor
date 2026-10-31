@@ -27,10 +27,13 @@ window.PortalUI = (function () {
     },
     {
       kind: 'junyong', group: '山东峻涌光储电站', name: '山东峻涌光储电站', sn: '', psn: '',
-      tag: '光储 · 阳光云', note: '光伏 972.4kWp / 820kW；储能 625kW / 1305kWh'
+      tag: '光储 · 阳光云 + 高特 CCU', note: '光伏 972.4kWp；储能 625kW / 1305kWh'
     }
   ];
   const OTHER_GROUP = '其他电站';
+  /* 已登记电站自己的设备：峻涌的三台高特 CCU 归入「山东峻涌光储电站」，
+     不再在目录里重复出现在「其他电站（自动发现）」 */
+  const HIDDEN_DSN = ['R260616J0069', 'R250907J0037', 'R260812J0066'];
 
   /* ---------------- 工具 ---------------- */
   function devList() {
@@ -100,9 +103,9 @@ window.PortalUI = (function () {
     const dev = st.sn ? findDev(st.sn) : null;
     const online = !!(dev && dev.online);
     const state = st.kind === 'solar' ? 'on'
-      : (st.kind === 'junyong' ? 'na' : (!st.sn ? 'off' : (online ? 'on' : (dev ? 'off' : 'na'))));
+      : (st.kind === 'junyong' ? 'on' : (!st.sn ? 'off' : (online ? 'on' : (dev ? 'off' : 'na'))));
     const stateText = st.kind === 'solar' ? '已接入'
-      : (st.kind === 'junyong' ? '光伏已接入 · 储能待接入'
+      : (st.kind === 'junyong' ? '已接入'
         : (!st.sn ? '未接入' : (online ? '在线' : (dev ? '离线' : '未上报'))));
 
     const c = el('div', 'pt-card pt-' + state);
@@ -114,7 +117,7 @@ window.PortalUI = (function () {
     const stat = el('div', 'pt-cstat');
     stat.innerHTML = '<i class="pt-dot ' + state + '"></i>' + stateText
       + (st.kind === 'solar' ? '　数据源 阳光云（5 分钟）+ 日升云（1 分钟）'
-        : (st.kind === 'junyong' ? '　数据源 阳光云（5 分钟）+ 储能（待配置）' : ''));
+        : (st.kind === 'junyong' ? '　数据源 阳光云（5 分钟）+ 高特 CCU（30 秒）' : ''));
     c.appendChild(stat);
     const btn = el('button', 'mq-btn primary pt-enter', (hosted || st.sn) ? '进入监控' : '未接入');
     btn.disabled = !hosted && !st.sn;
@@ -155,15 +158,17 @@ window.PortalUI = (function () {
       box.appendChild(gw);
     });
 
-    /* 其他电站：自动发现、且不在上面登记表里的设备 */
+    /* 其他电站：自动发现、且不在上面登记表里的设备。
+       属于已登记电站自己的设备（如峻涌的三台 CCU）不在这里重复出现；
+       没有发现任何"其它"设备时，整组隐藏。 */
     const known = STATIONS.map(function (s) { return s.sn; }).filter(Boolean);
-    const others = devList().filter(function (d) { return known.indexOf(d.dsn) < 0; });
-    const gw = el('div', 'pt-group');
-    gw.appendChild(el('div', 'pt-gtitle', '<i></i>' + OTHER_GROUP + '<em>自动发现 ' + others.length + ' 台</em>'));
-    const cards = el('div', 'pt-cards');
-    if (!others.length) {
-      cards.appendChild(el('div', 'pt-empty', '还没有发现其它设备。<br/>连接 MQTT 后，正在上报的设备会自动出现在这里。'));
-    } else {
+    const others = devList().filter(function (d) {
+      return known.indexOf(d.dsn) < 0 && HIDDEN_DSN.indexOf(d.dsn) < 0;
+    });
+    if (others.length) {
+      const gw = el('div', 'pt-group');
+      gw.appendChild(el('div', 'pt-gtitle', '<i></i>' + OTHER_GROUP + '<em>自动发现 ' + others.length + ' 台</em>'));
+      const cards = el('div', 'pt-cards');
       others.forEach(function (d) {
         const c = el('div', 'pt-card pt-' + (d.online ? 'on' : 'off'));
         const head = el('div', 'pt-chead');
@@ -181,9 +186,9 @@ window.PortalUI = (function () {
         c.addEventListener('click', function () { enter({ sn: d.dsn, psn: d.psn, name: d.dsn }); });
         cards.appendChild(c);
       });
+      gw.appendChild(cards);
+      box.appendChild(gw);
     }
-    gw.appendChild(cards);
-    box.appendChild(gw);
 
     /* 页脚：上次选择 + 当前 MQTT 状态 */
     const sel = savedSel();
