@@ -283,6 +283,9 @@ button{font-family:inherit;cursor:pointer;background:none;border:none;color:inhe
 .tag3d span{display:flex;justify-content:space-between;gap:12px;font-size:10px;color:var(--dim);line-height:1.65}
 .tag3d span i{font-style:normal;font-family:var(--num);color:#d9fff6}
 .tag3d.hot{border-color:var(--teal);box-shadow:0 0 16px var(--acc-3)}
+/* 浮标本身可点开对应详情卡；标签渲染层是 pointer-events:none，这里只打开标签自己 */
+.tag3d.clickable{pointer-events:auto;cursor:pointer}
+.tag3d.clickable:hover{border-color:var(--teal);box-shadow:0 0 16px var(--acc-3)}
 /* 高特场景浮标：名称 / 数值 / 状态三行；数值用等宽数字（此前 <i><em> 没吃到样式，
    数字是浏览器默认斜体、状态还跟在数值后面挤在同一行） */
 .tag3d-gt>i{display:block;font-style:normal;font-family:var(--num);font-size:11px;color:#d9fff6;letter-spacing:.4px;margin-top:2px}

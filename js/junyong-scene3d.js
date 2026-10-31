@@ -161,6 +161,16 @@ window.JunyongScene = (function () {
     labelPairs.push({ obj: o, el: el });
     return el;
   }
+  /* 浮标可点：标签图层本身 pointer-events:none，这里把 .tag3d 单独打开，
+     点「储能柜 / 屋顶光伏 / 厂房 / 铁塔」直接开对应卡片，不用赌射线打到哪个模型 */
+  function bindLabel(el, key) {
+    if (!el) return;
+    el.classList.add('clickable');
+    el.addEventListener('click', function (e) {
+      e.preventDefault(); e.stopPropagation();
+      showCard(key);
+    });
+  }
   /* 浮标按相机距离缩放：HTML 浮标是固定像素大小，拉远后模型缩成一点、浮标还是原尺寸，
      就会糊成一片把设备全盖住。基准取"默认机位距离 = 100%"，随画幅自动跟着变 */
   var lblRef = 95, _lv = null;
@@ -544,6 +554,7 @@ window.JunyongScene = (function () {
     [modI, railI, legFI, legRI].forEach(function (o) {
       o.instanceMatrix.needsUpdate = true; o.castShadow = true; o.receiveShadow = true; g.add(o);
     });
+    g.userData.pvMesh = modI;          /* 供 makeUnit 挂「光伏详情」点击 key */
     g.add(box(rowW + .8, .04, 1.5, M.walk, 0, roofY + .02, 0));
     g.add(box(rowW + .6, .05, .34, M.tray, 0, roofY + .30, 0));
     g.add(box(rowW + .6, .09, .05, M.tray, 0, roofY + .345, -.17));
@@ -694,11 +705,15 @@ window.JunyongScene = (function () {
   function makeUnit(M, gi) {
     var T = T_(), n = GCAB[gi], span = (n - 1) * PITCH;
     var grp = new T.Group(); grp.userData.M = M;
-    grp.add(makeBuilding(M));
+    var bld = makeBuilding(M);
+    grp.add(bld);
+    /* 屋面组件单独挂「光伏详情」key；点屋面/光伏浮标都落到 pv{i}，不再落到整组卡 */
+    if (bld.userData.pvMesh) bld.userData.pvMesh.userData.cardKey = 'pv' + gi;
     var cabs = [];
     for (var k = 0; k < n; k++) {
       var c = makeCabinet(M);
       c.position.set(CABX - span / 2 + k * PITCH, 0, CABZ);
+      c.userData.cardKey = 'st' + gi;       /* 储能柜挂独立 key */
       grp.add(c); cabs.push({ x: c.position.x, z: CABZ, ref: c });
     }
     var east = cabs[cabs.length - 1], west = cabs[0];
@@ -885,18 +900,48 @@ window.JunyongScene = (function () {
   function refreshCards() {
     if (!activeCard) return;
     units.forEach(function (u, i) {
-      if ('g' + i !== activeCard) return;
       var d = data[i], c = cond(d);
-      setCard('g' + i, GN[i] + ' · ' + GCAB[i] + ' 台光储一体柜', [
-        ['光伏出力', num(d.pv, ' kW')],
-        ['储能功率', d.st == null ? '-- kW' : ((d.st > 0 ? '放电 ' : d.st < 0 ? '充电 ' : '待机 ') + Math.abs(d.st).toFixed(1) + ' kW')],
-        ['SOC', d.soc == null ? '-- %' : (+d.soc).toFixed(0) + ' %'],
-        ['负载', num(d.load, ' kW')],
-        ['关口表', d.grid == null ? '-- kW' : ((+d.grid >= 0 ? '取电 ' : '送电 ') + Math.abs(d.grid).toFixed(1) + ' kW')]
-      ], c.dataWarn ? ('数据矛盾：' + c.dataWarn)
+      var itsTxt = c.dataWarn ? '数据矛盾' : (c.its.length ? c.its.join('+') : '待机');
+      var condTxt = c.dataWarn ? ('数据矛盾：' + c.dataWarn)
         : (c.provChg ? '当前工况：1（暂按光伏充储能，储能数据未接入）'
           : (c.its.length ? '当前工况：' + c.its.join(' + ')
-            : ((c.hasPv || c.hasSt || c.hasGrid) ? '本群待机（数据已接入，当前无工况）' : '数据未接入'))));
+            : ((c.hasPv || c.hasSt || c.hasGrid) ? '本群待机（数据已接入，当前无工况）' : '数据未接入')));
+
+      /* 厂房：用电侧详情 */
+      if (activeCard === 'g' + i) {
+        setCard('g' + i, GB[i] + '（工厂用电）', [
+          ['当前工况', itsTxt],
+          ['光伏出力', num(d.pv, ' kW')],
+          ['储能功率', d.st == null ? '-- kW' : ((d.st > 0 ? '放电 ' : d.st < 0 ? '充电 ' : '待机 ') + Math.abs(d.st).toFixed(1) + ' kW')],
+          ['厂房负载', (c.hasGrid || c.hasPv || c.hasSt) ? num(c.loadEff, ' kW') : '-- kW'],
+          ['关口表', d.grid == null ? '-- kW' : ((+d.grid >= 0 ? '取电 ' : '送电 ') + Math.abs(d.grid).toFixed(1) + ' kW')],
+          ['SOC', d.soc == null ? '-- %' : (+d.soc).toFixed(0) + ' %']
+        ], condTxt);
+      }
+      /* 储能柜：功率 / SOC / 今日充放 / 可充可放 / 温度 / 单体 / 节数 */
+      if (activeCard === 'st' + i) {
+        setCard('st' + i, '储能柜 · ' + GCABN[i], [
+          ['储能功率', d.st == null ? '-- kW' : ((d.st > 0 ? '放电 ' : d.st < 0 ? '充电 ' : '待机 ') + Math.abs(d.st).toFixed(1) + ' kW')],
+          ['SOC', d.soc == null ? '-- %' : (+d.soc).toFixed(0) + ' %'],
+          ['今日充 / 放', num(d.chg, '') + ' / ' + num(d.dis, ' 度')],
+          ['可充 / 可放', num(d.enChg, '') + ' / ' + num(d.enDis, ' 度')],
+          ['平均温度', num(d.avgTemp, ' ℃')],
+          ['最高单体', d.maxCellV == null ? '-- V' : (+d.maxCellV).toFixed(3) + ' V'],
+          ['电池节数', num(d.cellSums, ' 节')],
+          ['柜数 / 在线', (d.cabinets || 1) + ' 柜 · ' + (d.online ? '在线' : '离线')]
+        ], d.st == null ? '数据未接入'
+          : ((d.st > .5 ? '放电中' : d.st < -.5 ? '充电中' : '待机') + ' · ' + (d.online ? '在线' : '离线')));
+      }
+      /* 屋顶光伏：实时功率 / 今日发电 / 全站 / 逆变器台数；不展示总装机容量 */
+      if (activeCard === 'pv' + i) {
+        setCard('pv' + i, '屋顶光伏阵列', [
+          ['本群实时功率', num(d.pv, ' kW')],
+          ['今日发电', d.pvToday == null ? '-- 度' : (+d.pvToday).toFixed(1) + ' 度'],
+          ['全站实时功率', stationPv.seen ? num(stationPv.kw, ' kW') : '-- kW'],
+          ['逆变器', d.pvCount == null ? '--' : (d.pvCount + ' 台')],
+          ['当前工况', itsTxt]
+        ], d.pvSeen ? ((+d.pv > .5) ? '发电中 · 本群出力' : '当前无出力') : '功率未上报');
+      }
     });
     if (activeCard === 'tower') {
       setCard('tower', '并网铁塔 · 10kV 上网线路', [
@@ -1058,7 +1103,12 @@ window.JunyongScene = (function () {
       /* 光伏标签挂屋面北沿并抬高：前排三号的屋面标签原来看起来压在南立面的厂房标签上 */
       u.tagPv = label('<b>屋顶光伏阵列</b><i>--kW</i><em>今日 -- 度</em>', 'tag3d-gt',
         p.x, roofY + 2.7, p.z - D2 / 2 - .8);
-      addCard('g' + i, p.x, roofY + 1.2, p.z);
+      bindLabel(u.tagBld, 'g' + i);        /* 厂房 → 用电详情 */
+      bindLabel(u.tagSt, 'st' + i);        /* 储能柜 → 储能详情 */
+      bindLabel(u.tagPv, 'pv' + i);        /* 屋顶光伏 → 光伏详情 */
+      addCard('g' + i, p.x, 4.6, p.z + D2 / 2 + 1.0);
+      addCard('st' + i, ccx, CAB.h + 1.15, ccz);
+      addCard('pv' + i, p.x, roofY + 1.3, p.z - D2 / 2 - .8);
       u.grp.userData.cardKey = 'g' + i;
       units.push(u);
       /* 落地阴影走世界坐标：一号群是 scale.x=-1 的镜像组，往里面塞平面会被翻转成背面 */
@@ -1080,6 +1130,7 @@ window.JunyongScene = (function () {
     addCard('tower', TWR_AT.x, TWRH - 1.8, TWR_AT.z);
     tower.tagEl = label('<b>并网铁塔</b><i>10kV 上网线路 · 三回</i><em>--</em>', 'tag3d-gt',
       TWR_AT.x, TWRH + .5, TWR_AT.z);
+    bindLabel(tower.tagEl, 'tower');
     xs.push(TWR_AT.x - 4.5, TWR_AT.x + 4.5); zs.push(TWR_AT.z - 4.5, TWR_AT.z + 4.5);
 
     /* 每群一根线上塔：贴地到塔位，再拉线上塔中央；三个进塔点不交叉 */

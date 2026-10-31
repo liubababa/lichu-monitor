@@ -1188,12 +1188,17 @@ window.JunyongUI = (function () {
         pv: pv && pv.kw != null ? pv.kw : null,
         pvSeen: !!(pv && pv.kw != null),
         pvToday: pv && pv.today != null ? pv.today : null,
+        pvCount: pv ? pv.n : null,
         st: g.power == null ? null : +g.power,
         soc: g.soc == null ? null : +g.soc,
         grid: g.gridP == null ? null : +g.gridP,
         load: null,
         chg: g.dayChg == null ? null : +g.dayChg,
-        dis: g.dayDis == null ? null : +g.dayDis
+        dis: g.dayDis == null ? null : +g.dayDis,
+        enChg: g.enChg, enDis: g.enDis,
+        avgTemp: g.avgTemp, maxCellV: g.maxCellV, cellSums: g.cellSums,
+        online: !!g.online, cabinets: STOR_GROUPS[i] ? STOR_GROUPS[i].cabinets : 1,
+        dev: STOR_GROUPS[i] ? STOR_GROUPS[i].dev : ''
       });
     }
     if (JunyongScene.setStationPv) {
