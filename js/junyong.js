@@ -785,6 +785,59 @@ window.JunyongUI = (function () {
     if (!boxes) return '';
     return '<div class="heat-wrap" style="grid-template-columns:repeat(auto-fit,minmax(320px,1fr))">' + boxes + '</div>';
   }
+  /* PCS 设备卡：每台一张，功率大字 + 方向条 + 三相电压柱 + 细分指标；
+     不再用 9 列宽表（数值和单位会挤在一起）。 */
+  function pcsCards(g) {
+    var list = g.pcss || [];
+    if (!list.length) return '<div class="gv3-empty">暂无 PCS 数据</div>';
+    var maxP = 250;
+    list.forEach(function (c) {
+      var p = n(c.vals && c.vals.ac_pow_p);
+      if (p !== null) maxP = Math.max(maxP, Math.abs(p));
+    });
+    function val(v, dec) { return v == null ? '--' : (+v).toFixed(dec); }
+    function metric(label, v, dec, unit) {
+      return '<div><span>' + label + '</span><b>' + val(v, dec) + (unit ? '<u>' + unit + '</u>' : '') + '</b></div>';
+    }
+    return '<div class="pcs-grid' + (list.length === 1 ? ' single' : '') + '">' + list.map(function (c, i) {
+      var v = c.vals || {};
+      var st = n(v.run_sta);
+      var cls = st === 2 ? 'fault' : st === 3 ? 'chg' : st === 4 ? 'dis' : st === 1 ? 'idle' : 'off';
+      var stTxt = st == null ? '--' : (PCS_ST[st] || ('状态' + st));
+      var p = n(v.ac_pow_p), q = n(v.ac_pow_q), s = n(v.ac_pow_s), pf = n(v.ac_pow_pf);
+      var f = n(v.grd_f), t = n(v.igbt_temp);
+      var ua = n(v.ac_uw_vol), ub = n(v.ac_vw_vol), uc = n(v.ac_wu_vol);
+      var avg = (ua != null && ub != null && uc != null) ? (ua + ub + uc) / 3 : null;
+      var unbal = (avg && avg !== 0) ? (Math.max(ua, ub, uc) - Math.min(ua, ub, uc)) / avg * 100 : null;
+      var pct = p == null ? 0 : Math.min(50, Math.abs(p) / maxP * 50);
+      var left = p == null || p >= 0 ? 50 : 50 - pct;
+      var pCls = p == null ? '' : (p > 0 ? 'dis' : p < 0 ? 'chg' : '');
+      function vbar(lab, x) {
+        var w = x == null ? 0 : Math.max(0, Math.min(100, (x - 210) / 40 * 100));
+        return '<div class="pcs-vrow"><span>' + lab + '</span>'
+          + '<div class="pcs-vtrack"><i style="width:' + w.toFixed(0) + '%"></i></div>'
+          + '<b>' + val(x, 1) + '<u>V</u></b></div>';
+      }
+      return '<div class="pcs-card ' + cls + '">'
+        + '<div class="pcs-head"><span class="pcs-id">PCS ' + (i + 1) + '</span>'
+        + '<span class="pcs-state">' + stTxt + '</span></div>'
+        + '<div class="pcs-pow ' + pCls + '"><b>' + val(p, 1) + '</b><u>kW</u><em>有功</em></div>'
+        + '<div class="pcs-pbar"><i class="zero"></i><i class="fill ' + pCls + '" style="left:'
+        + left.toFixed(1) + '%;width:' + pct.toFixed(1) + '%"></i></div>'
+        + '<div class="pcs-volt"><div class="pcs-vhead"><span>三相电压</span><b>'
+        + (avg == null ? '--' : avg.toFixed(1)) + '<u>V</u></b></div>'
+        + '<div class="pcs-vrows">' + vbar('U-W', ua) + vbar('V-W', ub) + vbar('W-U', uc) + '</div></div>'
+        + '<div class="pcs-kv">'
+        + metric('无功', q, 1, 'kvar')
+        + metric('视在', s, 1, 'kVA')
+        + metric('功率因数', pf, 2, '')
+        + metric('频率', f, 2, 'Hz')
+        + metric('IGBT温度', t, 0, '℃')
+        + metric('三相不平衡', unbal, 2, '%')
+        + '</div></div>';
+    }).join('') + '</div>';
+  }
+
   /* 机组头部：与旭日东明同版式（SOC 环 + 8 指标 + 4 徽章） */
   function groupHero(g) {
     return '<div class="gv3-hero">' + socRing(g.soc == null ? null : +g.soc)
@@ -796,21 +849,7 @@ window.JunyongUI = (function () {
     var cellBox = cellStrips(g, cellList);
     var cellCnt = cellList.length;
     var cellN = (cellList[0] && Array.isArray(cellList[0].vals.CelVol)) ? cellList[0].vals.CelVol.length : null;
-    var pcsRows = (g.pcss || []).map(function (c, i) {
-      var v = c.vals;
-      return '<tr><td>' + (i + 1) + '</td>'
-        + '<td>' + fnum(v.ac_pow_p, 1, ' kW') + '</td>'
-        + '<td>' + fnum(v.ac_pow_q, 1, ' kvar') + '</td>'
-        + '<td>' + fnum(v.ac_pow_s, 1, ' kVA') + '</td>'
-        + '<td>' + fnum(v.ac_pow_pf, 2, '') + '</td>'
-        + '<td>' + [v.ac_uw_vol, v.ac_vw_vol, v.ac_wu_vol].map(function (x) { return fnum(x, 1); }).join(' / ') + ' V</td>'
-        + '<td>' + fnum(v.grd_f, 2, ' Hz') + '</td>'
-        + '<td>' + fnum(v.igbt_temp, 0, '℃') + '</td>'
-        + '<td>' + (v.run_sta == null ? '--' : (PCS_ST[v.run_sta] || ('状态' + v.run_sta))) + '</td></tr>';
-    }).join('');
-    var pcsBox = pcsRows
-      ? '<table class="mq-table"><thead><tr><th>PCS</th><th>有功</th><th>无功</th><th>视在</th><th>功率因数</th><th>三相电压</th><th>频率</th><th>IGBT温度</th><th>状态</th></tr></thead><tbody>' + pcsRows + '</tbody></table>'
-      : '<div class="gv3-empty">暂无 PCS 数据</div>';
+    var pcsBox = pcsCards(g);
     var L = g.liquid || {}, F = g.fire || {}, D = g.drier || {};
     var aux = kvBox([
       ['液冷 · 回水 / 出水温度', fnum(L.liqinlet_water_tmp, 1, '') + ' / ' + fnum(L.liqhot_water_tmp, 1, ' ℃')],

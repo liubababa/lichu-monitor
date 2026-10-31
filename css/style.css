@@ -1626,6 +1626,71 @@ html[data-theme="day"] #slRight .side-handle{color:#0b8f76;background:linear-gra
 @keyframes jyflow-y{from{background-position:0 0}to{background-position:0 -200%}}
 html[data-theme="day"] .jy-batt-shell{background:rgba(15,150,130,.08)}
 html[data-theme="day"] .jy-batt>b{color:#123c3c}
+
+/* ---- PCS 设备卡（替代原 9 列宽表） ---- */
+.pcs-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px}
+.pcs-card{position:relative;min-width:0;padding:10px 12px 11px;border:1px solid var(--acc-2);background:var(--acc-1)}
+.pcs-card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:#4b6b70}
+.pcs-card.idle::before{background:#5f827c}
+.pcs-card.chg::before{background:#5ab0ff}
+.pcs-card.dis::before{background:var(--teal)}
+.pcs-card.fault::before{background:#ff6e50}
+.pcs-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.pcs-id{font-size:12px;color:#9adfd2;letter-spacing:1.2px}
+.pcs-state{font-size:10px;padding:2px 7px;border:1px solid var(--acc-2);border-radius:10px;color:var(--dim)}
+.pcs-card.chg .pcs-state{color:#8fd8ff;border-color:rgba(90,176,255,.4)}
+.pcs-card.dis .pcs-state{color:var(--teal);border-color:var(--acc-3)}
+.pcs-card.fault .pcs-state{color:#ff8a72;border-color:rgba(255,110,80,.4)}
+.pcs-pow{display:flex;align-items:baseline;gap:5px;margin-top:7px}
+.pcs-pow b{font-family:var(--num);font-size:30px;font-weight:600;line-height:1;letter-spacing:.5px;color:#eafffa}
+.pcs-pow u{font-size:11px;color:var(--dim);text-decoration:none}
+.pcs-pow em{font-style:normal;font-size:10px;color:var(--dim);letter-spacing:1px;margin-left:auto}
+.pcs-pow.chg b{color:#8fd8ff}
+.pcs-pow.dis b{color:var(--teal)}
+.pcs-pbar{position:relative;height:7px;margin-top:5px;border:1px solid var(--acc-2);background:rgba(2,10,12,.55);overflow:hidden}
+.pcs-pbar .zero{position:absolute;left:50%;top:-1px;bottom:-1px;width:1px;background:rgba(111,154,148,.5)}
+.pcs-pbar .fill{position:absolute;top:0;bottom:0;background:var(--teal);transition:left .5s var(--ease),width .5s var(--ease)}
+.pcs-pbar .fill.chg{background:#5ab0ff}
+.pcs-pbar .fill.dis{background:var(--teal)}
+.pcs-volt{margin-top:8px;padding-top:7px;border-top:1px dashed var(--acc-2)}
+.pcs-vhead{display:flex;align-items:baseline;justify-content:space-between;font-size:10px;color:var(--dim)}
+.pcs-vhead b{font-family:var(--num);font-weight:normal;color:#d9fff6}
+.pcs-vhead u{text-decoration:none;font-size:9px;color:var(--dim);margin-left:2px}
+.pcs-vrows{display:flex;flex-direction:column;gap:4px;margin-top:5px}
+.pcs-vrow{display:flex;align-items:center;gap:6px;height:16px}
+.pcs-vrow>span{width:26px;flex:none;font-size:9px;color:var(--dim);letter-spacing:.3px}
+.pcs-vtrack{position:relative;flex:1;height:6px;border:1px solid var(--acc-2);background:rgba(2,10,12,.5);overflow:hidden}
+.pcs-vtrack::after{content:"";position:absolute;left:50%;top:-1px;bottom:-1px;width:1px;background:rgba(111,154,148,.45)}
+.pcs-vtrack i{display:block;height:100%;background:linear-gradient(90deg,#0f7f6c,#2ee6c8);transition:width .5s var(--ease)}
+.pcs-vrow b{width:52px;flex:none;text-align:right;font-family:var(--num);font-size:10px;font-weight:normal;color:#d9fff6;white-space:nowrap}
+.pcs-vrow b u{text-decoration:none;font-size:9px;color:var(--dim);margin-left:2px}
+.pcs-kv{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px 8px;margin-top:8px;padding-top:7px;border-top:1px dashed var(--acc-2)}
+.pcs-kv div{min-width:0}
+.pcs-kv span{display:block;font-size:9px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pcs-kv b{font-family:var(--num);font-size:11px;font-weight:normal;white-space:nowrap;color:#d9fff6}
+.pcs-kv u{text-decoration:none;font-size:9px;color:var(--dim);margin-left:2px}
+/* 单台 PCS（一号 / 二号）：横向铺满半栏，功率在左、三相电压和指标在右，避免出现超长电压柱 */
+.pcs-grid.single .pcs-card{
+  display:grid;grid-template-columns:minmax(150px,.75fr) minmax(0,1.25fr);
+  grid-template-areas:"head volt" "pow volt" "bar kv";column-gap:20px;align-items:start;
+}
+.pcs-grid.single .pcs-head{grid-area:head}
+.pcs-grid.single .pcs-pow{grid-area:pow;margin-top:8px}
+.pcs-grid.single .pcs-pbar{grid-area:bar}
+.pcs-grid.single .pcs-volt{grid-area:volt;margin-top:0;padding-top:0;border-top:0}
+.pcs-grid.single .pcs-kv{grid-area:kv}
+@media (max-width:1180px){
+  .pcs-grid.single .pcs-card{display:block}
+  .pcs-grid.single .pcs-volt{margin-top:8px;padding-top:7px;border-top:1px dashed var(--acc-2)}
+}
+html[data-theme="day"] .pcs-card{background:rgba(255,255,255,.7)}
+html[data-theme="day"] .pcs-id{color:#0d7a66}
+html[data-theme="day"] .pcs-pow b,html[data-theme="day"] .pcs-vhead b,
+html[data-theme="day"] .pcs-v b,html[data-theme="day"] .pcs-kv b{color:#123c3c}
+html[data-theme="day"] .pcs-pbar,html[data-theme="day"] .pcs-vtrack{background:rgba(15,150,130,.1)}
+html[data-theme="day"] .pcs-vtrack i{background:linear-gradient(90deg,#0b7a64,#24c9ad)}
+html[data-theme="day"] .pcs-pow.chg b{color:#1668c4}
+html[data-theme="day"] .pcs-pow.dis b{color:#0b8f76}
 @keyframes jyflow{from{background-position:0 0}to{background-position:-200% 0}}
 html[data-theme="day"] .jy-grp,html[data-theme="day"] .jy-balance{background:rgba(255,255,255,.65)}
 html[data-theme="day"] .jy-grp-head,html[data-theme="day"] .jy-grp-head b,
