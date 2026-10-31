@@ -925,7 +925,7 @@ window.JunyongUI = (function () {
   function card(label, value, unit, sub, cls) {
     return '<div class="kpi ' + (cls || '') + '">'
       + '<div class="kpi-body">'
-      + '<div class="kpi-num' + (cls === 'hi' ? '' : ' sm') + '"><b>' + value + '</b>' + (unit ? '<u>' + unit + '</u>' : '') + '</div>'
+      + '<div class="kpi-num"><b>' + value + '</b>' + (unit ? '<u>' + unit + '</u>' : '') + '</div>'
       + '<div class="kpi-label">' + label + '</div>'
       + (sub ? '<div class="sl-ks">' + sub + '</div>' : '')
       + '</div></div>';
