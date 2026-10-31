@@ -1017,8 +1017,11 @@ html[data-theme="day"] .gl-lost{background:rgba(255,255,255,.9)}
 .pt-mqtt.on{color:var(--teal);border-color:var(--acc-3);box-shadow:0 0 10px var(--acc-2)}
 /* 站点分组：宽屏按列铺开（auto-fit 折叠空列，单站时卡片撑满所在分栏）；
    字号 / 间距随视口宽度放大，4K 大屏远看也清楚（1920 下与原尺寸基本一致） */
-.pt-body{flex:1;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:clamp(20px,1.5vw,44px);align-content:start;align-items:start}
-@media (max-width:1180px){.pt-body{grid-template-columns:1fr}}
+.pt-body{flex:1;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:clamp(20px,1.5vw,44px);align-content:space-between;align-items:start}
+@media (max-width:1180px){
+  .pt-body{grid-template-columns:1fr;align-content:start}
+  .pt-group.pt-auto{margin-top:clamp(20px,3vw,50px)}
+}
 .pt-group{margin-bottom:0}
 .pt-gtitle{display:flex;align-items:center;gap:9px;font-size:15px;color:var(--teal);letter-spacing:2px;margin-bottom:clamp(10px,.8vw,18px)}
 .pt-gtitle i{width:3px;height:14px;background:linear-gradient(180deg,var(--teal),var(--acc-1));display:block}
