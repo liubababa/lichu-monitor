@@ -89,7 +89,9 @@ window.GaoteScene3D = (function () {
     return mesh;
   }
 
-  /* 浮标按相机距离缩放：规则三站共用（ScenePreset.scaleLabelTo），这里只给本站的基准距离 */
+  /* 浮标按相机距离缩放：规则三站共用（ScenePreset.scaleLabelTo），这里只给本站的基准距离。
+     26 是本站调出来的小字档（机位实距约 83m，等于常年钳在 scaleLabelTo 的 .42 下限）：
+     别照峻涌那样把基准改成"机位实距"，那会让浮标大近一倍，堆 1 / 堆 2 横向压字（实测 22×43px） */
   const labelPairs = [];             // { obj, el, k }
   const LBL_REF = 26;                // 默认机位附近：浮标 100%
   let _lblV = null;
@@ -292,16 +294,32 @@ window.GaoteScene3D = (function () {
     return t;
   }
 
-  function addLabel(key, pos, cls) {
+  /* 浮标：版式与峻涌同一套 —— 创建就写三行 <b>名称</b><i>主数值</i><em>状态</em>，
+     没数据先占 --（原来创建时是空串，靠"空文本就整个不显示"藏起来，
+     结果数据到之前场上一个名字都没有） */
+  function addLabel(key, pos, cls, html, parent) {
     const wrap = document.createElement('div');
     const el = document.createElement('div');
-    el.className = cls || 'tag3d';
+    el.className = 'tag3d ' + (cls || 'tag3d-gt');
+    el.innerHTML = html || '<b>--</b><i>--</i><em>--</em>';
     wrap.appendChild(el);
     const o = new THREE.CSS2DObject(wrap);
     o.position.copy(pos);
-    (groups[key] || scene).add(o);
+    const own = parent || groups[key] || scene;
+    own.add(o);
     labelEls[key] = el;
-    labelPairs.push({ obj: o, el: el, key: key, owner: groups[key] || scene });       /* 供距离缩放 + 遮挡判断 */
+    labelPairs.push({ obj: o, el: el, key: key, owner: own });       /* 供距离缩放 + 遮挡判断 */
+    return el;
+  }
+  /* 浮标可点（同峻涌）：标签图层本身 pointer-events:none，这里把 .tag3d 单独打开，
+     点「储能堆 / 汇流柜 / 并网点 / 厂房」直接开对应卡片，不用赌射线打到哪个模型 */
+  function bindLabel(el, key) {
+    if (!el) return;
+    el.classList.add('clickable');
+    el.addEventListener('click', function (e) {
+      e.preventDefault(); e.stopPropagation();
+      showCard(key);
+    });
   }
   function addCard(key, pos) {
     const wrap = document.createElement('div');
@@ -316,16 +334,15 @@ window.GaoteScene3D = (function () {
     cardEls[key] = el;
   }
   function showCard(key) {
-    for (const k in cardEls) cardEls[k].style.display = 'none';
-    activeCardKey = key;
-    if (key && cardEls[key]) cardEls[key].style.display = '';
+    /* 同峻涌：藏/显统一交给 applyLabelVisibility，这里只定"当前开哪张"，
+       避免两处各写一遍 style.display 打架 */
+    activeCardKey = (key && cardEls[key]) ? key : null;
     applyLabelVisibility();
   }
   /* 浮标遮挡：浮标是 HTML 图层，天生盖在三维模型之上。这里从相机朝浮标锚点打一条射线，
      被别的设备/建筑挡住的浮标就藏掉（自己那一组的构件不算遮挡，否则浮标会被自己的柜子误挡）。
      每 6 帧算一次（约 12 次/秒），开销可以忽略 */
   const occluders = [];
-  const labelBlocked = {};
   let _occRay = null, _occV = null, _occDir = null, _occN = 0;
   function updateLabelOcclusion() {
     if (!labelPairs.length || !camera) return;
@@ -340,7 +357,6 @@ window.GaoteScene3D = (function () {
     let dirty = false;
     for (let i = 0; i < labelPairs.length; i++) {
       const it = labelPairs[i];
-      if (!it.key) continue;
       it.obj.getWorldPosition(_occV);
       const dist = _occV.distanceTo(camera.position);
       _occDir.copy(_occV).sub(camera.position).normalize();
@@ -354,23 +370,26 @@ window.GaoteScene3D = (function () {
         while (o) { if (o === it.owner) { own = true; break; } o = o.parent; }
         if (!own) { blocked = true; break; }
       }
-      if (blocked !== !!labelBlocked[it.key]) { labelBlocked[it.key] = blocked; dirty = true; }
+      if (blocked !== !!it.blocked) { it.blocked = blocked; dirty = true; }
     }
     if (dirty) applyLabelVisibility();
   }
 
+  /* 可见性统一走 obj.visible（同峻涌 / 洙边）：原来这里用 el.style.display，
+     和 scaleLabelTo 写的 transform / opacity 是两套，藏与显互相盖，卡片打开时容易漏藏 */
   function applyLabelVisibility() {
     /* 明细卡片打开时把所有浮标藏起来：浮标按 3D 位置投影，会压在卡片上（重叠很难看） */
     const cardOpen = !!activeCardKey;
-    for (const k in labelEls) {
+    for (let i = 0; i < labelPairs.length; i++) {
+      const it = labelPairs[i];
+      const k = it.key || '';
       const isStack = k.indexOf('stack') === 0;
       const idx = isStack ? parseInt(k.slice(5), 10) : -1;
-      /* 没内容的浮标不显示（否则会剩个空心框，看不出是什么） */
-      const empty = !labelEls[k].textContent.trim();
-      const hide = cardOpen || !labelsOn || empty || (isStack && idx >= stackN) || labelBlocked[k];
-      labelEls[k].style.display = hide ? 'none' : '';
+      /* 上报的堆数之外那几个是预建的空柜位，浮标不出现（否则场上多出没名目的"堆"） */
+      const hide = cardOpen || !labelsOn || it.blocked || (isStack && idx >= stackN);
+      if (it.obj.visible !== !hide) it.obj.visible = !hide;
     }
-    if (facLabelEl) facLabelEl.style.display = (labelsOn && !cardOpen && !labelBlocked.factory) ? '' : 'none';
+    for (const k in cardEls) cardEls[k].style.display = (k === activeCardKey) ? '' : 'none';
   }
 
   /* ---------------- 能量流 ---------------- */
@@ -514,7 +533,8 @@ window.GaoteScene3D = (function () {
     /* 相邻柜子的浮标错开高度 + 再往两侧让一点：光靠高度错开不够，
        在扁画布上「堆 1 / 堆 2」浮标仍会横向压住（实测重叠 15×51 px） */
     const si = parseInt(String(key).replace('stack', ''), 10) || 0;
-    addLabel(key, new THREE.Vector3(si % 2 ? 1.0 : -1.0, H + .6 + (si % 2) * .95, 0), 'tag3d tag3d-gt');
+    bindLabel(addLabel(key, new THREE.Vector3(si % 2 ? 1.0 : -1.0, H + .6 + (si % 2) * .95, 0),
+      'tag3d tag3d-gt', '<b>堆 ' + (si + 1) + '</b><i>--</i><em>--</em>'), key);
     addCard(key, new THREE.Vector3(0, H + .1, 0));
     return g;
   }
@@ -571,7 +591,8 @@ window.GaoteScene3D = (function () {
     groups.pcs = g;
     /* 这个柜子原来只挂卡片不挂浮标，场景里就成了唯一没名字的设备
        （用户问"前面那个像变压器的是啥"）——补上名称 + 实时功率 + 状态 */
-    addLabel('pcs', new THREE.Vector3(0, H + 1.05, 0), 'tag3d tag3d-gt');
+    bindLabel(addLabel('pcs', new THREE.Vector3(0, H + 1.05, 0), 'tag3d tag3d-gt',
+      '<b>汇流 / PCS</b><i>-- kW</i><em>--</em>'), 'pcs');
     addCard('pcs', new THREE.Vector3(0, H + .1, 0));
   }
 
@@ -713,8 +734,11 @@ window.GaoteScene3D = (function () {
     poleTag.rotation.y = Math.PI / 2;
     g.add(poleTag);
     /* 浮标钉在塔顶上方一点：相机拉近后（模型放大那次）浮标放太高会被场景顶部裁掉，
-       下移后各窗口尺寸下都可见，塔顶就是它的指认位置 */
-    addLabel('grid', new THREE.Vector3(0, hgt - .85, 0), 'tag3d tag3d-gt');
+       下移后各窗口尺寸下都可见，塔顶就是它的指认位置。
+       版式同峻涌铁塔：名称 / 线路说明 / 关口实时值（原来只有两行、且点它没卡可开） */
+    bindLabel(addLabel('grid', new THREE.Vector3(0, hgt - .85, 0), 'tag3d tag3d-gt',
+      '<b>并网点</b><i>10kV 上网线路</i><em>--</em>'), 'grid');
+    addCard('grid', new THREE.Vector3(0, hgt - 3.7, 0));
   }
 
   /* ---------------- 厂房（工厂用电负荷：放电时给厂房供电） ---------------- */
@@ -1086,15 +1110,11 @@ window.GaoteScene3D = (function () {
     g.add(box(.12, .86, 2.36, jbInner, -(W / 2 + .36), 1.45, jbZ));
     g.add(box(.06, .1, 2.7, std(0xb8c3c4, { roughness: .5, metalness: .4 }), -(W / 2 + .2), 2.06, jbZ));  /* 箱顶小檐（夜里也认得出是个进线箱） */
 
-    const wrap = document.createElement('div');
-    const el = document.createElement('div');
-    el.className = 'tag3d tag3d-gt';
-    wrap.appendChild(el);
-    const o = new THREE.CSS2DObject(wrap);
-    o.position.set(0, top + H + .8, 0);
-    g.add(o);
-    facLabelEl = el;
-    labelPairs.push({ obj: o, el: el });       /* 厂房标签也要跟着相机距离缩放 */
+    /* 厂房浮标：原来这段是手搓的（不走 addLabel），所以 labelPairs 里没带 key，
+       遮挡判断一句 `if (!it.key) continue` 就把它永久跳过了 —— 收编进 helper，
+       父节点显式传 g（groups.factory 要到下面才赋值） */
+    facLabelEl = bindLabel(addLabel('factory', new THREE.Vector3(0, top + H + .8, 0),
+      'tag3d tag3d-gt', '<b>厂房（工厂用电）</b><i>受电 -- kW</i><em>--</em>', g), 'factory');
 
     g.position.set(fx, 0, fz);
     g.userData.key = 'factory';          // 点厂房可展开明细卡
@@ -1390,7 +1410,9 @@ window.GaoteScene3D = (function () {
     if (!el) return;
     el.querySelector('.c-head span').textContent = title;
     const box = el.querySelector('.c-rows');
-    box.innerHTML = rows.map(function (r) { return '<div class="c-row"><span>' + r[0] + '</span><b>' + r[1] + '</b></div>'; }).join('');
+    /* 数值列用 <i>（同峻涌 / 洙边）：css 里 .c-row i 才有等宽数字字体，
+       原来写 <b> 没样式，卡片里的数字对不齐 */
+    box.innerHTML = rows.map(function (r) { return '<div class="c-row"><span>' + r[0] + '</span><i>' + r[1] + '</i></div>'; }).join('');
     const st = el.querySelector('.c-status');
     if (status) { st.style.display = ''; st.textContent = status; } else { st.style.display = 'none'; }
   }
@@ -1554,13 +1576,20 @@ window.GaoteScene3D = (function () {
     }
     const gl = labelEls.grid;
     if (gl) {
-      /* 电表总有功：正=从电网取电、负=往电网送电（和光纹方向同一口径）。
-         原来只显示带符号的数字，正负不直观——直接写"取电 / 馈电"，跟洙边铁塔浮标一致 */
+      /* 版式对齐峻涌 / 洙边铁塔：名称 / 线路说明 / 实时值（原来把数值写在第二行、没有第三行）。
+         电表总有功：正=从电网取电、负=往电网送电（和光纹方向同一口径） */
       const gpv = GaoteService.val('meter-lems-antireflux', 'meter_tot_p');
       const gnum = (gpv === null || gpv === undefined) ? null : Number(gpv);
-      gl.innerHTML = '<b>并网点</b><i>' + (gnum === null ? '--' : (Math.abs(gnum) > .5
+      const gqv = GaoteService.val('meter-lems-antireflux', 'meter_tot_q');
+      const gtxt = gnum === null ? '--' : (Math.abs(gnum) > .5
         ? (gnum > 0 ? '取电 ' + gnum.toFixed(1) + ' kW' : '馈电 ' + Math.abs(gnum).toFixed(1) + ' kW')
-        : '无交换')) + '</i>';
+        : '无交换');
+      gl.innerHTML = '<b>并网点</b><i>10kV 上网线路</i><em>' + gtxt + '</em>';
+      setCard('grid', '并网点 · 10kV 上网线路', [
+        ['关口有功', f(gnum, 1, ' kW')],
+        ['关口无功', f((gqv === null || gqv === undefined) ? null : Number(gqv), 1, ' kVar')],
+        ['数据点', 'lems 反送电表 meter_tot_p']
+      ], gnum === null ? '' : gtxt);
     }
 
     /* 供电工况（现场三种）：
@@ -1612,7 +1641,8 @@ window.GaoteScene3D = (function () {
       const facKw = facOn ? emuP : (mv === null ? null : Math.max(0, mv - (chgNow ? Math.abs(pNum) : 0)));
       facLabelEl.innerHTML = '<b>厂房（工厂用电）</b><i>受电 '
         + (facKw === null ? '-- kW' : f(facKw, 1, ' kW')) + '</i>'
-        + (powerMode === '—' ? '' : '<em>' + powerMode + ' ' + powerModeTxt + '</em>');
+        /* 第三行恒在（同峻涌厂房浮标）：原来没工况时整行不输出，标签高度会跳一下 */
+        + '<em>' + (powerMode === '—' ? (mv === null ? '--' : '电网供电') : powerMode + ' ' + powerModeTxt) + '</em>';
     }
     if (cardEls.factory) setCard('factory', '厂房（工厂用电）', [
       ['当前工况', powerMode + ' ' + powerModeTxt],

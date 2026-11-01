@@ -53,8 +53,7 @@ window.SolarScene = (function () {
   let camHome = null;                                /* 默认机位（按画布宽高比算好后存下来，重置视角复用） */
   const flows = [];                 // 电流光纹：{ map, tubeMat, kind, on, speed }
   let flowSpd = .25;                // 全站统一光纹流速（updateEnergyFlows 里按"储能/关口参考功率"算）
-  const labelObjs = [];             // 浮标对象（点开明细卡时统一藏起来）
-  const labelPairs = [];            // { obj, el } 供按相机距离缩放浮标
+  const labelPairs = [];            // { obj, el } 浮标：缩放 / 遮挡 / 显隐都看它
   const cards = {};                 // 设备明细卡：key -> .card3d 元素
   let activeCard = null;
   const clock = { last: 0 };
@@ -177,9 +176,18 @@ window.SolarScene = (function () {
     const o = new THREE.CSS2DObject(wrap);
     o.position.set(x, y, z);
     root.add(o);
-    labelObjs.push(o);
-    labelPairs.push({ obj: o, el: el });       /* 供按距离缩放用 */
+    labelPairs.push({ obj: o, el: el });       /* 供按距离缩放 + 遮挡 + 显隐用 */
     return el;
+  }
+  /* 浮标可点（同峻涌）：标签图层本身 pointer-events:none，这里把 .tag3d 单独打开，
+     点「卫生院 / 储能柜 / 屋顶光伏 / 并网铁塔」直接开对应卡片，不用赌射线打到哪个模型 */
+  function bindLabel(el, key) {
+    if (!el) return;
+    el.classList.add('clickable');
+    el.addEventListener('click', function (e) {
+      e.preventDefault(); e.stopPropagation();
+      showCard(key);
+    });
   }
   /* 设备明细卡（沿用高特/莒南场景的 .card3d 版式）：点设备弹出，内容取实时值 */
   function addCard(key, x, y, z) {
@@ -663,7 +671,7 @@ window.SolarScene = (function () {
     });
     /* 卫生院浮标：版式与旭日东明那栋「厂房（工厂用电）」一致——名称 / 受电功率 / 供电工况。
        挂在入口雨棚上方、贴着自己这栋楼（不再飘在屋面上空），和屋顶阵列浮标上下分开、互不压 */
-    hospLabelEl = label('<b>卫生院（医院用电）</b><i>受电 -- kW</i><em>--</em>', 'tag3d-gt', 0, H2 - .15, D2 / 2 + 1.4);
+    hospLabelEl = bindLabel(label('<b>卫生院（医院用电）</b><i>受电 -- kW</i><em>--</em>', 'tag3d-gt', 0, H2 - .15, D2 / 2 + 1.4), 'hosp');
     addCard('hosp', 0, H2 + 1.0, D2 / 2 + .8);
   }
 
@@ -823,7 +831,7 @@ window.SolarScene = (function () {
     cabGlow.position.y = .22;
     g.add(cabGlow);
     root.add(g);
-    cabLabelEl = label('<b>储能柜 · 光储一体</b><i>-- kW</i><em>--</em>', 'tag3d-gt', CAB_X, CAB_H + 1.4, CAB_Z);
+    cabLabelEl = bindLabel(label('<b>储能柜 · 光储一体</b><i>-- kW</i><em>--</em>', 'tag3d-gt', CAB_X, CAB_H + 1.4, CAB_Z), 'storage');
     addCard('storage', CAB_X, CAB_H + 1.2, CAB_Z);
   }
 
@@ -971,7 +979,7 @@ window.SolarScene = (function () {
     poleTag.rotation.y = Math.PI / 2;
     g.add(poleTag);
     root.add(g);
-    twrLabelEl = label('<b>并网铁塔</b><i>10kV 上网线路</i><em>--</em>', 'tag3d-gt', TWR_X, TWR_H - .6, TWR_Z);
+    twrLabelEl = bindLabel(label('<b>并网铁塔</b><i>10kV 上网线路</i><em>--</em>', 'tag3d-gt', TWR_X, TWR_H - .6, TWR_Z), 'tower');
     addCard('tower', TWR_X, TWR_H - 1.8, TWR_Z);
   }
   function buildEquipment() {
@@ -1145,6 +1153,8 @@ window.SolarScene = (function () {
        两层小楼（屋顶光伏阵列）」从左到右完整收进画面，重置视角也回这个位 */
     camHome = fitStory();
     camera.position.copy(camHome.pos);
+    /* 浮标缩放基准跟着这个机位实距走（build 每次换主题都会重算，画幅变了也重算） */
+    lblRef = camHome.pos.distanceTo(camHome.tgt) * .72;
 
     renderer = new T.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
@@ -1397,7 +1407,9 @@ window.SolarScene = (function () {
     root.add(rainInst);
 
     /* ---------- 场景浮标 ---------- */
-    arrLabelEl = label('<b>屋顶光伏阵列</b><i>-- kW</i><em>装机 110.16 kWp</em>', 'tag3d-gt', 0, roofY + 2.0, 0);
+    /* 第三行先占「今日 -- 度」（与实时版式一致）：原来这里写死的"装机 110.16 kWp"
+       会在数据到达前显示成状态行的样子，第一次刷新后就被今日电量盖掉 */
+    arrLabelEl = bindLabel(label('<b>屋顶光伏阵列</b><i>-- kW</i><em>今日 -- 度</em>', 'tag3d-gt', 0, roofY + 2.0, 0), 'array');
     /* 站名牌（"洙边卫生院"）不挂了：楼在那、阵列浮标已经点出这是哪一站 */
 
     /* 后期处理：MSAA + 泛光（只让日光、电流光纹这类高亮点发光）+ 暗角冷调
@@ -1655,8 +1667,10 @@ window.SolarScene = (function () {
   }
 
   /* 浮标按相机距离缩放：HTML 浮标固定像素大小，拉远后模型缩成一点、浮标还是原尺寸，
-     就会糊成一片。按"默认机位距离 = 72%"算缩放（站点默认机位约 58m），远处再淡出 */
-  const LBL_REF = 42;                // 默认机位附近：浮标 72%（原来 48 → 100%，太大挡视线）
+     就会糊成一片。基准 = 默认机位实距 × .72（本站刻意比"100%"再小一档，
+     原来按 100% 太大挡视线），跟着画幅走：4K 屏 / 右栏挤窄画布时机位会退远，
+     写死 42 会让浮标相对模型忽大忽小（同峻涌：lblRef 跟默认机位） */
+  let lblRef = 42;
   let _lblV = null;
   function scaleLabels() {
     if (!labelPairs.length || !camera) return;
@@ -1666,7 +1680,7 @@ window.SolarScene = (function () {
       it.obj.getWorldPosition(_lblV);
       /* 缩放规则三站共用（ScenePreset.scaleLabelTo）：变化小于门槛就不写样式，
          拖动时每帧改 CSS 也要重排，是顿挫的来源 */
-      SP.scaleLabelTo(it, camera.position.distanceTo(_lblV), LBL_REF);
+      SP.scaleLabelTo(it, camera.position.distanceTo(_lblV), lblRef);
     }
   }
 
