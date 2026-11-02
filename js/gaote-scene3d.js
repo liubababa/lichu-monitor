@@ -89,11 +89,12 @@ window.GaoteScene3D = (function () {
     return mesh;
   }
 
-  /* 浮标按相机距离缩放：规则三站共用（ScenePreset.scaleLabelTo），这里只给本站的基准距离。
-     26 是本站调出来的小字档（机位实距约 83m，等于常年钳在 scaleLabelTo 的 .42 下限）：
-     别照峻涌那样把基准改成"机位实距"，那会让浮标大近一倍，堆 1 / 堆 2 横向压字（实测 22×43px） */
+  /* 浮标按相机距离缩放：规则三站共用（ScenePreset.scaleLabelTo），基准跟默认机位实距走（同峻涌）。
+     2026-11-02 改掉写死的 26：机位实距约 83m，26 会把系数钳在下限 .42，共用规则里
+     opacity 跟着掉到 .35 —— 浮标看着像毛玻璃、字也小得跟另两站不一样。
+     原先拿它压"堆 1 / 堆 2 横向压字"，那个问题改由 3D 错位解决（见 buildStack 的让位量）。 */
   const labelPairs = [];             // { obj, el, k }
-  const LBL_REF = 26;                // 默认机位附近：浮标 100%
+  let lblRef = 26;                   // 默认机位附近：浮标 100%
   let _lblV = null;
   function scaleLabels() {
     if (!labelPairs.length || !camera) return;
@@ -101,7 +102,7 @@ window.GaoteScene3D = (function () {
     for (let i = 0; i < labelPairs.length; i++) {
       const it = labelPairs[i];
       it.obj.getWorldPosition(_lblV);
-      window.ScenePreset.scaleLabelTo(it, camera.position.distanceTo(_lblV), LBL_REF);
+      window.ScenePreset.scaleLabelTo(it, camera.position.distanceTo(_lblV), lblRef);
     }
   }
 
@@ -219,9 +220,9 @@ window.GaoteScene3D = (function () {
       warn: 'rgba(224,148,16,.55)', sideBg: '#e4e9e9', sideSeam: 'rgba(104,128,130,.26)',
       sideEdge: 'rgba(104,128,130,.34)', sideVent: 'rgba(104,128,130,.30)', pcsBg: '#eaeef0',
       pcsPanel: 'rgba(202,212,214,.95)', pcsVent: 'rgba(104,128,130,.30)', pcsFoot: 'rgba(104,128,130,.16)',
-      pcsWarn: 'rgba(224,148,16,.50)', facBg: '#eaeeee', facSeam: 'rgba(104,128,130,.22)',
-      winFill: 'rgba(126,196,226,.50)', winLine: 'rgba(80,116,124,.45)', facDoor: 'rgba(184,193,195,.95)',
-      facDoorLine: 'rgba(104,128,130,.50)', facSlat: 'rgba(104,128,130,.25)', facWarn: 'rgba(224,148,16,.35)'
+      pcsWarn: 'rgba(224,148,16,.50)', facBg: '#39464c', facSeam: 'rgba(120,150,158,.16)',
+      winFill: 'rgba(126,196,226,.50)', winLine: 'rgba(80,116,124,.45)', facDoor: 'rgba(30,40,46,.95)',
+      facDoorLine: 'rgba(120,150,158,.50)', facSlat: 'rgba(120,150,158,.25)', facWarn: 'rgba(224,148,16,.35)'
     }
   };
 
@@ -533,7 +534,11 @@ window.GaoteScene3D = (function () {
     /* 相邻柜子的浮标错开高度 + 再往两侧让一点：光靠高度错开不够，
        在扁画布上「堆 1 / 堆 2」浮标仍会横向压住（实测重叠 15×51 px） */
     const si = parseInt(String(key).replace('stack', ''), 10) || 0;
-    bindLabel(addLabel(key, new THREE.Vector3(si % 2 ? 1.0 : -1.0, H + .6 + (si % 2) * .95, 0),
+    /* 相邻两堆的浮标错位：横向让 2.4m + 纵向再高一档。
+       2026-11-02 从 ±1.0/.95 加大 —— 那天把浮标基准改成"跟默认机位"（原来钳在下限，
+       字小且不透明），字放大一倍后 ±1.0 就压字了（实测 22×43px）。柜间距 5.2m，
+       让 2.4m 落两柜正中，谁都不贴谁。 */
+    bindLabel(addLabel(key, new THREE.Vector3(si % 2 ? 2.4 : -2.4, H + .6 + (si % 2) * .95, 0),
       'tag3d tag3d-gt', '<b>储能堆 · ' + (si + 1) + '号</b><i>-- kW</i><em>--</em>'), key);
     addCard(key, new THREE.Vector3(0, H + .1, 0));
     return g;
@@ -773,12 +778,12 @@ window.GaoteScene3D = (function () {
     const lzEnd = D / 2 + .11;                       /* 附房已删：左侧腰线/窗带通长到前角 */
 
     g.add(rbox(W + .7, top, D + .7, M.dark, 0, top / 2, 0, .12));                                  // 基座（倒角）
-    /* 两层厂房（参考图：现代工业风 —— 白色主墙 + 灰色分段 + 竖向长条窗 + 平顶，
-       夜里窗户随"用电"发光，就是参考图那种暖光 + 黑剪影的效果） */
-    const wallMat = regMat(std(0xd7dbdc, { roughness: .72, metalness: .12 }),
-      { color: 0x9aa3a5 }, { color: 0xe8ecee });                                              // 主墙：白
-    const trimMat = regMat(std(0x6b7476, { roughness: .6, metalness: .3 }),
-      { color: 0x4a5457 }, { color: 0x8d9598 });                                              // 灰带 / 窗框
+    /* 两层厂房：黑灰壳体 + 青灰描边 + 暖窗剪影（2026-11-02 用户要求改科技感配色，
+       跟峻涌 / 洙边同一组值；原来是白墙，夜里在暗景里过曝） */
+    const wallMat = regMat(std(0x22333c, { roughness: .72, metalness: .12 }),
+      { color: 0x22333c }, { color: 0x515f66 });                                              // 主墙：深炭灰
+    const trimMat = regMat(std(0x2c4048, { roughness: .6, metalness: .3 }),
+      { color: 0x2c4048 }, { color: 0x6b7a80 });                                              // 灰带 / 窗框
     const bandMat0 = regMat(std(0x232a2d, { roughness: .5, metalness: .35 }),
       { color: 0x1b2225 }, { color: 0x2c3438 });                                              // 深色：基座与窗带
     const hall = new THREE.Mesh(new THREE.BoxGeometry(W, H, D), [wallMat, wallMat, trimMat, wallMat, wallMat, wallMat]);
@@ -1938,6 +1943,7 @@ window.GaoteScene3D = (function () {
     const camLen = fitDistance(camTgt, camDir, fitPts, w / h);
     camera.position.copy(camTgt).add(camDir.multiplyScalar(camLen));
     camHome = { pos: camera.position.clone(), tgt: camTgt.clone() };
+    lblRef = camLen;                 /* 默认机位 = 浮标 100%，画幅变了跟着变（同峻涌） */
 
     renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));

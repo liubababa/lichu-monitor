@@ -79,7 +79,7 @@ window.JunyongScene = (function () {
       steel: 0x46565d, dark: 0x1b272c, top: 0x2b3a42, pad: 0x2a3a40, frame: 0x5a6a70,
       leg: 0x6d8b93, brace: 0x54737b, arm: 0x2ee6c8, ins: 0xd8e6e4,
       wallTop: 0x22333c, wallBot: 0x0d1519, trim: 0x2c4048, base: 0x1b2830, par: 0x1f2f38,
-      roofLine: 0x2ee6c8, roofLineO: .72, winC: 0x0e1a1f, winE: 0xeef4f2, winI: .58,
+      wallTex: '#1c262e', wallSeam: 'rgba(46,230,200,.07)',      roofLine: 0x2ee6c8, roofLineO: .72, winC: 0x0e1a1f, winE: 0xeef4f2, winI: .58,
       doorFrame: 0x22333c, door: 0x14262e, doorLight: 0x4e4b40, headGlass: 0x16333c,
       aw: 0x1c2a31, awPost: 0x18242a, step: 0x1a252b, ac: 0x26343b,
       rail: 0x55666e, legP: 0x46565d, tray: 0x3d4d55, walk: 0x26343b,
@@ -92,7 +92,8 @@ window.JunyongScene = (function () {
       key: SP.ENV.day.lights.key, keyRad: .22, hemi: SP.ENV.day.lights.hemi, fill: SP.ENV.day.lights.fill,
       steel: 0xc6ccce, dark: 0x3c4a50, top: 0xd6dbdc, pad: 0x9aa3a6, frame: 0xb9c1c3,
       leg: 0x93a3a8, brace: 0x7d8f94, arm: 0x18b39a, ins: 0xf2f6f5,
-      wallTop: 0xbcc0b7, wallBot: 0x545c58, trim: 0x8d9598, base: 0x515b5e, par: 0xb3b8ad,
+      wallTop: 0x515f66, wallBot: 0x2a353a, trim: 0x6b7a80, base: 0x414d53, par: 0x5a686e,
+      wallTex: '#39464c', wallSeam: 'rgba(120,150,158,.16)',
       roofLine: 0x0f9682, roofLineO: .4, winC: 0x20262a, winE: 0xfff3e2, winI: .16,
       doorFrame: 0xcfd6d2, door: 0x31505c, doorLight: 0x8e8a7e, headGlass: 0xbcd6dd,
       aw: 0xc3c8c2, awPost: 0xadb2ab, step: 0xaaafa6, ac: 0xdfe4e2,
@@ -245,10 +246,11 @@ window.JunyongScene = (function () {
   }
 
   /* ---------------- 贴图（逐条同洙边） ---------------- */
-  function wallTex() {
+  function wallTex(t) {
+    const th = THEMES[t || theme] || THEMES.night;
     return tex(function (g, w, h) {
-      g.fillStyle = '#dfe3e3'; g.fillRect(0, 0, w, h);
-      g.fillStyle = 'rgba(120,138,140,.10)'; g.fillRect(0, 0, w, 10);
+      g.fillStyle = th.wallTex; g.fillRect(0, 0, w, h);
+      g.fillStyle = th.wallSeam; g.fillRect(0, 0, w, 10);
     }, 512, 256);
   }
   /* 地面 / 场坪：三站同一份生成器。一块贴图 = 12m（3 块 4m 板 + 板缝），
@@ -411,7 +413,9 @@ window.JunyongScene = (function () {
       top: std(th.top, { rough: .6, metal: .3 }),
       pad: std(th.pad, { rough: .92, metal: .05 }),
       box: std(0x232d33, { rough: .7, metal: .3 }),
-      wall: new T.MeshStandardMaterial({ map: wallTex(), roughness: .78, metalness: .1, envMapIntensity: night ? .3 : .16 }),
+      /* 壳体色跟主题走（2026-11-02 黑灰科技感）：原来两个主题共用同一张白墙贴图，
+         夜里三栋白壳在暗景里过曝，跟洙边 / 东明摆一起最扎眼 */
+      wall: new T.MeshStandardMaterial({ map: wallTex(theme), roughness: .78, metalness: .1, envMapIntensity: night ? .3 : .22 }),
       wallTop: std(th.wallTop, { rough: .92, env: night ? .26 : .14 }),
       wallBot: std(th.wallBot, { rough: .95, env: .12 }),
       trim: std(th.trim, { rough: .62, metal: .3 }),

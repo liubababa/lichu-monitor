@@ -82,7 +82,10 @@ window.SolarScene = (function () {
       },
       sweep: SP.ENV.night.sweep,
       cloud: 0x22343c,
-      particle: { color: 0x2ee6c8, opacity: .34 }
+      particle: { color: 0x2ee6c8, opacity: .34 },
+      /* 建筑壳体色（2026-11-02 改黑灰科技感；三站同一组值，别各调一套） */
+      wall: '#1c262e', wallSeam: 'rgba(46,230,200,.07)', wallTop: 0x22333c, wallBot: 0x0d1519,
+      trim: 0x2c4048, base: 0x1b2830, par: 0x1f2f38, winI: .5
     },
     day: {
       sky: [[0, '#2f74b8'], [.45, '#5fa6d8'], [.62, '#9ccbe4'], [.78, '#cfe2ec'], [1, '#dbe9f0']],
@@ -94,7 +97,9 @@ window.SolarScene = (function () {
       },
       sweep: SP.ENV.day.sweep,
       cloud: 0xffffff,
-      particle: { color: 0x0f9e86, opacity: .16 }
+      particle: { color: 0x0f9e86, opacity: .16 },
+      wall: '#39464c', wallSeam: 'rgba(120,150,158,.16)', wallTop: 0x515f66, wallBot: 0x2a353a,
+      trim: 0x6b7a80, base: 0x414d53, par: 0x5a686e, winI: .12
     }
   };
   /* 电流光纹配色（全站统一口径，按"谁在供电"上色）：光伏=黄（ac / sell 同色）、电网=蓝（buy）、
@@ -370,11 +375,12 @@ window.SolarScene = (function () {
      窗、门单独做几何体，这样夜里窗户能发光、近景经得起看 */
   function wallTexture(t) {
     const night = (t || theme) === 'night';
+    const P = THEMES[night ? 'night' : 'day'];
     return tex(function (g, w, h) {
-      g.fillStyle = night ? '#1e2f38' : '#dfe3e3'; g.fillRect(0, 0, w, h);
+      g.fillStyle = P.wall; g.fillRect(0, 0, w, h);
       /* 平墙不留分缝、也不留勒脚：贴图会横向平铺，画在贴图里的勒脚带每平铺一次
          就多出一道竖缝（视觉模型两次都读成"分格挂板"）。勒脚改由基座几何体承担 */
-      g.fillStyle = night ? 'rgba(46,230,200,.05)' : 'rgba(120,138,140,.10)'; g.fillRect(0, 0, w, 10);
+      g.fillStyle = P.wallSeam; g.fillRect(0, 0, w, 10);
     }, 512, 256);
   }
   /* 水泥地坪（按白天新设计的 Demo 改：原来是发光网格地台，现在铺成真水泥地）
@@ -548,15 +554,17 @@ window.SolarScene = (function () {
   let winMat = null, hospLabelEl = null;
   function buildBuilding() {
     const T = THREE_();
-    /* 外立面统一按旭日东明那套（现场实况：白色厂房、夜里也是白墙 + 暖窗光）：
-       原来夜里换"深灰蓝墙板 + 青缝线"的科幻皮肤，现在两个主题都用白天那套白墙 */
-    const wallMat = regThemeMat(new T.MeshStandardMaterial({ map: wallTexture('day'), roughness: .78, metalness: .1, envMapIntensity: .16 }),
-      { map: wallTexture('day'), envMapIntensity: .3 });
-    const wallTop = regThemeMat(std(0xbcc0b7, { roughness: .92, envMapIntensity: .14 }), { color: 0x22333c, envMapIntensity: .26 });
-    const wallBottom = regThemeMat(std(0x545c58, { roughness: .95, envMapIntensity: .12 }), { color: 0x0d1519 });
-    const trimMat = regThemeMat(std(0x8d9598, { roughness: .62, metalness: .3 }), { color: 0x2c4048 });     /* 灰带 / 窗框 */
+    /* 外立面：黑灰壳体 + 青灰描边 + 暖窗剪影（2026-11-02 用户要求改科技感配色）。
+       原来两个主题都强制白天那套白墙（现场白厂房），夜里整栋楼在暗景里过曝发白，
+       跟峻涌 / 东明摆一起最扎眼。颜色全进 THEMES，不在这里写死 */
+    const wallMat = regThemeMat(new T.MeshStandardMaterial({ map: wallTexture('night'), roughness: .78, metalness: .1, envMapIntensity: .16 }),
+      { map: wallTexture('night'), color: 0xffffff, envMapIntensity: .3 },
+      { map: wallTexture('day'), color: 0xffffff, envMapIntensity: .22 });
+    const wallTop = regThemeMat(std(0x22333c, { roughness: .92, envMapIntensity: .26 }), { color: 0x22333c, envMapIntensity: .26 }, { color: 0x515f66, envMapIntensity: .2 });
+    const wallBottom = regThemeMat(std(0x0d1519, { roughness: .95, envMapIntensity: .12 }), { color: 0x0d1519 }, { color: 0x2a353a });
+    const trimMat = regThemeMat(std(0x2c4048, { roughness: .62, metalness: .3 }), { color: 0x2c4048 }, { color: 0x6b7a80 });     /* 灰带 / 窗框 */
     const bandMat = std(0x232a2d, { roughness: .5, metalness: .35 });     /* 窗带底 */
-    root.add(box(W2 + .9, .3, D2 + .9, regThemeMat(std(0x515b5e, { roughness: .9, envMapIntensity: .14 }), { color: 0x1b2830, envMapIntensity: .26 }), 0, .15, 0));
+    root.add(box(W2 + .9, .3, D2 + .9, regThemeMat(std(0x1b2830, { roughness: .9, envMapIntensity: .26 }), { color: 0x1b2830, envMapIntensity: .26 }, { color: 0x414d53, envMapIntensity: .2 }), 0, .15, 0));
     /* 房身（两层一起） */
     const bld = new T.Mesh(new T.BoxGeometry(W2, H2, D2), [wallMat, wallMat, wallTop, wallBottom, wallMat, wallMat]);
     bld.position.set(0, H2 / 2 + .3, 0);
@@ -979,7 +987,9 @@ window.SolarScene = (function () {
     poleTag.rotation.y = Math.PI / 2;
     g.add(poleTag);
     root.add(g);
-    twrLabelEl = bindLabel(label('<b>并网铁塔</b><i>10kV 上网线路</i><em>--</em>', 'tag3d-gt', TWR_X, TWR_H - .6, TWR_Z), 'tower');
+    /* 浮标钉在塔顶上方一点：相机拉近后（模型放大那次）浮标放太高会被场景顶部裁掉，
+       下移后各窗口尺寸下都可见，塔顶就是它的指认位置 */
+    twrLabelEl = bindLabel(label('<b>并网铁塔</b><i>10kV 上网线路</i><em>--</em>', 'tag3d-gt', TWR_X, TWR_H + .5, TWR_Z), 'tower');
     addCard('tower', TWR_X, TWR_H - 1.8, TWR_Z);
   }
   function buildEquipment() {
@@ -1024,7 +1034,8 @@ window.SolarScene = (function () {
     [[-17.5, 3.60], [-15.0, 3.60], [-12.5, 3.60], [-10.0, 3.60],               /* 电网线车道 z 3.60 */
      [-19.0, 3.15], [-17.5, 3.15], [-15.0, 2.99],                              /* 国网→储能线车道 z 3.15 */
      [-17.5, 5.45], [-15.0, 5.45], [-12.5, 5.45], [-10.0, 5.45], [-7.5, 5.45], /* 直供线车道 z 5.45 */
-     [-12.5, 2.95], [-10.0, 2.95], [-7.5, 2.95]                                /* 储能→卫生院线车道 z 2.95 */
+     [-12.5, 2.95], [-10.0, 2.95], [-7.5, 2.95],                               /* 储能→卫生院线车道 z 2.95 */
+     [-10.0, 1.55], [-7.5, 1.55]                                               /* 光伏→储能线车道 z 1.55（2026-11-02 贴地） */
     ].forEach(function (p) {
       root.add(box(.16, .16, .16, saddleMat, p[0], .26, p[1]));
     });
@@ -1154,7 +1165,7 @@ window.SolarScene = (function () {
     camHome = fitStory();
     camera.position.copy(camHome.pos);
     /* 浮标缩放基准跟着这个机位实距走（build 每次换主题都会重算，画幅变了也重算） */
-    lblRef = camHome.pos.distanceTo(camHome.tgt) * .72;
+    lblRef = camHome.pos.distanceTo(camHome.tgt);
 
     renderer = new T.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
@@ -1278,9 +1289,15 @@ window.SolarScene = (function () {
     root.add(box(.7, .2, .2, regThemeMat(std(0x9aa5a6, { roughness: .5, metalness: .5 }), { color: 0x3d4d55 }), -W2 / 2 - .06, roofY + .42, .55));
     /* 储能线（低位分岔节点 → 储能柜东面接线盒）：只有"光伏正在给储能充电"时才亮（黄、节点 → 柜）；
        现场口径：储能不卖电——放电只供卫生院（走 stoh），柜到节点这条没有电流，
-       满 / 待机、放电期间都不亮 */
+       满 / 待机、放电期间都不亮。
+       2026-11-02 改成贴地：原来是节点 (-6.94,1.2,.55) 直连柜盒 (-11.10,1.0,1.55)，
+       4.2m 长一根斜挂在半空（峻涌那条同样的毛病）。现在竖直落到 .34 贴地档 →
+       沿柜列中线 z=1.55 平铺向西 → 到盒前才上翘进盒 */
     addFlow([
       new T.Vector3(-6.94, 1.2, .55),                          /* 低位分岔节点（与光伏干线同一点） */
+      new T.Vector3(-6.94, .34, .55),                          /* 沿墙根竖直落到贴地档 */
+      new T.Vector3(-6.94, .34, 1.55),                         /* 折到柜列中线车道 */
+      new T.Vector3(-11.10, .34, 1.55),                        /* 贴地平铺到柜盒正东 */
       new T.Vector3(-11.10, 1.0, 1.55)                         /* 进柜东面接线盒（端点藏在盒里） */
     ], 'sto', .052);
     /* 国网→储能柜（'国网直接供储能设备'）：塔基终端箱 → 贴箱西侧折到柜前北车道（z 3.15，
@@ -1409,7 +1426,7 @@ window.SolarScene = (function () {
     /* ---------- 场景浮标 ---------- */
     /* 第三行先占「今日 -- 度」（与实时版式一致）：原来这里写死的"装机 110.16 kWp"
        会在数据到达前显示成状态行的样子，第一次刷新后就被今日电量盖掉 */
-    arrLabelEl = bindLabel(label('<b>屋顶光伏阵列</b><i>-- kW</i><em>今日 -- 度</em>', 'tag3d-gt', 0, roofY + 2.0, 0), 'array');
+    arrLabelEl = bindLabel(label('<b>屋顶光伏阵列</b><i>-- kW</i><em>今日 -- 度</em>', 'tag3d-gt', 0, roofY + 2.0, -D2 / 2 - .8), 'array');
     /* 站名牌（"洙边卫生院"）不挂了：楼在那、阵列浮标已经点出这是哪一站 */
 
     /* 后期处理：MSAA + 泛光（只让日光、电流光纹这类高亮点发光）+ 暗角冷调
@@ -1667,9 +1684,10 @@ window.SolarScene = (function () {
   }
 
   /* 浮标按相机距离缩放：HTML 浮标固定像素大小，拉远后模型缩成一点、浮标还是原尺寸，
-     就会糊成一片。基准 = 默认机位实距 × .72（本站刻意比"100%"再小一档，
-     原来按 100% 太大挡视线），跟着画幅走：4K 屏 / 右栏挤窄画布时机位会退远，
-     写死 42 会让浮标相对模型忽大忽小（同峻涌：lblRef 跟默认机位） */
+     就会糊成一片。基准 = 默认机位实距（同峻涌），跟着画幅走。
+     2026-11-02 不再乘 .72：共用规则里 opacity 跟着缩放系数一起掉
+     （.35 + .65×(k−.42)/.58），本站 k 只有 .59 → 浮标只剩五成不透明，
+     跟峻涌摆一起就明显发虚像毛玻璃。要小该挪锚点让位，不该拿基准压。 */
   let lblRef = 42;
   let _lblV = null;
   function scaleLabels() {
