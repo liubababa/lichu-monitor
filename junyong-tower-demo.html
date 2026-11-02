@@ -140,7 +140,8 @@ window.addEventListener('error', function (e) {
   /* 2026-11-02 重排：一号挪到前排与三号齐平，铁塔接一号空出来的后排左 (−20,−12)。
      上塔线按「西 / 东 / 南」三面进塔，路由全按 TWR_AT 相对算，改档会自动重排 */
   var TOWERS = {
-    now:  { xy: '{ x: -6, z: -17 }', name: '后排偏左 (−6,−17) 线上现状' },
+    now:  { xy: '{ x: -9, z: -17 }', name: '后排偏左 (−9,−17) 线上现状' },
+    p6:   { xy: '{ x: -6, z: -17 }', name: '对照：上一版 (−6,−17)' },
     mid:  { xy: '{ x: 0, z: -16 }', name: '对照：正中 (0,−16)（用户说板板）' },
     q:    { xy: '{ x: -2.5, z: -17 }', name: '对照：只错半格 (−2.5,−17)（用户说还呆板）' },
     L8:   { xy: '{ x: -8, z: -17 }', name: '再往左 (−8,−17)：屏幕贴上一号厂房东角' },
@@ -175,8 +176,8 @@ window.addEventListener('error', function (e) {
   /* ---------------- 补丁表 ---------------- */
   /* 评审页自己要的读数口子：只加在这份运行时补丁里，不写进线上文件 */
   var HARNESS = [
-    ['var f = { kind: kind, gi: gi, map: map, tubeMat: tm, dir: 1, spd: .06, len: len };',
-      'var f = { kind: kind, gi: gi, map: map, tubeMat: tm, dir: 1, spd: .06, len: len, mesh: core };'],
+    ['var f = { kind: kind, gi: gi, map: map, tubeMat: tm, dir: 0, spd: 0, len: len };',
+      'var f = { kind: kind, gi: gi, map: map, tubeMat: tm, dir: 0, spd: 0, len: len, mesh: core };'],
     ['ready: function () { return inited; }',
       'ready: function () { return inited; },\n'
       + '    camDist: function () { return camera && controls ? camera.position.distanceTo(controls.target) : 0; },\n'
@@ -296,12 +297,13 @@ window.addEventListener('error', function (e) {
       + '      return { theme: theme, towerAt: [TWR_AT.x, TWR_AT.z], duis: duisOn,\n'
       + '        flows: flows.map(function (f) {\n'
       + '          return { kind: f.kind, gi: f.gi, outside: !!f.outside,\n'
-      + '            col: f.tubeMat.color.getHexString(), op: +f.tubeMat.opacity.toFixed(2), dir: f.dir };\n'
+      + '            col: f.tubeMat.color.getHexString(), op: +f.tubeMat.opacity.toFixed(2), dir: f.dir,\n'
+      + '            spd: +f.spd.toFixed(2), uv: +(f.map ? f.map.offset.x : 0).toFixed(4) };\n'
       + '        }) };\n'
       + '    }']];
   function patches() {
     var p = [];
-    p.push(['var TWR_AT = { x: -6, z: -17 };', 'var TWR_AT = ' + TOWERS[S.tw].xy + ';']);
+    p.push(['var TWR_AT = { x: -9, z: -17 };', 'var TWR_AT = ' + TOWERS[S.tw].xy + ';']);
     if (S.cam !== 'home') p.push(['(-.3, .42, .86)', CAMS[S.cam].v]);
     /* 塔完全不进包围盒（场坪是固定 460×240 的大板，塔挪哪都在板上）：
        机位不再为塔后退，厂房大小不受塔位影响。fit=0 就是"恢复让塔参与取景"，用来对照 */

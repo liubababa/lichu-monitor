@@ -8,7 +8,7 @@
  *         + 屋面光伏 4 排 × 5 块（规格同洙边）
  *         + 储能柜（柜门 / 顶部空调 / 侧面 SOC 光柱，颜色随工况）
  *         + 洙边那九条线（贴地电缆 + 电缆墩，空中不架线）+ 本群关口终端箱
- *   并网：一座铁塔立在后排偏左 (−6,−17)（2026-11-02 重排：一号挪到前排跟三号齐平，塔先落后排左、
+ *   并网：一座铁塔立在后排偏左 (−9,−17)（2026-11-02 重排：一号挪到前排跟三号齐平，塔先落后排左、
  *        又往右挪到接近中心 (0,−16)、当天再按"整体太板板"往左后错开半格；转 90°，10kV 穿越导线沿东西跨，
  *        不从屋顶穿过）；
  *        每群一根线从自己关口箱沿地拉到塔位，再"拉线上塔中央"；三个关口箱分处前排左 / 前排右 /
@@ -70,18 +70,19 @@ window.JunyongScene = (function () {
   /* 2026-11-02 布局重排：一号从后排左挪到前排左（z −12 → 14），跟前排右侧的三号齐平，
      柜列仍镜像到厂房东侧 —— 前排两栋的院子朝中间对咬。
      铁塔先落在后排左原一号的坑位，又按用户意见挪到"接近中心、二号厂房左边" (0,−16)，
-     当天连挪两次才到 (−6,−17)（用户两次说"板板 / 呆板，再往左一点"）：
+     当天连挪三次才到 (−9,−17)（用户三次说"板板 / 呆板 / 再往左一点"）：
        · x=0 正卡在一号(−20)与二号/三号(+20)两列的中轴上，z=−16 又正好跟二号北墙（z −16）共线
-         → 两条"看不见的对齐"就是"板板"的来源；z 先错到 −17，x 再一路错到 −6。
+         → 两条"看不见的对齐"就是"板板"的来源；z 先错到 −17，x 再一路错到 −9。
        · x 能这么走的代价是**上塔线先分了三条 z 车道**（原来三条共用 z=塔心 那条横线，
          塔心一过 −2.5，一号跟二号的进塔横段就叠成同一根管子）。见下面"每群一根线上塔"。
-       · −6 而不是更左：屏幕上 −8 就贴到一号厂房东角（1045px）了，−6 时塔心在 1071px，
-         离自己那根上塔竖段（1092px）21px、离一号东角 26px，两边都不靠。
+       · 屏幕上的两个"别贴住"参照：自己那根上塔竖段在 1089px、一号厂房东角在 1045px，
+         −8 时塔心 1044px 正压房角；−9 时塔心 1026px，离房角 19px（在角外一点）、离竖段 63px，
+         塔退回空场、画面中轴让给厂房群。
      横担沿 ±z 挑 4.5m（z −21.5..−12.5），导线沿 x −10..10 挂在 z≈−20.7/−13.3，
      离二号厂房西墙（x13.5）净空 3.5m、离二号柜净空 2.7m，不压任何屋顶。
      塔不进取景盒（xs/zs/fitPts 都不算它），所以塔位怎么动都不改机位距离 —— 厂房大小与塔位解耦。 */
   var SLOT = 20, SITE = [{ x: -SLOT, z: SLOT - 6, m: true }, { x: SLOT, z: -SLOT + 8, m: false }, { x: SLOT, z: SLOT - 6, m: false }];
-  var TWR_AT = { x: -6, z: -17 };
+  var TWR_AT = { x: -9, z: -17 };
   var LAND = 2.0;                     /* 进塔点离塔心的距离（塔基垫块外沿约 1.9m） */
 
   /* 观感数值（泛光 / 暗角 / 曝光 / 灯光量 / 地面 / 接触阴影）三站共用，在 js/scene-preset.js；
@@ -730,7 +731,7 @@ window.JunyongScene = (function () {
     var tm = new T.MeshBasicMaterial({ map: map, color: FLOWC[theme].idle, transparent: true, opacity: .22,
       blending: T.AdditiveBlending, depthWrite: false, toneMapped: false });
     parent.add(new T.Mesh(new T.TubeGeometry(curve, seg, r * 2.1, 8, false), tm));
-    var f = { kind: kind, gi: gi, map: map, tubeMat: tm, dir: 1, spd: .06, len: len };
+    var f = { kind: kind, gi: gi, map: map, tubeMat: tm, dir: 0, spd: 0, len: len };
     flows.push(f);
     return f;
   }
@@ -887,14 +888,27 @@ window.JunyongScene = (function () {
 
   function updateFlows() {
     var F = FLOWC[theme];
+    /* 全站一个流速（三站共用 ScenePreset.flowSpd，口径同旭日东明）：
+       参考功率 = 「全站储能合计 / 全站关口合计 / 全站光伏」里绝对值最大的那个，除以储能额定 625kW。
+       原来是每个群按自己那点功率各算各的（分母却已经是全站额定 625/972.4）——
+       三个群之间一快一慢，而且单群功率除以全站额定只会一直偏慢，看着像"电流不够"。 */
+    var stSum = 0, gridSum = 0, hasSt = 0, hasGrid = 0;
+    data.forEach(function (d) {
+      if (!d) return;
+      if (d.st != null && isFinite(+d.st)) { stSum += +d.st; hasSt = 1; }
+      if (d.grid != null && isFinite(+d.grid)) { gridSum += +d.grid; hasGrid = 1; }
+    });
+    var refP = Math.max(hasSt ? Math.abs(stSum) : 0, hasGrid ? Math.abs(gridSum) : 0,
+      stationPv.seen ? Math.abs(stationPv.kw) : 0);
+    var spd = SP.flowSpd(refP, 625);
     units.forEach(function (u, i) {
       var c = cond(data[i]);
-      var spd = .25 + Math.min(1, Math.max(Math.abs(c.st), Math.abs(c.surplus || 0)) / 625) * 1.6;
-      if (c.pvOn) spd = Math.max(spd, .25 + Math.min(1, c.pv / 972.4) * 1.6);
       function lit(f, on, color, dir) {
         f.tubeMat.color.setHex(on ? color : F.idle);
         f.tubeMat.opacity = on ? .95 : .22;
-        f.dir = dir || 1; f.spd = on ? spd : .06;
+        /* 不导电就停住（同东明的 dir=0）——原来给 .06 让灭着的线也在慢慢爬，
+           三条站放一起看就是"没电的线也在动"，跟东明对不上 */
+        f.dir = on ? (dir || 1) : 0; f.spd = on ? spd : 0;
       }
       flows.forEach(function (f) {
         if (f.gi !== i || f.outside) return;
@@ -915,7 +929,7 @@ window.JunyongScene = (function () {
         var on = c.sell || c.buy;
         f.tubeMat.color.setHex(on ? (c.sell ? F.ac : F.buy) : F.idle);
         f.tubeMat.opacity = on ? .95 : .22;
-        f.dir = c.sell ? 1 : -1; f.spd = on ? spd : .06;
+        f.dir = on ? (c.sell ? 1 : -1) : 0; f.spd = on ? spd : 0;
       });
       /* 柜体 SOC 光柱 / 指示灯 / 柜底光晕：颜色跟工况（放电青绿 / 光伏充黄 / 电网充蓝 / 待机暗绿）。
          待机一律用 bar 而不是线路的 idle——idle 是给"没电的线"用的近黑色，
@@ -1243,7 +1257,7 @@ window.JunyongScene = (function () {
     /* 塔不撑场坪/取景 */
 
     /* 每群一根线上塔：贴地到塔位，再拉线上塔中央。
-       塔在后排偏左 (−6,−17)（2026-11-02 先挪到接近中心 (0,−16)，再按"太板板"往左后错开半格）。
+       塔在后排偏左 (−9,−17)（2026-11-02 从正中 (0,−16) 一路往左错开，用户三次说"呆板"）。
        三条线各走**自己那条 z 车道**（塔心 z 往上 3.5 / 2 / 0），不共用一条横线：
        共用时塔心 x 一越过 −2.5，一号的进塔横段就跟二号的叠在同一条 z=塔心 线上（两根管子重叠=共面闪烁），
        塔就没法往左挪。分完车道后塔能退到画面左边而不打架。
@@ -1408,7 +1422,7 @@ window.JunyongScene = (function () {
     controls.update();
     var spd = 1;
     flows.forEach(function (f) {
-      f.map.offset.x = (f.map.offset.x - dt * f.spd * spd * .35 * f.dir) % 1;
+      f.map.offset.x = (f.map.offset.x - dt * f.spd * spd * SP.FLOW.roll * f.dir) % 1;
     });
     beacons.forEach(function (b) {
       var k = .45 + .45 * Math.sin(ts / 520);

@@ -187,12 +187,16 @@ window.SolarScene = (function () {
   /* 浮标可点（同峻涌）：标签图层本身 pointer-events:none，这里把 .tag3d 单独打开，
      点「卫生院 / 储能柜 / 屋顶光伏 / 并网铁塔」直接开对应卡片，不用赌射线打到哪个模型 */
   function bindLabel(el, key) {
-    if (!el) return;
+    if (!el) return el;
     el.classList.add('clickable');
     el.addEventListener('click', function (e) {
       e.preventDefault(); e.stopPropagation();
       showCard(key);
     });
+    /* 必须把 el 还回去：四个浮标都是 `xxxLabelEl = bindLabel(label(...), key)` 一步接的，
+       这里不回值就把元素引用吞了，update() 里 `if (arrLabelEl)` 全跳过 → 浮标永远停在初始的 "--"
+       （2026-11-02 洙边整页没数字就是这么来的） */
+    return el;
   }
   /* 设备明细卡（沿用高特/莒南场景的 .card3d 版式）：点设备弹出，内容取实时值 */
   function addCard(key, x, y, z) {
@@ -1714,7 +1718,7 @@ window.SolarScene = (function () {
       const fl = flows[i];
       fl.tubeMat.opacity = fl.on ? .95 : .22;
       if (!fl.on) continue;
-      fl.map.offset.x -= (fl.dir || 1) * fl.speed * dt * .35;
+      fl.map.offset.x -= (fl.dir || 1) * fl.speed * dt * SP.FLOW.roll;
       if (fl.tint) fl.tubeMat.color.setHex(fl.tint);
     }
   }
@@ -1746,9 +1750,9 @@ window.SolarScene = (function () {
     /* 负载量优先用关口表反推（pv + st − surplus，和现场"负载 = 电网 + 交流 + 光伏"同一口径）：
        厂商负载字段实测出过 −0.5 / −4.2 这种坏值，按它算负载线会整条灭掉，而电明明在往楼里流 */
     const loadEff = meterKw === null ? load : Math.max(0, pv + st - meterKw);
-    /* 全站一个流速（和旭日东明同一口径）：参考功率取"储能 / 关口"里大的那个，
-       除以储能额定 100kW，.25 + 比例*1.6——同一时刻所有电缆的光纹跑得一样快 */
-    flowSpd = .25 + Math.min(1, Math.max(Math.abs(st), Math.abs(surplus === null ? 0 : surplus)) / 100) * 1.6;
+    /* 全站一个流速（三站共用 ScenePreset.flowSpd，口径同旭日东明）：参考功率取"储能 / 关口"里大的那个，
+       除以储能额定 100kW —— 同一时刻所有电缆的光纹跑得一样快 */
+    flowSpd = SP.flowSpd(Math.max(Math.abs(st), Math.abs(surplus === null ? 0 : surplus)), 100);
     flows.forEach(function (fl) {
       if (fl.kind === 'stoh') {
         /* 储能→卫生院（柜正面 → 南墙墙脚黑盒，'储能设备供卫生院'）：储能在放电且楼里有负载

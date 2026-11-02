@@ -74,6 +74,21 @@ window.ScenePreset = (function () {
     return k;
   }
 
+  /* ---------------- 电流光纹流速规则（三站同一条，口径取自旭日东明） ----------------
+     全站一个速度：同一时刻所有亮着的电缆光纹跑得一样快，不按"这条线归哪个群 / 哪个堆"各算各的。
+     ref = 全站参考功率（谁在动就取谁的绝对值里最大的那个），rated = 全站额定功率；比例钳在 1。
+     base/span 定"多快"，roll 是每站滚动时共用的系数（原来三站各自硬写 .35，改一次要翻三个文件）。
+     2026-11-02 用户"再做的快一点"：.25/1.6/.35（顶速 1.85×.35=0.65 UV/s）→ .3/2.0/.45（顶速 2.3×.45=1.04，约 1.6 倍）。 */
+  const FLOW = { base: .3, span: 2.0, roll: .45 };
+
+  function flowSpd(refKw, ratedKw) {
+    const r = Number(ratedKw);
+    const rated = (isFinite(r) && r > 0) ? r : 1;
+    const p = Number(refKw);
+    const ratio = Math.min(1, Math.abs(isFinite(p) ? p : 0) / rated);
+    return FLOW.base + ratio * FLOW.span;
+  }
+
   function env(theme) { return ENV[theme] || ENV.night; }
 
   /* ---------------- 确定性伪随机 ----------------
@@ -371,6 +386,7 @@ window.ScenePreset = (function () {
   return {
     ENV: ENV, env: env, rng: rng, YARD_Y: YARD_Y,
     LBL: LBL, scaleLabelTo: scaleLabelTo,
+    FLOW: FLOW, flowSpd: flowSpd,
     paveTexture: paveTexture,
     contactTexture: contactTexture, contact: contact,
     glowSleeve: glowSleeve, syncSleeve: syncSleeve,

@@ -316,12 +316,15 @@ window.GaoteScene3D = (function () {
   /* 浮标可点（同峻涌）：标签图层本身 pointer-events:none，这里把 .tag3d 单独打开，
      点「储能堆 / 汇流柜 / 并网点 / 厂房」直接开对应卡片，不用赌射线打到哪个模型 */
   function bindLabel(el, key) {
-    if (!el) return;
+    if (!el) return el;
     el.classList.add('clickable');
     el.addEventListener('click', function (e) {
       e.preventDefault(); e.stopPropagation();
       showCard(key);
     });
+    /* 同洙边：要回传 el，否则 `facLabelEl = bindLabel(addLabel(...))` 接到的是 undefined，
+       厂房浮标永远停在初始的 "--"（2026-11-02 线上就是这样，只有储能堆/并网点有数） */
+    return el;
   }
   function addCard(key, pos) {
     const wrap = document.createElement('div');
@@ -441,7 +444,7 @@ window.GaoteScene3D = (function () {
       fl.tubeMat.color.setHex(col);
       /* 有电流时全亮（夜里再加一层加色发光），待机时暗下来但管线还在 */
       fl.tubeMat.opacity = on ? 1 : (p.flowBlend ? .26 : .42);
-      if (on) fl.map.offset.x -= fl.dir * fl.speed * dt * .35;     // 光纹沿电缆滚动
+      if (on) fl.map.offset.x -= fl.dir * fl.speed * dt * window.ScenePreset.FLOW.roll;   // 滚动系数三站共用
     }
   }
 
@@ -1527,7 +1530,8 @@ window.GaoteScene3D = (function () {
        （5 个堆就慢 5 倍；关口功率还含储能充电那部分，会更快顶到上限），所以看着不一样 */
     const rated = ratedPower();
     const refP = Math.max(Math.abs(pNum), Math.abs(mv === null ? 0 : mv));
-    const stSpd = .25 + Math.min(1, refP / rated) * 1.6;
+    /* 公式本体已提到三站共用的 ScenePreset.flowSpd（洙边 / 峻涌现在都按这条走） */
+    const stSpd = window.ScenePreset.flowSpd(refP, rated);
 
     for (let i = 0; i < flows.length; i++) {
       const fl = flows[i];
