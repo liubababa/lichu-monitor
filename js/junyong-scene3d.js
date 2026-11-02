@@ -77,7 +77,7 @@ window.JunyongScene = (function () {
       sweep: SP.ENV.night.sweep, cloud: 0x22343c,
       key: SP.ENV.night.lights.key, keyRad: .42, hemi: SP.ENV.night.lights.hemi, fill: SP.ENV.night.lights.fill,
       steel: 0x46565d, dark: 0x1b272c, top: 0x2b3a42, pad: 0x2a3a40, frame: 0x5a6a70,
-      leg: 0x6d8b93, brace: 0x54737b, arm: 0x2ee6c8, ins: 0xd8e6e4,
+      leg: 0x6d8b93, brace: 0x54737b, arm: 0x5a6a70, ins: 0xd8e6e4,
       wallTop: 0x22333c, wallBot: 0x0d1519, trim: 0x2c4048, base: 0x1b2830, par: 0x1f2f38,
       wallTex: '#1c262e', wallSeam: 'rgba(46,230,200,.07)',      roofLine: 0x2ee6c8, roofLineO: .72, winC: 0x0e1a1f, winE: 0xeef4f2, winI: .58,
       doorFrame: 0x22333c, door: 0x14262e, doorLight: 0x4e4b40, headGlass: 0x16333c,
@@ -91,7 +91,7 @@ window.JunyongScene = (function () {
       sweep: SP.ENV.day.sweep, cloud: 0xffffff,
       key: SP.ENV.day.lights.key, keyRad: .22, hemi: SP.ENV.day.lights.hemi, fill: SP.ENV.day.lights.fill,
       steel: 0xc6ccce, dark: 0x3c4a50, top: 0xd6dbdc, pad: 0x9aa3a6, frame: 0xb9c1c3,
-      leg: 0x93a3a8, brace: 0x7d8f94, arm: 0x18b39a, ins: 0xf2f6f5,
+      leg: 0x93a3a8, brace: 0x7d8f94, arm: 0x8b9aa0, ins: 0xf2f6f5,
       wallTop: 0x515f66, wallBot: 0x2a353a, trim: 0x6b7a80, base: 0x414d53, par: 0x5a686e,
       wallTex: '#39464c', wallSeam: 'rgba(120,150,158,.16)',
       roofLine: 0x0f9682, roofLineO: .4, winC: 0x20262a, winE: 0xfff3e2, winI: .16,
@@ -535,11 +535,12 @@ window.JunyongScene = (function () {
     g.add(box(.34, .44, .10, M.box, -5.75, 3.9, D2 / 2 + .03));
     g.add(box(.34, .44, .10, M.box, -6.35, .86, D2 / 2 + .03));
     g.add(box(.30, .40, .10, M.box, -5.12, 1.02, D2 / 2 + .05));
-    [[NLO[0], NLO[1], NLO[2], .10], [NHI[0], NHI[1], NHI[2], .075]].forEach(function (p) {
+    /* 南墙分岔端子：跟着干线挪到正面（原来在西墙上） */
+    [[-4.0, 1.2, D2 / 2 + .36, .10], [-4.0, 3.9, D2 / 2 + .36, .075]].forEach(function (p) {
       var j = new T.Mesh(new T.SphereGeometry(p[3], 10, 10), M.cable);
       j.position.set(p[0], p[1], p[2]); g.add(j);
     });
-    g.add(box(.7, .2, .2, M.steel, -W2 / 2 - .06, roofY + .42, .55));
+    g.add(box(.7, .2, .2, M.steel, -4.0, roofY + .42, D2 / 2 + .06));   /* 正面南檐过墙套管（干线从这里下墙） */
     /* 屋面光伏：组件 / 导轨 / 竖撑合批 + 走道 + 线槽 + 组串电缆 */
     function planeY(zl) { return roofY + ROW_Y - Math.tan(TILT) * zl; }
     var yMod = planeY(0), yRailF = planeY(RAIL_Z) - RAIL_DROP, yRailR = planeY(-RAIL_Z) - RAIL_DROP;
@@ -687,9 +688,11 @@ window.JunyongScene = (function () {
     var bc = new T.Mesh(new T.SphereGeometry(.13, 10, 10),
       new T.MeshBasicMaterial({ color: 0xff5a3c, transparent: true, opacity: .9, fog: false, toneMapped: false }));
     bc.position.set(0, hgt + 1.06, 0); g.add(bc);
+    /* 障碍灯只留灯芯：原来那圈 2.6 倍的加色光晕 + fog:false + 进泛光，
+       是全画面唯一会动的红，塔还没挪走眼睛就先被抓过去（2026-11-02 降权） */
     var bg = new T.Sprite(new T.SpriteMaterial({ map: glowTex(), color: 0xff5a3c, transparent: true,
-      opacity: .5, blending: T.AdditiveBlending, depthWrite: false, fog: false }));
-    bg.position.copy(bc.position); bg.scale.set(2.6, 2.6, 1); g.add(bg);
+      opacity: .18, blending: T.AdditiveBlending, depthWrite: false, fog: false }));
+    bg.position.copy(bc.position); bg.scale.set(1.1, 1.1, 1); g.add(bg);
     beacons.push([bc, bg]);
     return g;
   }
@@ -742,24 +745,28 @@ window.JunyongScene = (function () {
     var tb = makeTermBox(M); tb.position.set(TBX, 0, TWRZ); grp.add(tb);
     if (n > 1) grp.add(box(span + CAB.w + 1.2, .1, CAB.d + 1.4, M.pad, CABX, .045, CABZ));
     var F = FLOWC[theme];
-    /* ① 光伏干线：屋面线槽 → 西墙直落 → 二楼分岔点 */
-    addFlow(grp, 'pv', gi, [[rowW / 2 + .2, roofY + .40, 0], [3.2, roofY + .42, 0], [-3.2, roofY + .42, .1],
-      [-W2 / 2 - .08, roofY + .42, .55], [-W2 / 2 - .36, 6.6, .55], [NHI[0], 3.9, .55]], .052);
-    /* ② 光伏下段：二楼分岔点 → 低位节点 */
-    addFlow(grp, 'pvlow', gi, [[NHI[0], 3.9, .55], [NLO[0], 1.2, .55]], .052);
-    /* ③ 光伏→厂房：二楼改道 → 沿西墙往南 → 西南角转弯 → 南墙二楼黑盒 */
-    addFlow(grp, 'pvh', gi, [[NHI[0], 3.9, .55], [NHI[0], 3.9, D2 / 2 + .36],
-      [-5.75, 3.9, D2 / 2 + .36], [-5.75, 3.9, D2 / 2 + .02]], .052);
-    /* ④ 光伏→储能：低位节点先下地，再沿柜列中线 z=CABZ 贴地平铺，到柜东面接线盒前才上翘 1m。
-       原来是墙面节点直连接线盒的一条斜线（y 1.2 → 1.0 横跨四五米空），看着像线"斜搭在半空"。 */
-    addFlow(grp, 'sto', gi, [[NLO[0], NLO[1], NLO[2]], [NLO[0], .34, NLO[2]],
-      [NLO[0], .34, CABZ], [boxE[0], .34, CABZ], boxE], .052);
+    var FZ = D2 / 2 + .36;                 /* 正面（南墙）那条"墙面通道"，跟原来西墙同偏移 .36 */
+    var FX = -4.0;                          /* 正面落线点：雨棚（±2.5）以西、南墙黑盒（−5.75）以东的实墙上 */
+    /* ① 光伏干线：屋面线槽 → 沿屋面往南到南檐 → 沿南檐向西到 x=FX → 从**正面（南墙）**直落
+       到二楼分岔点。2026-11-02 改：原来走西墙，而一号柜列是镜像的，那段线落到它的东墙 =
+       背对镜头那一面，用户说"走侧面看不清楚"。 */
+    addFlow(grp, 'pv', gi, [[rowW / 2 + .2, roofY + .40, 0], [3.2, roofY + .42, 0],
+      [2.0, roofY + .42, FZ - .16], [FX, roofY + .42, FZ - .16],
+      [FX, 6.6, FZ], [FX, 3.9, FZ]], .052);
+    /* ② 光伏下段：二楼分岔点 → 低位节点（同在南墙，一根竖直） */
+    addFlow(grp, 'pvlow', gi, [[FX, 3.9, FZ], [FX, 1.2, FZ]], .052);
+    /* ③ 光伏→厂房：二楼分岔点沿南墙往西一点，直角进南墙二楼黑盒 */
+    addFlow(grp, 'pvh', gi, [[FX, 3.9, FZ], [-5.75, 3.9, FZ], [-5.75, 3.9, D2 / 2 + .02]], .052);
+    /* ④ 光伏→储能：低位节点从南墙落到贴地档 → 沿楼前 z=4.36 向西 → 到柜东面车道折北 →
+       上翘进柜东面接线盒（原来整条斜挂在半空） */
+    addFlow(grp, 'sto', gi, [[FX, 1.2, FZ], [FX, .34, FZ],
+      [boxE[0] + 1.05, .34, FZ], [boxE[0] + 1.05, .34, CABZ], boxE], .052);
     /* ⑤ 国网→储能：关口箱 → 柜前北车道 z3.15 → 折北 → 柜西面 */
     addFlow(grp, 'gsto', gi, [[TBX - .4, .36, TWRZ - .15], [TBX - .4, .34, LN.gsto],
       [boxW[0] + .75, .34, LN.gsto], [boxW[0] + .25, .36, boxW[2] + 1.0], boxW], .052);
-    /* ⑥ 并网段：低位节点 → 贴墙根向南 → 向西并入走廊 z3.60 → 关口箱 */
-    var gpts = [[NLO[0], NLO[1], NLO[2]], [NLO[0], .34, .55], [NLO[0], .34, LN.grid]];
-    for (var gx = NLO[0] - 2.5; gx > TBX + 1.2; gx -= 2.5) gpts.push([gx, .34, LN.grid]);
+    /* ⑥ 并网段：低位节点（南墙 FX）→ 落到贴地 → 向西并入走廊 z3.60 → 关口箱 */
+    var gpts = [[FX, 1.2, FZ], [FX, .34, FZ], [FX, .34, LN.grid]];
+    for (var gx = FX - 2.5; gx > TBX + 1.2; gx -= 2.5) gpts.push([gx, .34, LN.grid]);
     gpts.push([TBX + .2, .38, TWRZ - .25], [TBX, .44, TWRZ - .08]);
     addFlow(grp, 'grid', gi, gpts, .052);
     /* ⑧ 储能→厂房：柜正面（南面）出线 → 楼前走廊 z2.95 → 南墙墙脚黑盒（多柜先并干线） */
@@ -775,9 +782,9 @@ window.JunyongScene = (function () {
     for (var lx = TBX + 2.4; lx < -7.6; lx += 2.5) lpts.push([lx, .34, LN.gl]);
     lpts.push([-7.5, .36, LN.gl], [-5.95, .40, LN.gl - .9], [-5.35, .95, 4.30], [-5.14, 1.02, 4.04]);
     addFlow(grp, 'gl', gi, lpts, .052);
-    /* 电缆墩：五条贴地车道按 x 每 2.5m 一格（④ 光伏→储能 也改成贴地了，一起排墩） */
-    [[LN.grid, NLO[0], TBX], [LN.gsto, TBX, boxW[0]], [LN.gl, TBX, -7.5],
-      [LN.stoh, cabs[0].x, -7.5], [CABZ, NLO[0], boxE[0]]]
+    /* 电缆墩：六条贴地车道按 x 每 2.5m 一格（④⑥ 现在都从正面 FX 落线） */
+    [[LN.grid, FX, TBX], [LN.gsto, TBX, boxW[0]], [LN.gl, TBX, -7.5],
+      [LN.stoh, cabs[0].x, -7.5], [CABZ, boxE[0] + 1.05, boxE[0]], [FZ, boxE[0] + 1.05, FX]]
       .forEach(function (lane) {
         var a = Math.min(lane[1], lane[2]), b = Math.max(lane[1], lane[2]);
         for (var x = Math.ceil(a / 2.5) * 2.5; x <= b - .6; x += 2.5) {
@@ -1201,10 +1208,14 @@ window.JunyongScene = (function () {
     groundContact(root, TWR_AT.x, TWR_AT.z, 5.6, 5.6);
     tower.userData.cardKey = 'tower';
     addCard('tower', TWR_AT.x, TWRH - 1.8, TWR_AT.z);
+    /* 铁塔浮标沉到塔腰（同洙边 / 东明）：飘在塔尖上方时，它是画面最高处的一块字，
+       跟塔顶红灯一起把视线往角落带；厂房群才是主体（2026-11-02 降权） */
     tower.tagEl = label('<b>并网铁塔</b><i>10kV 上网线路</i><em>--</em>', 'tag3d-gt',
-      TWR_AT.x, TWRH + .5, TWR_AT.z);
+      TWR_AT.x, 4.8, TWR_AT.z);
     bindLabel(tower.tagEl, 'tower');
-    xs.push(TWR_AT.x - 4.5, TWR_AT.x + 4.5); zs.push(TWR_AT.z - 4.5, TWR_AT.z + 4.5);
+    /* 塔不进 xs/zs：场坪本来就是固定 460×240 的大板，塔挪到哪都在板上；
+       把它算进来只会把取景盒撑大、机位后退、厂房缩小（2026-11-02 降权） */
+    /* 塔不撑场坪/取景 */
 
     /* 每群一根线上塔：贴地到塔位，再拉线上塔中央。
        塔在原一号厂房的坑位 (−20,−12)，三个关口箱一个在前排左、一个在前排右、一个在后排右，
@@ -1257,7 +1268,8 @@ window.JunyongScene = (function () {
       fitPts.push(new T.Vector3(SITE[i].x, roofY + 2, SITE[i].z));
       fitPts.push(u.tbWorld.clone());
     });
-    fitPts.push(new T.Vector3(TWR_AT.x, TWRH + 1.2, TWR_AT.z));
+    /* 塔顶不进取景盒（同上一行：机位由厂房群决定，塔退成背景；塔尖 y≈11.5 仍远在画面上沿以内） */
+    /* 塔顶不进取景盒 */
     /* 取景按设备轮廓，不算场坪外扩的那圈空坪：带上 6m 外扩会把机位顶到 84m，
        三栋厂房在画面里就缩成一小块（洙边 fitStory 同样只框设备，不框场坪） */
     var ex0 = Math.min.apply(null, xs), ex1 = Math.max.apply(null, xs);
@@ -1373,7 +1385,7 @@ window.JunyongScene = (function () {
     });
     beacons.forEach(function (b) {
       var k = .45 + .45 * Math.sin(ts / 520);
-      b[0].material.opacity = .55 + k * .45; b[1].material.opacity = .25 + k * .4;
+      b[0].material.opacity = .55 + k * .45; b[1].material.opacity = .04 + k * .08;
     });
     /* 云缓慢东移、降水下落、扫光带 18s 横移一轮 */
     if (cloudGrp) cloudGrp.children.forEach(function (cg) {
