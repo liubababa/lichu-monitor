@@ -664,7 +664,8 @@ window.Scene3D = (function () {
     }
     controls.update();
 
-    flowTex.offset.x = -(t * 0.35 * flowSpeed) % 1;
+    /* 滚动系数跟三站共用 ScenePreset.FLOW.roll（这里原来硬写 .35，上一轮提快漏了这套晶农老场景） */
+    flowTex.offset.x = -(t * window.ScenePreset.FLOW.roll * flowSpeed) % 1;
     scanRings.forEach(r => {
       const k = (t * 0.42 + r.userData.phase) % 1;
       r.scale.setScalar(1 + k * 9.5);
