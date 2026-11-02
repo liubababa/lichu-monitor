@@ -26,6 +26,46 @@ window.GaoteService = (function () {
   let activeKey = '';          // 当前查看的设备
   let reportTimer = null;
 
+  /* ---------------- 重进也有状态（localStorage 缓存原始点位） ----------------
+     设备 30 秒才发一帧，页面刚打开时整屏都是 --。这里把每个设备的原始点位和「最后更新」
+     落盘：下次进站先按缓存出图（时间是旧的，页面照实显示"更新 hh:mm:ss"），新帧到了直接覆盖。
+     只缓存原始点位，不缓存渲染结果；超过 24 小时不再摆出来。 */
+  const CACHE_KEY = 'dianzhan.gaote.state.v1';
+  const CACHE_TTL = 24 * 3600 * 1000;
+  let cacheTimer = 0;
+
+  function hydrateCache() {
+    let o = null;
+    try { o = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null'); } catch (_) { return false; }
+    if (!o || !o.at || Date.now() - o.at > CACHE_TTL || !o.dev) return false;
+    Object.keys(o.dev).forEach(function (k) {
+      const d = o.dev[k];
+      if (!d || !d.state) return;
+      stateByDev[k] = d.state;
+      lastSeenByDev[k] = d.seen || {};
+      const reg = devices[k] || (devices[k] = { psn: d.psn, dsn: d.dsn, firstSeen: d.at || Date.now(), lastSeen: 0, msgs: 0 });
+      reg.psn = d.psn; reg.dsn = d.dsn;
+      reg.lastSeen = d.lastSeen || 0;
+      reg.msgs = d.msgs || 0;
+      reg.cached = true;                 /* 标记：这批数是上次会话留下的 */
+    });
+    if (!activeKey && Object.keys(devices).length) activeKey = Object.keys(devices)[0];
+    return Object.keys(devices).length > 0;
+  }
+  function saveCache() {
+    const out = { at: Date.now(), dev: {} };
+    Object.keys(devices).forEach(function (k) {
+      const d = devices[k];
+      if (!d || !d.dsn) return;
+      out.dev[k] = { psn: d.psn, dsn: d.dsn, lastSeen: d.lastSeen, msgs: d.msgs, state: stateByDev[k], seen: lastSeenByDev[k] };
+    });
+    try { localStorage.setItem(CACHE_KEY, JSON.stringify(out)); } catch (_) {}
+  }
+  function markCacheDirty() {
+    if (cacheTimer) return;
+    cacheTimer = setTimeout(function () { cacheTimer = 0; saveCache(); }, 10000);
+  }
+
   function devKey(psn, dsn) { return psn + '/' + dsn; }
   function activeState() { return stateByDev[activeKey] || {}; }
   function activeLastSeen() { return lastSeenByDev[activeKey] || {}; }
@@ -172,6 +212,7 @@ window.GaoteService = (function () {
     });
     const ls = lastSeenByDev[dk] || (lastSeenByDev[dk] = {});
     ls[normDim(info.dim)] = Date.now();
+    markCacheDirty();                      /* 落盘给"下次进站先出图"用（10 秒最多写一次） */
     if (n) log('↓', t, JSON.stringify(payload).slice(0, 400), info.dim + (isStatus ? '/状态' : '') + ' ' + n + ' 点');
     return { info, instKey, bucket, devKey: dk, isActive: dk === activeKey };
   }
@@ -465,8 +506,10 @@ window.GaoteService = (function () {
     if (cfg.username) opts.username = cfg.username;
     if (cfg.password) opts.password = cfg.password;
     try { client = mqtt.connect(url, opts); } catch (e) { sys('连接异常：' + e.message); emit('conn', { state: 'error', error: e.message }); return; }
+    startWatchdog();
 
     client.on('connect', function () {
+      lastMsgAt = Date.now();
       sys('Broker 连接成功，订阅高特主题');
       const subs = [];
       if (cfg.productSN && cfg.deviceSN) subs.push('/' + cfg.productSN + '/' + cfg.deviceSN + '/#');
@@ -482,6 +525,7 @@ window.GaoteService = (function () {
     client.on('close', () => emit('conn', { state: 'disconnected' }));
     client.on('error', e => { sys('连接错误：' + (e.message || e)); emit('conn', { state: 'error', error: e.message || String(e) }); });
     client.on('message', function (topic, buf) {
+      lastMsgAt = Date.now();
       let json = null;
       const text = buf.toString();
       try { json = JSON.parse(text); } catch (_) { log('↓', topic, text.slice(0, 120), '非 JSON（可能是压缩报文）'); return; }
@@ -515,6 +559,36 @@ window.GaoteService = (function () {
     if (client) { try { client.end(true); } catch (_) {} client = null; }
     sys('连接已断开');
     emit('conn', { state: 'disconnected' });
+  }
+
+  /* ---------------- 连接守护（自动重连 + 卡死自愈） ----------------
+     nginx(300s 空闲) / 网关 / 电脑休眠都会把 WS 掐断；mqtt.js 自己会重连，但实测出现过
+     「一直重连、网关那边报 connect did not arrive in time」的卡死状态——那种情况只能整只客户端重建。
+     规则：连着但 180 秒没有任何报文（设备 30 秒一帧）或断着超过 60 秒 → 重建；
+     页面重新可见 / 网络恢复时，没连着就立刻重建。 */
+  let lastMsgAt = 0, wdTimer = 0, lastResetAt = 0;
+  function resetClient() {
+    if (!cfg || !cfg.url) return;
+    if (Date.now() - lastResetAt < 30000) return;
+    lastResetAt = Date.now();
+    sys('连接守护：重建 MQTT 连接');
+    connect(cfg);
+  }
+  function startWatchdog() {
+    if (wdTimer) clearInterval(wdTimer);
+    wdTimer = setInterval(function () {
+      if (!cfg || !cfg.url || !client) return;
+      const now = Date.now();
+      if (client.connected) {
+        if (lastMsgAt && now - lastMsgAt > 180000) resetClient();
+      } else if (now - lastResetAt > 60000) resetClient();
+    }, 15000);
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState === 'visible' && cfg && cfg.url && client && !client.connected) resetClient();
+    });
+    window.addEventListener('online', function () {
+      if (cfg && cfg.url && client && !client.connected) resetClient();
+    });
   }
 
   /* ---------------- 告警（遥信） ----------------
@@ -593,6 +667,10 @@ window.GaoteService = (function () {
     pushToUI();
     return true;
   }
+
+  /* 进站先把上次会话的点位摆出来（时间照实显示），新帧到了覆盖 */
+  hydrateCache();
+  window.addEventListener('beforeunload', saveCache);
 
   return {
     on, connect, disconnect, publish,

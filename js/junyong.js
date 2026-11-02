@@ -49,6 +49,20 @@ window.JunyongUI = (function () {
     if (QTAB) tab = QTAB;
   } catch (_) {}
   var payload = null;            /* 整理后的最近一次成功数据：{ station: {...} }；null = 从没拿到过 */
+  /* 首屏快照：进站先把上次的阳光云数据摆出来（≤15 分钟，避免一进来就红字报警），实时数据到了覆盖 */
+  var SNAP_KEY = 'dianzhan.junyong.summary.v1';
+  function loadSnap() {
+    try {
+      var o = JSON.parse(localStorage.getItem(SNAP_KEY) || 'null');
+      if (!o || !o.payload || !o.payload.station || !o.payload.station.updated_at) return false;
+      if (Date.now() - Date.parse(o.payload.station.updated_at) > 15 * 60000) return false;
+      payload = o.payload;
+      return true;
+    } catch (_) { return false; }
+  }
+  function saveSnap(p) {
+    try { localStorage.setItem(SNAP_KEY, JSON.stringify({ payload: p, at: Date.now() })); } catch (_) {}
+  }
   var lastErr = '';
   var wx = null, devices = [], trend = [], trendRange = 'today';
   var chart = null;              /* 光伏页曲线 */
@@ -157,6 +171,7 @@ window.JunyongUI = (function () {
     if (mt) mt.style.display = 'none';
     if (st) st.style.display = 'none';
     readStorage();                       /* 先把高特储能读进来再挂载，避免先闪一版“未接入” */
+    loadSnap();                          /* 上次的阳光云快照先出图，refresh 回来再覆盖 */
     mount(tab);
     refresh();
     setTimeout(ensureScene, 80);
@@ -256,6 +271,7 @@ window.JunyongUI = (function () {
     getJSON('summary').then(function (s) {
       if (!s || !s.data) throw new Error('summary 为空');
       payload = build(s.data);
+      saveSnap(payload);
       lastErr = s.last_error ? String(s.last_error) : '';
       return getJSON('trend?range=' + trendRange, { tries: 1, timeout: 8000 })
         .then(function (t) { if (t && t.points) trend = t.points; }).catch(function () {});

@@ -29,6 +29,21 @@ window.SolarUI = (function () {
 
   let chart = null, timer = null, range = 'today', busyUntil = 0;
   let sum = null, devices = [], trend = [], wx = null;
+  /* 首屏快照：进站先把上次的阳光云数据摆出来（≤15 分钟，避免一进来就红字报警），
+     实时数据一到就覆盖。只有服务端快照太慢时才有意义，但代价就是一次 localStorage 读写 */
+  const SNAP_KEY = 'dianzhan.solar.summary.v1';
+  function loadSnap() {
+    try {
+      const o = JSON.parse(localStorage.getItem(SNAP_KEY) || 'null');
+      if (!o || !o.data || !o.data.updated_at) return false;
+      if (Date.now() - Date.parse(o.data.updated_at) > 15 * 60000) return false;
+      sum = o.data;
+      return true;
+    } catch (_) { return false; }
+  }
+  function saveSnap(d) {
+    try { localStorage.setItem(SNAP_KEY, JSON.stringify({ data: d, at: Date.now() })); } catch (_) {}
+  }
   let stor = null, storDevs = [], storTrend = [], revTrend = [], powTrend = [];
   let storChart = null, revChart = null, powChart = null;
   /* ---------------- 小工具 ---------------- */
@@ -143,6 +158,7 @@ window.SolarUI = (function () {
     }
     if (mt) mt.style.display = 'none';
     mountTab('monitor');
+    if (loadSnap()) render();            /* 上次的快照先出图，refresh 回来再覆盖 */
     refresh();
     setTimeout(ensureScene, 80);
     if (!timer) timer = setInterval(refresh, REFRESH_MS);
@@ -177,7 +193,7 @@ window.SolarUI = (function () {
     try {
       /* 三个接口串行拉：现场网络经代理时并发连接容易被挂住，串行稳得多 */
       const s = await getJSON('summary');
-      if (s && s.data) sum = s.data;
+      if (s && s.data) { sum = s.data; saveSnap(s.data); }
       const d = await getJSON('devices');
       if (d && d.data) devices = d.data;
       const t = await getJSON('trend?range=' + range);
