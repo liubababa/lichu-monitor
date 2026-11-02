@@ -210,9 +210,9 @@ window.GaoteScene3D = (function () {
       warn: 'rgba(224,148,16,.55)', sideBg: '#d6dddd', sideSeam: 'rgba(96,116,120,.26)',
       sideEdge: 'rgba(46,230,200,.16)', sideVent: 'rgba(46,230,200,.14)', pcsBg: '#10262e',
       pcsPanel: 'rgba(7,22,28,.95)', pcsVent: 'rgba(46,230,200,.16)', pcsFoot: 'rgba(46,230,200,.09)',
-      pcsWarn: 'rgba(255,176,32,.35)', facBg: '#122831', facSeam: 'rgba(46,230,200,.10)',
-      winFill: 'rgba(120,225,255,.16)', winLine: 'rgba(46,230,200,.22)', facDoor: 'rgba(8,20,26,.95)',
-      facDoorLine: 'rgba(46,230,200,.3)', facSlat: 'rgba(46,230,200,.14)', facWarn: 'rgba(255,176,32,.22)'
+      pcsWarn: 'rgba(255,176,32,.35)',
+      /* 厂房墙板：跟峻涌 THEMES.wallTex / 洙边 THEMES.wall 同一组值（夜里深炭灰 + 一道青灰缝） */
+      facBg: '#1c262e', facSeam: 'rgba(46,230,200,.07)'
     },
     day: {
       cabBg: '#eef1f0', cabPanel: 'rgba(206,216,218,.95)', seam: 'rgba(104,128,130,.30)',
@@ -221,9 +221,8 @@ window.GaoteScene3D = (function () {
       warn: 'rgba(224,148,16,.55)', sideBg: '#e4e9e9', sideSeam: 'rgba(104,128,130,.26)',
       sideEdge: 'rgba(104,128,130,.34)', sideVent: 'rgba(104,128,130,.30)', pcsBg: '#eaeef0',
       pcsPanel: 'rgba(202,212,214,.95)', pcsVent: 'rgba(104,128,130,.30)', pcsFoot: 'rgba(104,128,130,.16)',
-      pcsWarn: 'rgba(224,148,16,.50)', facBg: '#39464c', facSeam: 'rgba(120,150,158,.16)',
-      winFill: 'rgba(126,196,226,.50)', winLine: 'rgba(80,116,124,.45)', facDoor: 'rgba(30,40,46,.95)',
-      facDoorLine: 'rgba(120,150,158,.50)', facSlat: 'rgba(120,150,158,.25)', facWarn: 'rgba(224,148,16,.35)'
+      pcsWarn: 'rgba(224,148,16,.50)',
+      facBg: '#39464c', facSeam: 'rgba(120,150,158,.16)'
     }
   };
 
@@ -748,20 +747,15 @@ window.GaoteScene3D = (function () {
   }
 
   /* ---------------- 厂房（工厂用电负荷：放电时给厂房供电） ---------------- */
-  function factoryWallTexture(P) {
+  /* 墙面贴图：跟峻涌 / 洙边同一份配方（深炭灰底 + 顶上一道板缝，昼夜各一版）。
+     2026-11-02 同步：东明这栋原来是无贴图的纯色壳，摆到三站同屏时比另两站"平"，
+     缺那道板缝的工业质感。 */
+  function wallTexture(t) {
+    const P = TEXPAL[t === 'day' ? 'day' : 'night'];
     return tex(function (g, w, h) {
       g.fillStyle = P.facBg; g.fillRect(0, 0, w, h);
-      g.strokeStyle = P.facSeam; g.lineWidth = 2;
-      for (let i = 1; i < 10; i++) { const x = i * w / 10; g.beginPath(); g.moveTo(x, 0); g.lineTo(x, h); g.stroke(); }
-      for (let i = 0; i < 6; i++) {                      // 高窗带
-        g.fillStyle = P.winFill; g.fillRect(14 + i * 40, 34, 30, 22);
-        g.strokeStyle = P.winLine; g.strokeRect(14 + i * 40, 34, 30, 22);
-      }
-      g.fillStyle = P.facDoor; g.fillRect(w / 2 - 46, h - 80, 92, 76);   // 卷帘门
-      g.strokeStyle = P.facDoorLine; g.strokeRect(w / 2 - 46, h - 80, 92, 76);
-      for (let i = 0; i < 8; i++) { g.fillStyle = P.facSlat; g.fillRect(w / 2 - 42, h - 76 + i * 9, 84, 3); }
-      g.fillStyle = P.facWarn; g.fillRect(0, h - 8, w, 6);
-    }, 256, 256, 2);
+      g.fillStyle = P.facSeam; g.fillRect(0, 0, w, 10);
+    }, 512, 256);
   }
 
   /* 厂房门口的人气（叉车 + 工人）：都不投影，位置在 loop 里推进 */
@@ -780,10 +774,13 @@ window.GaoteScene3D = (function () {
     const lzEnd = D / 2 + .11;                       /* 附房已删：左侧腰线/窗带通长到前角 */
 
     g.add(rbox(W + .7, top, D + .7, M.dark, 0, top / 2, 0, .12));                                  // 基座（倒角）
-    /* 两层厂房：黑灰壳体 + 青灰描边 + 暖窗剪影（2026-11-02 用户要求改科技感配色，
-       跟峻涌 / 洙边同一组值；原来是白墙，夜里在暗景里过曝） */
-    const wallMat = regMat(std(0x22333c, { roughness: .72, metalness: .12 }),
-      { color: 0x22333c }, { color: 0x515f66 });                                              // 主墙：深炭灰
+    /* 两层厂房：黑灰墙板贴图 + 青灰描边 + 冷白窗光（2026-11-02 跟峻涌 / 洙边对齐：
+       原来是纯色壳 + 夜里暖黄窗，摆在一起比另两站"平"、窗色也不合 05 红线那条"白光"） */
+    const wallTx = { night: wallTexture('night'), day: wallTexture('day') };
+    /* std() 里那句 envMapIntensity 要留着：applyTheme 是"材质有这个属性才刷"，
+       直接用裸 MeshStandardMaterial 的话白天切回来环境光强还停在夜里的值 */
+    const wallMat = regMat(std(0xffffff, { map: wallTx[theme], roughness: .78, metalness: .1 }),
+      { map: wallTx.night, color: 0xffffff }, { map: wallTx.day, color: 0xffffff });           // 主墙：深炭灰墙板
     const trimMat = regMat(std(0x2c4048, { roughness: .6, metalness: .3 }),
       { color: 0x2c4048 }, { color: 0x6b7a80 });                                              // 灰带 / 窗框
     const bandMat0 = regMat(std(0x232a2d, { roughness: .5, metalness: .35 }),
@@ -835,12 +832,13 @@ window.GaoteScene3D = (function () {
       gc.fillRect(w / 2 - 2, 0, 4, h);
       for (let r = 1; r < 3; r++) gc.fillRect(0, m + r * ch - 2, w, 4);
     }, 64, 96, 2);
-    /* 窗户：暖色室内光（格子里的暖调），夜里 0.5、白天 0.16 —— 不再过曝 */
+    /* 窗户：夜里冷白（0xeef4f2 打在深色壳体上）—— 跟峻涌 / 洙边同一个值，
+       也是 05 红线那条「窗要长亮（白光，不是黄光）」；白天压到 .16 让格子像反射天光 */
     const winMat = regMat(new THREE.MeshStandardMaterial({
       map: winPaneTex, emissiveMap: winPaneTex,
-      color: 0x20262a, roughness: .35, metalness: .2,
-      emissive: new THREE.Color(0xffe2bd), emissiveIntensity: .5
-    }), { color: 0x20262a, emissive: new THREE.Color(0xffe2bd), emissiveIntensity: .5 },
+      color: 0x0e1a1f, roughness: .35, metalness: .2,
+      emissive: new THREE.Color(0xeef4f2), emissiveIntensity: .58
+    }), { color: 0x0e1a1f, emissive: new THREE.Color(0xeef4f2), emissiveIntensity: .58 },
       { color: 0x20262a, emissive: new THREE.Color(0xfff3e2), emissiveIntensity: .16 });
     facWinMat = winMat;
     /* 横向深色窗带：整栋只在上面一层做一条带，带内嵌 4 扇大窗（越简洁越显好） */
@@ -1192,7 +1190,6 @@ window.GaoteScene3D = (function () {
     texCache.cabFront = { night: cabFrontTexture(TEXPAL.night), day: cabFrontTexture(TEXPAL.day) };
     texCache.cabSide = { night: cabSideTexture(TEXPAL.night), day: cabSideTexture(TEXPAL.day) };
     texCache.pcsFront = { night: pcsFrontTexture(TEXPAL.night), day: pcsFrontTexture(TEXPAL.day) };
-    texCache.facWall = { night: factoryWallTexture(TEXPAL.night), day: factoryWallTexture(TEXPAL.day) };
 
     /* 共用材质（柜体 / 汇流柜 / 厂房都从这里取，登记后跟着主题切换） */
     texCache.mats = {
@@ -1202,8 +1199,6 @@ window.GaoteScene3D = (function () {
         { map: texCache.cabSide.night }, { map: texCache.cabSide.day }),
       pcsFront: regMat(new THREE.MeshStandardMaterial({ map: texCache.pcsFront[theme], roughness: .5, metalness: .45 }),
         { map: texCache.pcsFront.night }, { map: texCache.pcsFront.day }),
-      facWall: regMat(new THREE.MeshStandardMaterial({ map: texCache.facWall[theme], roughness: .78, metalness: .18 }),
-        { map: texCache.facWall.night }, { map: texCache.facWall.day }),
       cabTop: regMat(std(0x0a1c23, { roughness: .8, metalness: .25 }), { color: 0x0a1c23 }, { color: 0xc3cacb }),
       pcsTop: regMat(std(0x0b1f26, { roughness: .8, metalness: .25 }), { color: 0x0b1f26 }, { color: 0xbcc4c5 }),
       dark: regMat(std(0x08171c, { roughness: .9, metalness: .2 }), { color: 0x08171c }, { color: 0x9aa5a6 }),
@@ -1644,7 +1639,7 @@ window.GaoteScene3D = (function () {
       const day = theme === 'day';
       const baseW = facOn ? (day ? .74 : .95) : (day ? .6 : .82);
       const wb = Math.min(day ? .82 : .98, baseW + mag / 420);
-      facWinBase = wb * (day ? .3 : .55);
+      facWinBase = wb * (day ? .3 : .58);
     }
     if (facLabelEl) {
       /* 数值行固定是"受电 x kW"（版式：名称 / 受电功率 / 供电工况）：
@@ -1719,7 +1714,6 @@ window.GaoteScene3D = (function () {
     clock.last = t;
     /* 画布被隐藏（切到别的站 / 站点目录）时不渲染，别在后台空烧 GPU */
     if (!renderer.domElement.offsetWidth || !renderer.domElement.offsetHeight) return;
-    if (rot.auto && controls) controls.autoRotate && (controls.autoRotateSpeed = rot.speed * 6);
     if (controls) controls.update();
     stepFlow(dt);
     /* 雨：合批实例每帧下落、落地回绕（无降水时整块隐藏，不花算力） */
@@ -1880,8 +1874,8 @@ window.GaoteScene3D = (function () {
       if (cfg.opacity !== undefined) e.mat.opacity = cfg.opacity;
       e.mat.needsUpdate = true;
     });
-    /* 厂房灯的呼吸基准跟着主题：夜里 0.5 的暖光，白天压到 0.16（浅底上不刺眼） */
-    facWinBase = theme === 'day' ? .16 : .5;
+    /* 厂房灯的呼吸基准跟着主题：夜里冷白 .58（同峻涌 winI），白天压到 .16（浅底上不刺眼） */
+    facWinBase = theme === 'day' ? .16 : .58;
     if (facWinMat) facWinMat.emissiveIntensity = facWinBase;
   }
 

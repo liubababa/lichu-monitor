@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>旭日东明 · 厂房材质对照（本地评审页，未部署）</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="css/style.css">
+<style>
+  html, body { margin: 0; height: 100%; background: #050b0d; overflow: hidden; }
+  #stage { position: absolute; inset: 0; }
+  #stage canvas { display: block; width: 100%; height: 100%; }
+  #tag { position: absolute; left: 10px; top: 8px; z-index: 30; color: #7fa8a2;
+         font: 12px/1.5 ui-monospace, Consolas, monospace; white-space: pre; }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<div id="tag">加载中…</div>
+
+<script>
+  /* 只做一件事：把线上那份 js/gaote-scene3d.js 原样挂起来看材质，不带数据、不带面板。
+     参数：?theme=night|day   ?src=gaote-scene3d.js|gaote-before.js（对照用，本地文件）
+     数据层给桩：场景 update() 会来取值，一律 null = 没上报，画面走暗态，不会编出假数 */
+  var Q = new URLSearchParams(location.search);
+  var THEME = Q.get('theme') === 'day' ? 'day' : 'night';
+  var SRC = Q.get('src') || 'js/gaote-scene3d.js';
+  document.documentElement.setAttribute('data-theme', THEME);
+  window.GaoteService = { val: function () { return null; }, trend: function () { return null; } };
+</script>
+
+<script src="libs/three.min.js"></script>
+<script src="libs/OrbitControls.js"></script>
+<script src="libs/CSS2DRenderer.js"></script>
+<script src="libs/EffectComposer.js"></script>
+<script src="libs/RenderPass.js"></script>
+<script src="libs/ShaderPass.js"></script>
+<script src="libs/CopyShader.js"></script>
+<script src="libs/LuminosityHighPassShader.js"></script>
+<script src="libs/UnrealBloomPass.js"></script>
+<script src="js/scene-preset.js"></script>
+
+<script>
+  (function () {
+    var V = '?v=' + Date.now();
+    /* 依赖按顺序加载（EffectComposer 要在它的 Pass 之前），最后才挂场景 */
+    var FILES = ['libs/three.min.js', 'libs/OrbitControls.js', 'libs/CSS2DRenderer.js',
+      'libs/EffectComposer.js', 'libs/RenderPass.js', 'libs/ShaderPass.js',
+      'libs/CopyShader.js', 'libs/LuminosityHighPassShader.js', 'libs/UnrealBloomPass.js',
+      'js/scene-preset.js', SRC];
+    var i = 0;
+    function fail(t) { document.getElementById('tag').textContent = t; }
+    function next() {
+      if (i >= FILES.length) { start(); return; }
+      var s = document.createElement('script');
+      s.src = FILES[i++] + V;
+      s.onload = next;
+      s.onerror = function () { fail('依赖加载失败：' + s.src); };
+      document.head.appendChild(s);
+    }
+    function start() {
+      try {
+        window.GaoteScene3D.init(document.getElementById('stage'));
+        document.getElementById('tag').textContent =
+          'src=' + SRC + '  theme=' + THEME + '  默认机位（全场）';
+      } catch (e) {
+        fail('init 失败：' + e.message);
+      }
+    }
+    next();
+  })();
+</script>
+</body>
+</html>
