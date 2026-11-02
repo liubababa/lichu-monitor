@@ -145,13 +145,32 @@ const AUTH_URL_FALLBACK = 'https://web3.isolarcloud.com.cn/#/authorized-app?clou
     }
     if (!accEl) throw new Error('找不到账号输入框');
 
+    /* 登录页在选完服务器/输入过程中会整块重渲染，元素句柄随时可能失效（Node is detached），
+       所以：每次重新取元素 → 点一下 → 输入 → 读回值确认，失败重来 */
+    const readInp = kind => page.evaluate(function (k) {
+      if (k === 'pw') { var p = document.querySelector('input[type="password"]'); return p ? (p.value || '') : null; }
+      var sels = ['input[placeholder="账号"]', 'input[placeholder="Account"]', 'input[placeholder*="账号"]'];
+      for (var i = 0; i < sels.length; i++) { var e = document.querySelector(sels[i]); if (e) return e.value || ''; }
+      return null;
+    }, kind);
+    const typeInto = async (sel, val, kind, what) => {
+      for (let i = 0; i < 6; i++) {
+        try {
+          const el = await waitForSel(sel, 8000);
+          if (!el) continue;
+          await el.click({ clickCount: 3 });
+          await el.type(val, { delay: 25 });
+          const got = await readInp(kind);
+          if (got === val) return true;
+        } catch (e) { /* 句柄失效 → 重试 */ }
+        await new Promise(r => setTimeout(r, 700));
+      }
+      throw new Error('填' + what + '失败（页面反复重渲染）');
+    };
+
     log('填账号密码…');
-    await accEl.click({ clickCount: 3 });
-    await accEl.type(OPT.user, { delay: 20 });
-    const pwEl = await waitForSel('input[type="password"]', 15000);
-    if (!pwEl) throw new Error('找不到密码输入框');
-    await pwEl.click({ clickCount: 3 });
-    await pwEl.type(OPT.pass, { delay: 20 });
+    await typeInto('input[placeholder="账号"], input[placeholder="Account"], input[placeholder*="账号"]', OPT.user, 'acc', '账号');
+    await typeInto('input[type="password"]', OPT.pass, 'pw', '密码');
 
     /* 勾上没勾的复选框（隐私协议；「记住我」通常是勾着的，别把它点掉） */
     try {
@@ -171,36 +190,50 @@ const AUTH_URL_FALLBACK = 'https://web3.isolarcloud.com.cn/#/authorized-app?clou
     });
     if (!clicked) throw new Error('页面上找不到「登录」按钮');
 
-    /* 登录失败（密码错 / 要验证码）时，页面上会有提示文字 */
+    /* 登录成功判定：页面上不再有密码框，并且已经出现「授权详情」的内容
+       （登录后可能跳 #/apiAuth/detail 或 #/authorized-app，别只认其中一个路径） */
     const loginOk = await wait(async () => {
-      const url = page.url();
-      if (url.indexOf('authorized-app') > -1 && !(await page.$('input[type="password"]'))) return true;
       const txt = await page.evaluate(() => (document.body.innerText || ''));
+      const hasPw = !!(await page.$('input[type="password"]'));
+      if (!hasPw && /Authorization details|授权详情|Agree to authorize|同意授权|Authorized plant|授权电站/i.test(txt)) return true;
       if (/验证码|滑动|拖动|captcha|verification code/i.test(txt)) throw fatal('登录页要求验证码，需要人工登录一次');
       if (/账号或密码|密码错误|用户不存在|账号不存在|incorrect|invalid|wrong password|does not exist|server selection/i.test(txt)) throw fatal('账号或密码不正确（或服务器选错）');
       return false;
-    }, 60000, '登录完成');
+    }, 90000, '登录完成');
     if (!loginOk) throw new Error('登录后没有回到授权页');
     log('登录成功，停在授权页');
 
-    /* 授权页：勾选电站（如果有列表）+ 点「同意授权」 */
-    await new Promise(r => setTimeout(r, 1500));
-    const consentText = await page.evaluate(() => (document.body.innerText || '').replace(/\s+/g, ' ').slice(0, 400));
-    log('授权页文字：' + consentText);
-    try {
-      const cbs = await page.$$('input[type="checkbox"], .el-checkbox');
-      for (const b of cbs) { try { await b.click(); } catch (_) {} }
-    } catch (_) {}
-    const okClicked = await page.evaluate(() => {
-      const els = Array.from(document.querySelectorAll('button, .el-button, div[role="button"], span'));
-      const b = els.find(x => /同意授权|同意并授权|确认授权|^同意$|Agree and authorize|Authorize|Confirm/i.test((x.innerText || '').trim()));
-      if (!b) return false;
-      b.click(); return true;
-    });
-    if (!okClicked) throw new Error('授权页找不到「同意授权」按钮');
-    log('已点同意授权，等回调…');
+    /* 授权页：① 勾「我已阅读并同意隐私政策」（不勾时「同意授权」是灰的，点了没反应）
+       ② 电站列表里没勾的也勾上（有些账号要手动选电站）③ 等按钮可点再点 */
+    await new Promise(r => setTimeout(r, 2000));
+    log('授权页文字：' + await page.evaluate(() => (document.body.innerText || '').replace(/\s+/g, ' ').slice(0, 300)));
+    let consent = 'none';
+    for (let i = 0; i < 12; i++) {
+      await page.evaluate(() => {
+        document.querySelectorAll('.el-checkbox').forEach(function (b) {
+          var inp = b.querySelector('input');
+          if (inp && !inp.checked) { var l = b.querySelector('.el-checkbox__label') || b; l.click(); }
+        });
+        document.querySelectorAll('input[type="checkbox"]').forEach(function (c) {
+          if (!c.checked) { try { c.click(); } catch (_) {} }
+        });
+      });
+      consent = await page.evaluate(() => {
+        const btns = Array.from(document.querySelectorAll('button, .el-button'));
+        /* 只认按钮本身，别把「Authorized plant」这种标题当成按钮 */
+        const b = btns.find(x => /^(同意授权|同意并授权|确认授权|同意|Agree to authorize|Agree and authorize|Authorize|Confirm)$/i.test((x.innerText || '').trim()))
+          || btns.find(x => /同意授权|同意并授权|确认授权|Agree to authorize|Agree and authorize/i.test((x.innerText || '').trim()));
+        if (!b) return 'none';
+        if (b.disabled || (b.className || '').indexOf('is-disabled') > -1 || b.getAttribute('aria-disabled') === 'true') return 'disabled';
+        b.click(); return 'clicked';
+      });
+      if (consent === 'clicked' || consent === 'none') break;   /* 点了 / 页面没有按钮（可能是别的形态）都往下走 */
+      await new Promise(r => setTimeout(r, 1500));
+    }
+    if (consent === 'disabled') throw new Error('「同意授权」按钮一直是灰的（隐私政策勾选框可能没勾上）');
+    log('授权按钮：' + consent + '，等回调…');
 
-    await wait(async () => !!codeSeen, 60000, '拿到授权 code');
+    await wait(async () => !!codeSeen, 90000, '拿到授权 code');
     log('拿到 code，交给本机接入服务换 token…');
 
     const res = await fetch('http://127.0.0.1:' + OPT.port + '/solar/callback?code=' + encodeURIComponent(codeSeen));
