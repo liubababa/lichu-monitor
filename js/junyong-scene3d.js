@@ -32,7 +32,7 @@ window.JunyongScene = (function () {
   var SP = window.ScenePreset;
   var inited = false, scene, camera, renderer, composer = null, bloomPass = null, vigPass = null, controls, labelR = null;
   var root = null, raf = null, W = 0, H = 0, active = true, last = 0;
-  var theme = 'night', labelsOn = true, rotating = false, camHome = null, camAz = 0;
+  var theme = 'night', labelsOn = true, rotating = false, camHome = null;
   var flows = [], units = [], tower = null, beacons = [], occluders = [];
   var labelPairs = [], cards = {}, activeCard = null;
   var key = null, hemi = null, fill = null, dome = null;
@@ -1349,7 +1349,6 @@ window.JunyongScene = (function () {
     controls.target.copy(center);
     camHome = { p: camera.position.clone(), t: center.clone() };
     lblRef = d;                      /* 默认机位 = 浮标 100% */
-    camAz = 0;
     controls.update();
   }
 
@@ -1413,12 +1412,6 @@ window.JunyongScene = (function () {
     raf = requestAnimationFrame(loop);
     var dt = Math.min(.05, (ts - last) / 1000 || 0); last = ts;
     if (!active) return;
-    if (rotating) {
-      camAz += dt * .055;
-      var p = camera.position.clone().sub(controls.target);
-      var s = Math.sin(camAz), c = Math.cos(camAz);
-      camera.position.set(controls.target.x + p.x * c - p.z * s, camera.position.y, controls.target.z + p.x * s + p.z * c);
-    }
     controls.update();
     var spd = 1;
     flows.forEach(function (f) {
@@ -1500,6 +1493,10 @@ window.JunyongScene = (function () {
     controls.maxPolarAngle = 1.35;
     controls.minPolarAngle = .15;
     controls.minDistance = 12; controls.maxDistance = 320;
+    /* 自动旋转交给 OrbitControls，跟洙边/东明同一套：它只在没按住拖拽时转，
+       自己写角度会把拖拽的镜头一起拽走。角度是每帧 2π/3600×speed，
+       .52 ≈ 0.055 rad/s（一圈约 114s）——峻涌原来手写的就是这一档，没跟东明的 .8 拉平 */
+    controls.autoRotate = rotating; controls.autoRotateSpeed = .52;
 
     try {
       build(mats(theme));
@@ -1577,7 +1574,10 @@ window.JunyongScene = (function () {
     renderNow();
   }
   function setLabels(on) { labelsOn = !!on; applyLabelVisibility(); }
-  function setRotate(on) { rotating = !!on; }
+  function setRotate(on) {
+    rotating = !!on;
+    if (controls) controls.autoRotate = rotating;
+  }
   function setActive(on) { active = !!on; if (on) { resize(); renderNow(); } }
   function setDuis(on) { duisOn = !!on; applyTheme(); }
   function setGroup(i, d) {
