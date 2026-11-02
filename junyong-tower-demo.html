@@ -140,11 +140,11 @@ window.addEventListener('error', function (e) {
   /* 2026-11-02 重排：一号挪到前排与三号齐平，铁塔接一号空出来的后排左 (−20,−12)。
      上塔线按「西 / 东 / 南」三面进塔，路由全按 TWR_AT 相对算，改档会自动重排 */
   var TOWERS = {
-    now:  { xy: '{ x: -SLOT, z: -SLOT + 8 }', name: '后排左 (−20,−12) 线上现状' },
-    c30:  { xy: '{ x: -30, z: -26 }', name: '右上 (−30,−26)' },
-    c38:  { xy: '{ x: -38, z: -34 }', name: '右上·更贴角 (−38,−34)' },
-    c44:  { xy: '{ x: -44, z: -42 }', name: '右上·最贴角 (−44,−42)' },
-    front: { xy: '{ x: -14, z: 14 }', name: '对照：前排左空场（更早版）' }
+    now:  { xy: '{ x: 0, z: -16 }', name: '后排中间 (0,−16) 线上现状' },
+    c30:  { xy: '{ x: 8, z: -18 }', name: '再往右一点 (8,−18)' },
+    c38:  { xy: '{ x: -8, z: -18 }', name: '往左一点 (−8,−18)' },
+    c44:  { xy: '{ x: 0, z: -22 }', name: '再往后 (0,−22)' },
+    front: { xy: '{ x: -20, z: -12 }', name: '对照：后排左原一号坑位' }
   };
   var CAMS = {
     home: { v: '(-.3, .42, .86)', name: '现状方位角' },
@@ -200,7 +200,7 @@ window.addEventListener('error', function (e) {
       + '    }']];
   function patches() {
     var p = [];
-    p.push(['var TWR_AT = { x: -SLOT, z: -SLOT + 8 };', 'var TWR_AT = ' + TOWERS[S.tw].xy + ';']);
+    p.push(['var TWR_AT = { x: 0, z: -16 };', 'var TWR_AT = ' + TOWERS[S.tw].xy + ';']);
     if (S.cam !== 'home') p.push(['(-.3, .42, .86)', CAMS[S.cam].v]);
     /* 塔完全不进包围盒（场坪是固定 460×240 的大板，塔挪哪都在板上）：
        机位不再为塔后退，厂房大小不受塔位影响。fit=0 就是"恢复让塔参与取景"，用来对照 */
