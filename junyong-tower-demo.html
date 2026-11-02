@@ -140,10 +140,11 @@ window.addEventListener('error', function (e) {
   /* 2026-11-02 重排：一号挪到前排与三号齐平，铁塔接一号空出来的后排左 (−20,−12)。
      上塔线按「西 / 东 / 南」三面进塔，路由全按 TWR_AT 相对算，改档会自动重排 */
   var TOWERS = {
-    now:  { xy: '{ x: 0, z: -16 }', name: '后排中间 (0,−16) 线上现状' },
-    c30:  { xy: '{ x: 8, z: -18 }', name: '再往右一点 (8,−18)' },
-    c38:  { xy: '{ x: -8, z: -18 }', name: '往左一点 (−8,−18)' },
-    c44:  { xy: '{ x: 0, z: -22 }', name: '再往后 (0,−22)' },
+    now:  { xy: '{ x: -2.5, z: -17 }', name: '后排偏左 (−2.5,−17) 线上现状' },
+    mid:  { xy: '{ x: 0, z: -16 }', name: '对照：正中 (0,−16)（用户说板板）' },
+    L4:   { xy: '{ x: -4, z: -16 }', name: '往左过头 (−4,−16)：塔压到一号上塔线自己身上' },
+    L7:   { xy: '{ x: -7, z: -16 }', name: '再往左 (−7,−16)：一号/二号进塔横段同车道重叠' },
+    c44:  { xy: '{ x: 0, z: -22 }', name: '只往后 (0,−22)' },
     front: { xy: '{ x: -20, z: -12 }', name: '对照：后排左原一号坑位' }
   };
   var CAMS = {
@@ -161,13 +162,14 @@ window.addEventListener('error', function (e) {
     ['B', '再叠降权四件套', { fit: 0, arm: 0, bcn: 0, tag: 0 }, '塔位不动，把亮度与机位权重也压下去（我推荐叠上）'],
     ['C', '只摘取景', { fit: 0 }, '只关「塔顶参与取景」：机位不再为塔后退，塔顶可能被裁出上沿'],
     ['D', '只灰横担', { arm: 0 }, '只把横担从亮青退成钢灰（青=储能放电语义色，塔身不该占）'],
-    ['E', '只弱闪灯', { bcn: 0 }, '只收小顶部红灯光晕（全画面唯一动的红，最抓眼）'],
-    ['F', '右上·收一点 (−30,−30)', { tw: 'c30' }, '塔更贴角、离镜头更远；代价是场坪向西北扩、机位后退'],
-    ['G', '右上·更贴角 (−38,−38)', { tw: 'c38' }, '再退一档，看边际收益还剩多少']
+    ['E', '只弱闪灯', { bcn: 0 }, '只收小顶部红灯光晕（全画面唯一动的红，最抓眼）']
   ];
   var WARN = {
-    c30: '右上挪 + 关「塔参与取景」：机位不再被塔顶远，厂房保持原大小；代价是塔更贴画面边角，注意它和浮标会不会被裁掉。',
-    c38: '同上，更贴角。', c44: '同上，最贴角——再远就要看是否还在画面里。', front: '更早那版塔在前排左空场：离镜头近，角尺寸比现在大不少。'
+    mid: '正中 (0,−16)：x 卡在两列厂房的中轴、z 又跟二号北墙共线 —— 两条看不见的对齐就是"板板"的来源。',
+    L4: '往左过头：一号的上塔线沿世界 x=−4.5 一路北上，塔心 −4 时塔在屏幕上正压在这条线上（实测差 7px），像塔挂在线上；且进塔点开始往回打弯。',
+    L7: '再往左：一号那段"向东进塔"的横段跟二号的进塔横段都落在 z=TWR_AT.z 同一条车道上，从 x=−5 到 −4.5 这一段两根管子重叠（共面闪烁）。',
+    c44: '只往后：机位不变（塔不进取景盒），但塔更贴画面上沿，注意会不会被裁。',
+    front: '更早那版塔在前排左空场：离镜头近，角尺寸比现在大不少。'
   };
 
   /* ---------------- 补丁表 ---------------- */
@@ -195,6 +197,17 @@ window.addEventListener('error', function (e) {
       + '      camera.position.set(p[0], p[1], p[2]); controls.target.set(t[0], t[1], t[2]); controls.update();\n'
       + '    },\n'
       + '    draw: function () { renderNow(); },\n'
+      + '    /* 屏幕 x（px）：看塔跟三栋的棱是不是压在同一条竖线上 */\n'
+      + '    proj: function () {\n'
+      + '      var V = new (T_().Vector3)(), out = {}, w = renderer.domElement.clientWidth;\n'
+      + '      var put = function (k, x, y, z) { V.set(x, y, z).project(camera); out[k] = Math.round((V.x * .5 + .5) * w); };\n'
+      + '      put("tower", TWR_AT.x, 2, TWR_AT.z);\n'
+      + '      SITE.forEach(function (p, i) { put("b" + i + "W", p.x - W2 / 2, 2, p.z); put("b" + i + "E", p.x + W2 / 2, 2, p.z); });\n'
+      + '      units.forEach(function (u, i) { if (u.tbWorld) put("tb" + i, u.tbWorld.x, .4, u.tbWorld.z); });\n'
+      + '      if (units[0] && units[0].tbWorld) put("一号上塔竖段", units[0].tbWorld.x, 2, TWR_AT.z);\n'
+      + '      if (units[2] && units[2].tbWorld) put("三号进塔横段x端", TWR_AT.x, 2, TWR_AT.z + 3);\n'
+      + '      return out;\n'
+      + '    },\n'
       + '    /* 贴墙电缆顶点 vs 南墙四格玻璃：落在窗 x 区间里就是"压窗" */\n'
       + '    pvWin: function () {\n'
       + '      var V = new (T_().Vector3)(), inner = W2 - .4 - .7, pitch = inner / 4, hit = [];\n'
@@ -259,6 +272,25 @@ window.addEventListener('error', function (e) {
       + '      });\n'
       + '      return { boxes: A.length, hit: hit };\n'
       + '    },\n'
+      + '    /* 上塔线两两之间的最近距离（世界坐标，取管面顶点）：< .10 就是两根管子贴上了/重叠 */\n'
+      + '    leadNear: function () {\n'
+      + '      var T = T_(), list = [];\n'
+      + '      flows.forEach(function (f) {\n'
+      + '        if (f.kind !== "lead" && f.kind !== "tower") return;\n'
+      + '        var p = f.mesh.geometry.attributes.position, v = new T.Vector3(), a = [];\n'
+      + '        for (var i = 0; i < p.count; i++) { v.fromBufferAttribute(p, i); f.mesh.localToWorld(v); a.push(v.clone()); }\n'
+      + '        list.push({ n: f.kind + "#" + f.gi, a: a });\n'
+      + '      });\n'
+      + '      var out = [];\n'
+      + '      for (var i = 0; i < list.length; i++) for (var j = i + 1; j < list.length; j++) {\n'
+      + '        var m = 1e9;\n'
+      + '        for (var x = 0; x < list[i].a.length; x += 3) for (var y = 0; y < list[j].a.length; y += 3) {\n'
+      + '          var d = list[i].a[x].distanceTo(list[j].a[y]); if (d < m) m = d;\n'
+      + '        }\n'
+      + '        if (m < 1.2) out.push(list[i].n + " ↔ " + list[j].n + " 最近 " + m.toFixed(2) + "m");\n'
+      + '      }\n'
+      + '      return out;\n'
+      + '    },\n'
       + '    probe: function () {\n'
       + '      return { theme: theme, towerAt: [TWR_AT.x, TWR_AT.z], duis: duisOn,\n'
       + '        flows: flows.map(function (f) {\n'
@@ -268,7 +300,7 @@ window.addEventListener('error', function (e) {
       + '    }']];
   function patches() {
     var p = [];
-    p.push(['var TWR_AT = { x: 0, z: -16 };', 'var TWR_AT = ' + TOWERS[S.tw].xy + ';']);
+    p.push(['var TWR_AT = { x: -2.5, z: -17 };', 'var TWR_AT = ' + TOWERS[S.tw].xy + ';']);
     if (S.cam !== 'home') p.push(['(-.3, .42, .86)', CAMS[S.cam].v]);
     /* 塔完全不进包围盒（场坪是固定 460×240 的大板，塔挪哪都在板上）：
        机位不再为塔后退，厂房大小不受塔位影响。fit=0 就是"恢复让塔参与取景"，用来对照 */
