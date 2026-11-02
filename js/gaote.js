@@ -59,7 +59,11 @@ window.GaoteService = (function () {
       if (!d || !d.dsn) return;
       out.dev[k] = { psn: d.psn, dsn: d.dsn, lastSeen: d.lastSeen, msgs: d.msgs, state: stateByDev[k], seen: lastSeenByDev[k] };
     });
-    try { localStorage.setItem(CACHE_KEY, JSON.stringify(out)); } catch (_) {}
+    try {
+      const s = JSON.stringify(out);
+      if (s.length > 2 * 1024 * 1024) return;     /* 超过 2MB 就不写了，别把 localStorage 撑爆 */
+      localStorage.setItem(CACHE_KEY, s);
+    } catch (_) {}
   }
   function markCacheDirty() {
     if (cacheTimer) return;
