@@ -285,12 +285,28 @@ window.JunyongUI = (function () {
   }
 
   function st() { return (payload && payload.station) || {}; }
+  /* 停更检测（与洙边同一口径）：接入服务 5 分钟拉一次，超过 15 分钟没动就是断更。
+     断更时服务会把最后一次成功的快照继续发出来，页面看着"有数"其实是旧数
+     （2026-11-01 洙边授权过期就是这样被当成当天的数据看了整整一天），
+     所以这里要写明"这是上一次的数"并说清原因。 */
+  var STALE_MIN = 15;
+  function overText(age) {
+    var t = Math.round(age);
+    if (t < 60) return t + ' 分钟';
+    var h = Math.floor(t / 60), m = t % 60;
+    return h + ' 小时' + (m ? ' ' + m + ' 分' : '');
+  }
   function srcTag() {
-    if (payload) {
-      var t = st().data_time ? fmtDevTime(st().data_time) : fmtTime(st().updated_at);
-      return '光伏 · 阳光云 更新 ' + t + (lastErr ? '（读取失败，显示上次数据）' : '');
+    if (!payload) return '<em>数据源：' + (lastErr ? ('光伏读不到（' + lastErr + '）') : '未接入') + '</em>';
+    var s = st();
+    var t = s.data_time ? fmtDevTime(s.data_time) : fmtTime(s.updated_at);
+    var up = s.updated_at ? Date.parse(s.updated_at) : NaN;
+    var age = isFinite(up) ? (Date.now() - up) / 60000 : null;
+    if (age !== null && age > STALE_MIN) {
+      var why = /token|授权/i.test(String(lastErr || '')) ? '阳光云授权已过期，需重新授权' : '接入服务已停止更新';
+      return '<em class="stale">数据停更 · 最后更新 ' + t + '（已 ' + overText(age) + '）· ' + why + ' · 图上仍是上一次的数据</em>';
     }
-    return '数据源：' + (lastErr ? ('光伏读不到（' + lastErr + '）') : '未接入');
+    return '<em>光伏 · 阳光云 更新 ' + t + (lastErr ? '（读取失败，显示上次数据）' : '') + '</em>';
   }
 
   /* ================= 储能（高特 CCU · 三套机组） =================
@@ -611,7 +627,7 @@ window.JunyongUI = (function () {
     var stVal = S.power == null ? '--' : Math.abs(S.power).toFixed(1);
     var stSub = S.power == null ? ('高特 CCU · ' + S.online + '/' + (S.count || 3) + ' 台在线')
       : ((S.power > 0 ? '放电中' : S.power < 0 ? '充电中' : '待机') + ' · ' + S.online + '/' + (S.count || 3) + ' 台在线');
-    var h = '<div class="panel"><div class="panel-title"><span>系统概况</span><em>' + srcTag() + '</em></div>'
+    var h = '<div class="panel"><div class="panel-title"><span>系统概况</span>' + srcTag() + '</div>'
       + '<div class="kpi-grid">'
       + kpi('光伏功率', fmt(s.power_kw, 1), 'kW',
         s.device_power_kw == null ? (STATION.pvKwp + ' / ' + STATION.pvInv)
@@ -1017,7 +1033,7 @@ window.JunyongUI = (function () {
       + card('告警', n(s.alarms) === null ? '--' : String(n(s.alarms)), '条', '阳光云实时')
       + '</div>';
     box.innerHTML = '<div class="dt-body">'
-      + '<div class="panel"><div class="panel-title"><span>实时概览</span><em>' + srcTag() + '</em></div>'
+      + '<div class="panel"><div class="panel-title"><span>实时概览</span>' + srcTag() + '</div>'
       + kpis
       + '<div class="jy-note">“实时功率 / 当日发电”为电站口径（与阳光云概览一致）；设备级明细见「设备」。'
       + '机组表与三维的分群光伏按逆变器 01/02/03 前缀归组；结算收益 / 卖电收入本站没有数据源，不摆占位卡。</div></div>'

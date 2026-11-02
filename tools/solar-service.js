@@ -75,7 +75,40 @@ function log(line) { console.log(new Date().toTimeString().slice(0, 8) + '  ' + 
 
 /* ---------------- token ---------------- */
 function loadTokens() { try { return JSON.parse(fs.readFileSync(TOKEN_FILE, 'utf8')); } catch (_) { return null; } }
-function saveTokens(t) { fs.writeFileSync(TOKEN_FILE, JSON.stringify(t, null, 2), { mode: 0o600 }); }
+/* 原子写：先写临时文件再改名。阳光云的刷新令牌是一次性的，
+   写到一半掉电/被 kill 留下半截文件，等于把整条授权链弄丢。 */
+function saveTokens(t) {
+  const tmp = TOKEN_FILE + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(t, null, 2), { mode: 0o600 });
+  fs.renameSync(tmp, TOKEN_FILE);
+}
+
+/* ---------------- 单实例锁 ----------------
+   同一个数据目录只允许一个进程在跑：刷新令牌是一次性的（每次刷新换发新的），
+   两份实例拿同一个 refresh_token 各自刷新，晚的那份必然 invalid_grant，
+   还可能把整条授权链踢掉（2026-11-01 洙边停更一天事故的教训）。
+   残留锁文件用 pid 探活自动接管，不影响 systemd 重启。 */
+const LOCK_FILE = path.join(OPT.dir, 'service.lock');
+function takeLock() {
+  let prev = null;
+  try { prev = JSON.parse(fs.readFileSync(LOCK_FILE, 'utf8')); } catch (_) {}
+  if (prev && prev.pid && prev.pid !== process.pid) {
+    let alive = true;
+    try { process.kill(prev.pid, 0); } catch (_) { alive = false; }
+    if (alive) {
+      log('已有实例在运行（pid ' + prev.pid + '，数据目录 ' + OPT.dir + '），本进程退出');
+      process.exit(3);
+    }
+  }
+  try { fs.writeFileSync(LOCK_FILE, JSON.stringify({ pid: process.pid, at: new Date().toISOString() })); } catch (_) {}
+  process.on('exit', function () {
+    try {
+      const cur = JSON.parse(fs.readFileSync(LOCK_FILE, 'utf8'));
+      if (cur && cur.pid === process.pid) fs.unlinkSync(LOCK_FILE);
+    } catch (_) {}
+  });
+}
+takeLock();
 
 async function api(pathname, params, opt) {
   const tk = loadTokens();
@@ -130,13 +163,18 @@ async function fetchToken(code) {
     got_at: new Date().toISOString()
   };
   saveTokens(tk);
+  needAuth = false; nextRefreshAt = 0;
   log('授权成功，token 已保存');
   return tk;
 }
 
 let refreshTask = null;
-/* 三路并发遇到 token 过期时只刷新一次，避免刷新令牌互相踩 */
+/* 刷新令牌被平台作废（invalid_grant）后：刷新只会白试，半小时试一次就够，
+   同时 needAuth 置位——healthz / summary 都会把它带出去，页面据此提示"需重新授权" */
+let needAuth = false, nextRefreshAt = 0;
+/* 多路并发遇到 token 过期时只刷新一次，避免刷新令牌互相踩 */
 function refreshToken() {
+  if (needAuth && Date.now() < nextRefreshAt) return Promise.resolve(false);
   if (!refreshTask) {
     refreshTask = doRefreshToken()
       .then(function (ok) { return ok; }, function () { return false; })
@@ -162,11 +200,20 @@ async function doRefreshToken() {
       expires_at: Math.floor(Date.now() / 1000) + (Number(json.expires_in) || 3600) - 30,
       got_at: new Date().toISOString()
     });
+    needAuth = false; nextRefreshAt = 0;
     log('token 已续期');
     return true;
   } catch (e) {
-    state.lastError = '续期失败：' + e.message;
-    log('token 续期失败：' + e.message);
+    const msg = String((e && e.message) || e);
+    if (/invalid_grant|invalid refresh token/i.test(msg)) {
+      needAuth = true;
+      nextRefreshAt = Date.now() + 30 * 60000;
+      state.lastError = '阳光云授权已失效（invalid_grant），需重新授权：/solar/authorize';
+      log('token 续期失败：刷新令牌已被平台作废 —— 需要在浏览器里重新走一次授权（/solar/authorize），30 分钟内不再重试');
+    } else {
+      state.lastError = '续期失败：' + msg;
+      log('token 续期失败：' + msg);
+    }
     return false;
   }
 }
@@ -725,16 +772,19 @@ const server = http.createServer(async function (req, res) {
         ok: !state.lastError && !!tk, region: OPT.region, gateway: GW,
         appkey: OPT.appkey ? OPT.appkey.slice(0, 6) + '…' : null,
         ps_id: OPT.psId || null,
-        authorized: !!tk, token_expires_in_sec: tk ? tk.expires_at - Math.floor(Date.now() / 1000) : null,
+        authorized: !!tk, need_reauth: needAuth,
+        token_expires_in_sec: tk ? tk.expires_at - Math.floor(Date.now() / 1000) : null,
+        token_got_at: tk ? tk.got_at : null,
         polls: state.polls, errors: state.errors,
         last_poll: state.last, last_error: state.lastError,
+        stale_sec: state.last ? Math.round((Date.now() - Date.parse(state.last)) / 1000) : null,
         devices: state.devices.length, dir: OPT.dir,
         trend: trendStat()
       });
     }
     if (u.pathname === '/solar/summary') {
       if (!state.summary) await poll();
-      return json({ ok: !!state.summary, data: state.summary, last_error: state.lastError });
+      return json({ ok: !!state.summary, data: state.summary, need_reauth: needAuth, last_error: state.lastError });
     }
     if (u.pathname === '/solar/devices') {
       if (!state.devices.length) await poll();
