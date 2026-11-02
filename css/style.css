@@ -230,6 +230,8 @@ button{font-family:inherit;cursor:pointer;background:none;border:none;color:inhe
 }
 .panel-title::after{content:"";flex:1;height:1px;background:linear-gradient(90deg,var(--acc-3),transparent)}
 .panel-title em{font-style:normal;font-size:11px;color:var(--dim)}
+/* 数据停更：断更时页面照样显示上一次的旧数，必须显眼，不能只留一行暗色小字 */
+.panel-title em.stale{color:#ff6e50;font-size:12px;letter-spacing:0;text-shadow:0 0 8px rgba(255,110,80,.35)}
 .chart{flex:1;min-height:150px;width:100%}
 
 /* ---------- KPI 卡片 ---------- */
@@ -1330,6 +1332,7 @@ html[data-theme="day"] .sc-label,
 html[data-theme="day"] .panel-title em,
 html[data-theme="day"] .kpi-label,
 html[data-theme="day"] .kpi-num u{color:#4a686d}
+html[data-theme="day"] .panel-title em.stale{color:#c0392b;text-shadow:none}
 html[data-theme="day"] .dt-bar>b,
 html[data-theme="day"] .gv-card-head b,
 html[data-theme="day"] .gv-chead b,

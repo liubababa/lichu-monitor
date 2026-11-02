@@ -50,6 +50,36 @@ window.SolarUI = (function () {
     const p = n => String(n).padStart(2, '0');
     return p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
   }
+
+  /* 停更检测：接入服务 5 分钟拉一次阳光云，超过 15 分钟没动就是断了。
+     断更时服务把最后一次成功的快照继续发出来，页面看着"有数"其实是旧数
+     （2026-11-01 授权过期就是这样被当成当天的数据看了整整一天），
+     所以必须写明"这是上一次的数"并说清原因，不能只留一行暗色更新时间。 */
+  const STALE_MIN = 15;
+  function ageMin(iso) {
+    const t0 = Date.parse(iso);
+    return isFinite(t0) ? (Date.now() - t0) / 60000 : null;
+  }
+  function overText(age) {
+    const t = Math.round(age);
+    if (t < 60) return '已 ' + t + ' 分钟';
+    const h = Math.floor(t / 60), m = t % 60;
+    return '已 ' + h + ' 小时' + (m ? ' ' + m + ' 分' : '');
+  }
+  function srcState(s, lastErr) {
+    if (!s || !s.updated_at) return { txt: '服务未就绪 · 读不到光伏数据', stale: true };
+    const age = ageMin(s.updated_at);
+    if (age === null || age <= STALE_MIN) return { txt: '阳光云接入 · 更新 ' + fmtTime(s.updated_at), stale: false };
+    const why = /invalid_token|token|授权/i.test(String(lastErr || ''))
+      ? '阳光云授权已过期，需重新授权' : '接入服务已停止更新';
+    return { txt: '数据停更 · 最后更新 ' + fmtTime(s.updated_at) + '（' + overText(age)
+      + '）· ' + why + ' · 图上仍是上一次的数据', stale: true };
+  }
+  function paintSrc(el, st, title) {
+    el.textContent = st.txt;
+    el.className = st.stale ? 'stale' : '';
+    if (title) el.title = title;
+  }
   function tariff() {
     const v = Number(localStorage.getItem(LS_TARIFF));
     /* 默认 0.261 元/度：山东 2026 年新能源机制电价竞价结果里的光伏价格（鲁发改价格〔2026〕149 号）。
@@ -143,7 +173,7 @@ window.SolarUI = (function () {
     if (Date.now() < busyUntil) return;
     busyUntil = Date.now() + 90000;
     const src = byId('slSrc');
-    if (src) src.textContent = '正在读取…';
+    if (src) paintSrc(src, { txt: '正在读取…', stale: false });
     try {
       /* 三个接口串行拉：现场网络经代理时并发连接容易被挂住，串行稳得多 */
       const s = await getJSON('summary');
@@ -171,13 +201,13 @@ window.SolarUI = (function () {
         if (pt && Array.isArray(pt.points)) powTrend = pt.points;
       } catch (_) {}
       render();
-      if (src) src.textContent = sum ? ('阳光云接入 · 更新 ' + fmtTime(sum.updated_at)) : '服务未就绪';
+      if (src) paintSrc(src, srcState(sum, s && s.last_error));
     } catch (e) {
       /* 面向用户的提示用中文口径，原始错误（如 Failed to fetch）只放 title 供排查 */
-      if (src) {
-        src.textContent = sum ? '刷新失败（图上仍是上一次的数据）' : '读取失败：光伏数据暂时读不到（阳光云接入服务未就绪）';
-        src.title = String((e && e.message) || e);
-      }
+      const st = sum ? srcState(sum, e && e.message)
+        : { txt: '读取失败：光伏数据暂时读不到（阳光云接入服务未就绪）', stale: true };
+      if (sum && !st.stale) st.txt = '刷新失败（图上仍是 ' + fmtTime(sum.updated_at) + ' 的数据）';
+      if (src) paintSrc(src, st, String((e && e.message) || e));
     } finally { busyUntil = 0; }
   }
 
