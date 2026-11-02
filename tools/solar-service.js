@@ -232,14 +232,16 @@ async function ensureToken() {
    网页登录 + 同意授权（tools/solar-reauth.js），拿到 code 后回到本服务的
    /solar/callback 换 token。账号密码只存在服务器环境变量（SOLAR_USER / SOLAR_PASS），
    不进仓库；没配就退回人工（日志里写明）。 */
-let reauthTask = null, lastReauthAt = 0;
+let reauthTask = null, lastReauthAt = 0, reauthFails = 0;
 function autoReauth() {
   if (reauthTask) return reauthTask;
   if (!process.env.SOLAR_USER || !process.env.SOLAR_PASS) {
     log('授权已失效，但没有配置 SOLAR_USER / SOLAR_PASS —— 跳过自动重授权（需人工走 /solar/authorize）');
     return Promise.resolve(false);
   }
-  if (Date.now() - lastReauthAt < 10 * 60000) return Promise.resolve(false);   /* 10 分钟最多试一次 */
+  /* 退避：连续失败就拉长重试间隔（10min → 20min → … 最多 6h），别把账号刷到触发验证码 */
+  const cool = Math.min(6 * 3600000, 10 * 60000 * Math.pow(2, Math.min(reauthFails, 5)));
+  if (Date.now() - lastReauthAt < cool) return Promise.resolve(false);
   lastReauthAt = Date.now();
   log('开始自动重授权（无头浏览器走网页登录，约 1 分钟）…');
   reauthTask = new Promise(function (resolve) {
@@ -261,11 +263,12 @@ function autoReauth() {
       clearTimeout(timer);
       out.trim().split('\n').slice(-4).forEach(function (l) { if (l.trim()) log('[reauth] ' + l.trim()); });
       if (code === 0) {
-        needAuth = false; nextRefreshAt = 0;
+        needAuth = false; nextRefreshAt = 0; reauthFails = 0;
         log('自动重授权成功，token 已更新，下一轮拉取即恢复');
         resolve(true);
       } else {
-        log('自动重授权失败（退出码 ' + code + '），下次轮询再试');
+        reauthFails++;
+        log('自动重授权失败（退出码 ' + code + '，连续 ' + reauthFails + ' 次），间隔会拉长后再试');
         resolve(false);
       }
     });
