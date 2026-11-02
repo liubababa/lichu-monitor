@@ -51,7 +51,16 @@ window.JunyongScene = (function () {
   var CAB = { w: 2.7, h: 2.6, d: 1.7 }, CABX = -(W2 / 2 + 6), CABZ = 1.55, PITCH = 3.15;
   var TWRX = -22, TWRZ = 4.2, TWRH = 10.4, TBOXX = TWRX + 2.25;
   var NLO = [-6.94, 1.2, .55], NHI = [-6.94, 3.9, .55];
-  var LN = { gsto: 3.15, grid: 3.60, stoh: 2.95, gl: 5.45 };
+  /* grid 车道 3.60 → 4.76：3.60 在楼体轮廓（z ±4）以内，并网段有 ~0.85m 扎进基座带里看不见 */
+  var LN = { gsto: 3.15, grid: 4.76, stoh: 2.95, gl: 5.45 };
+  /* 光伏干线在南墙的落线 x —— 走**西南墙角**，不穿窗、不从组件底下横穿。
+     南墙窗带：带长 W2−.4=12.6、内宽 11.9 分 4 格（间距 2.975）、窗宽 2.0 →
+     最西那格玻璃在 x −5.4625…−3.4625，外墙皮到 ±6.5、窗带只到 ±6.3 →
+     角上的实墙垛子是 −6.5…−5.4625。取 −6.25：离玻璃 0.74m（镜头侧视差也吃不掉）、
+     离墙角 0.2m，看着就是贴着角下来。
+     屋面侧同一个 x 也刚好躲开所有东西：组件西端 −5.82、导轨/线槽端 −6.07/−6.12、
+     西女儿墙内皮 −6.35 → −6.25 是"出了阵列、又没撞女儿墙"的那条缝。 */
+  var PVX = -6.25;
   var COLS = 5, MW = 2.28, MD = 1.13, MT = .045, TILT = .49, ROW_Y = .62, RAIL_Z = .40, RAIL_DROP = .0525;
   var ROWZ = [-2.55, -1.05, 1.05, 2.55], rowW = COLS * MW + (COLS - 1) * .06;
   var GN = ['一号机组', '二号机组', '三号机组'], GCAB = [1, 1, 3];
@@ -534,12 +543,13 @@ window.JunyongScene = (function () {
     g.add(box(.34, .44, .10, M.box, -5.75, 3.9, D2 / 2 + .03));
     g.add(box(.34, .44, .10, M.box, -6.35, .86, D2 / 2 + .03));
     g.add(box(.30, .40, .10, M.box, -5.12, 1.02, D2 / 2 + .05));
-    /* 南墙分岔端子：跟着干线挪到正面（原来在西墙上） */
-    [[-4.0, 1.2, D2 / 2 + .36, .10], [-4.0, 3.9, D2 / 2 + .36, .075]].forEach(function (p) {
+    /* 南墙分岔端子：压在窗芯 PVX 上（跟着干线走，不落在玻璃上） */
+    [[PVX, 1.2, D2 / 2 + .36, .10], [PVX, 3.9, D2 / 2 + .36, .075]].forEach(function (p) {
       var j = new T.Mesh(new T.SphereGeometry(p[3], 10, 10), M.cable);
       j.position.set(p[0], p[1], p[2]); g.add(j);
     });
-    g.add(box(.7, .2, .2, M.steel, -4.0, roofY + .42, D2 / 2 + .06));   /* 正面南檐过墙套管（干线从这里下墙） */
+    /* 穿女儿墙的套管：x 宽只给 .20 且往东偏 3cm —— 角上再宽就跟西女儿墙（内皮 −6.35）共面打架 */
+    g.add(box(.20, .28, .62, M.steel, PVX + .03, roofY + .35, D2 / 2));
     /* 屋面光伏：组件 / 导轨 / 竖撑合批 + 走道 + 线槽 + 组串电缆 */
     function planeY(zl) { return roofY + ROW_Y - Math.tan(TILT) * zl; }
     var yMod = planeY(0), yRailF = planeY(RAIL_Z) - RAIL_DROP, yRailR = planeY(-RAIL_Z) - RAIL_DROP;
@@ -745,17 +755,23 @@ window.JunyongScene = (function () {
     if (n > 1) grp.add(box(span + CAB.w + 1.2, .1, CAB.d + 1.4, M.pad, CABX, .045, CABZ));
     var F = FLOWC[theme];
     var FZ = D2 / 2 + .36;                 /* 正面（南墙）那条"墙面通道"，跟原来西墙同偏移 .36 */
-    var FX = -4.0;                          /* 正面落线点：雨棚（±2.5）以西、南墙黑盒（−5.75）以东的实墙上 */
-    /* ① 光伏干线：屋面线槽 → 沿屋面往南到南檐 → 沿南檐向西到 x=FX → 从**正面（南墙）**直落
-       到二楼分岔点。2026-11-02 改：原来走西墙，而一号柜列是镜像的，那段线落到它的东墙 =
-       背对镜头那一面，用户说"走侧面看不清楚"。 */
-    addFlow(grp, 'pv', gi, [[rowW / 2 + .2, roofY + .40, 0], [3.2, roofY + .42, 0],
-      [2.0, roofY + .42, FZ - .16], [FX, roofY + .42, FZ - .16],
-      [FX, 6.6, FZ], [FX, 3.9, FZ]], .052);
+    var FX = PVX;                           /* 落线点 = 西南墙角（见 PVX 注释），不压玻璃、不从组件底下穿 */
+    /* ① 光伏干线：三段直角，全程横平竖直——
+       沿线槽西行到线槽西端 → 折南，走**组件西端以外**的屋面（不再从任何一排板子底下横穿）
+       → 穿角上套管出女儿墙 → 沿西南墙角直落到二楼分岔点。
+       转角前后各插一个 .5m 的"护角点"：CatmullRom 的切线取前后邻居之差，邻居一远
+       （线槽那侧 6m）弯就会往西甩 0.14m，直接扎进西女儿墙（实测被探针抓到）。
+       2026-11-02 两改：先从不走西墙（一号柜列镜像，线落到背对镜头那一面，"走侧面看不清楚"），
+       再从不走南檐外皮（那条跟组件下沿齐平，正面看就是"横插在板子底下"）。 */
+    addFlow(grp, 'pv', gi, [[rowW / 2 + .2, roofY + .40, 0], [0, roofY + .40, 0],
+      [FX + .5, roofY + .42, 0], [FX, roofY + .42, 0], [FX, roofY + .42, .5],
+      [FX, roofY + .42, 2.4], [FX, roofY + .42, FZ - .5], [FX, roofY + .42, FZ],
+      [FX, 6.4, FZ], [FX, 3.9, FZ]], .052);
     /* ② 光伏下段：二楼分岔点 → 低位节点（同在南墙，一根竖直） */
     addFlow(grp, 'pvlow', gi, [[FX, 3.9, FZ], [FX, 1.2, FZ]], .052);
-    /* ③ 光伏→厂房：二楼分岔点沿南墙往西一点，直角进南墙二楼黑盒 */
-    addFlow(grp, 'pvh', gi, [[FX, 3.9, FZ], [-5.75, 3.9, FZ], [-5.75, 3.9, D2 / 2 + .02]], .052);
+    /* ③ 光伏→厂房：分岔点沿南墙往东 0.5m，直角进二楼黑盒（端点扎进墙里，藏在盒内）。
+       末段给到 z=3.94 而不是墙皮外——短于 .35 的拐点会被 addFlow 去重掉，直角就变成斜线了 */
+    addFlow(grp, 'pvh', gi, [[FX, 3.9, FZ], [-5.75, 3.9, FZ], [-5.75, 3.9, 3.94]], .052);
     /* ④ 光伏→储能：低位节点从南墙落到贴地档 → 沿楼前 z=4.36 向西 → 到柜东面车道折北 →
        上翘进柜东面接线盒（原来整条斜挂在半空） */
     addFlow(grp, 'sto', gi, [[FX, 1.2, FZ], [FX, .34, FZ],
@@ -763,10 +779,11 @@ window.JunyongScene = (function () {
     /* ⑤ 国网→储能：关口箱 → 柜前北车道 z3.15 → 折北 → 柜西面 */
     addFlow(grp, 'gsto', gi, [[TBX - .4, .36, TWRZ - .15], [TBX - .4, .34, LN.gsto],
       [boxW[0] + .75, .34, LN.gsto], [boxW[0] + .25, .36, boxW[2] + 1.0], boxW], .052);
-    /* ⑥ 并网段：低位节点（南墙 FX）→ 落到贴地 → 向西并入走廊 z3.60 → 关口箱 */
+    /* ⑥ 并网段：低位节点（墙角 FX）→ 落到贴地 → 折南进自己的车道 z4.76 → 一路向西 → 进关口箱南面。
+       车道从 3.60 挪到 4.76：3.60 在楼体轮廓（z ±4）以内，线有 ~0.85m 扎进基座带里看不见。 */
     var gpts = [[FX, 1.2, FZ], [FX, .34, FZ], [FX, .34, LN.grid]];
-    for (var gx = FX - 2.5; gx > TBX + 1.2; gx -= 2.5) gpts.push([gx, .34, LN.grid]);
-    gpts.push([TBX + .2, .38, TWRZ - .25], [TBX, .44, TWRZ - .08]);
+    for (var gx = FX - 2.5; gx > TBX + 1.6; gx -= 2.5) gpts.push([gx, .34, LN.grid]);
+    gpts.push([TBX + .3, .34, LN.grid], [TBX + .3, .34, 4.3], [TBX, .5, 4.05]);
     addFlow(grp, 'grid', gi, gpts, .052);
     /* ⑧ 储能→厂房：柜正面（南面）出线 → 楼前走廊 z2.95 → 南墙墙脚黑盒（多柜先并干线） */
     cabs.forEach(function (c, i) {
@@ -776,13 +793,14 @@ window.JunyongScene = (function () {
       else pts.push([-6.48, .34, LN.stoh]);
       addFlow(grp, 'stoh', gi, pts, .052);
     });
-    /* ⑨ 电网直供：关口箱 → 前院南沿 z5.45 → 折北 → 南墙进线盒 */
+    /* ⑨ 电网直供：关口箱 → 前院南沿 z5.45 → 到进线盒正南 → 折北进盒。
+       原来是斜着插到盒子上，斜段正好压在 ⑥ 新车道（z4.76）上；改成正对盒子折北，两条线不再打架 */
     var lpts = [[TBX - .1, .36, TWRZ + .3]];
-    for (var lx = TBX + 2.4; lx < -7.6; lx += 2.5) lpts.push([lx, .34, LN.gl]);
-    lpts.push([-7.5, .36, LN.gl], [-5.95, .40, LN.gl - .9], [-5.35, .95, 4.30], [-5.14, 1.02, 4.04]);
+    for (var lx = TBX + 2.4; lx < -5.12; lx += 2.5) lpts.push([lx, .34, LN.gl]);
+    lpts.push([-5.12, .34, LN.gl], [-5.12, .55, 4.6], [-5.14, 1.02, 4.04]);
     addFlow(grp, 'gl', gi, lpts, .052);
     /* 电缆墩：六条贴地车道按 x 每 2.5m 一格（④⑥ 现在都从正面 FX 落线） */
-    [[LN.grid, FX, TBX], [LN.gsto, TBX, boxW[0]], [LN.gl, TBX, -7.5],
+    [[LN.grid, FX, TBX], [LN.gsto, TBX, boxW[0]], [LN.gl, TBX, -5.12],
       [LN.stoh, cabs[0].x, -7.5], [CABZ, boxE[0] + 1.05, boxE[0]], [FZ, boxE[0] + 1.05, FX]]
       .forEach(function (lane) {
         var a = Math.min(lane[1], lane[2]), b = Math.max(lane[1], lane[2]);

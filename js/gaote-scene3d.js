@@ -92,7 +92,8 @@ window.GaoteScene3D = (function () {
   /* 浮标按相机距离缩放：规则三站共用（ScenePreset.scaleLabelTo），基准跟默认机位实距走（同峻涌）。
      2026-11-02 改掉写死的 26：机位实距约 83m，26 会把系数钳在下限 .42，共用规则里
      opacity 跟着掉到 .35 —— 浮标看着像毛玻璃、字也小得跟另两站不一样。
-     原先拿它压"堆 1 / 堆 2 横向压字"，那个问题改由 3D 错位解决（见 buildStack 的让位量）。 */
+     原先拿它压"堆 1 / 堆 2 横向压字"，那个问题一度改成把浮标往两侧让位——但让位把标签让到了邻柜头上，
+     现已回到"锚点=本柜正上方"（见 buildStack）。 */
   const labelPairs = [];             // { obj, el, k }
   let lblRef = 26;                   // 默认机位附近：浮标 100%
   let _lblV = null;
@@ -531,14 +532,12 @@ window.GaoteScene3D = (function () {
 
     g.userData.key = key;
     groups[key] = g;
-    /* 相邻柜子的浮标错开高度 + 再往两侧让一点：光靠高度错开不够，
-       在扁画布上「堆 1 / 堆 2」浮标仍会横向压住（实测重叠 15×51 px） */
     const si = parseInt(String(key).replace('stack', ''), 10) || 0;
-    /* 相邻两堆的浮标错位：横向让 2.4m + 纵向再高一档。
-       2026-11-02 从 ±1.0/.95 加大 —— 那天把浮标基准改成"跟默认机位"（原来钳在下限，
-       字小且不透明），字放大一倍后 ±1.0 就压字了（实测 22×43px）。柜间距 5.2m，
-       让 2.4m 落两柜正中，谁都不贴谁。 */
-    bindLabel(addLabel(key, new THREE.Vector3(si % 2 ? 2.4 : -2.4, H + .6 + (si % 2) * .95, 0),
+    /* 浮标锚点 = 本柜正上方（x 不偏移）。2026-11-02 曾为"两堆压字"把锚点往两侧让到 ±2.4m，
+       结果标签落到邻柜头上，用户说"储能标签对不上"。实测默认机位（2469×965）：
+       柜间距 5.2m 投影 98px，标签实宽 81–90px（含「充电中 · SOC 93%」那行）→ 居中不压字，
+       还剩 ~12px 空隙；纵向 .95m 错位留着，只给拉远（缩放钳在下限）时兜底。 */
+    bindLabel(addLabel(key, new THREE.Vector3(0, H + .6 + (si % 2) * .95, 0),
       'tag3d tag3d-gt', '<b>储能堆 · ' + (si + 1) + '号</b><i>-- kW</i><em>--</em>'), key);
     addCard(key, new THREE.Vector3(0, H + .1, 0));
     return g;
