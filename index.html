@@ -6,7 +6,7 @@
 <title>力储未来能源综合管理系统</title>
 <link rel="icon" type="image/png" sizes="64x64" href="libs/logo-64.png?v=20260923a"/>
 <link rel="apple-touch-icon" href="libs/logo-180.png?v=20260923a"/>
-<link rel="stylesheet" href="css/style.css?v=20261102b"/>
+<link rel="stylesheet" href="css/style.css?v=20261102u"/>
 <script>
 /* 加载期错误收集（便于排查依赖/脚本问题） */
 window.__loadErrs = [];
@@ -377,6 +377,14 @@ window.addEventListener('error', function (e) {
       <div class="panel-title"><span>设备</span><em id="slDevMeta">--</em></div>
       <div class="sl-devs" id="slDevs"></div>
     </div>
+    <div class="panel" id="slFlowBlock">
+      <div class="panel-title"><span>实时能量流</span><em id="slFlowMode">--</em></div>
+      <div class="sl-flow" id="slFlow"></div>
+      <div class="sl-flow-note" id="slFlowNote">--</div>
+      <div class="sl-flow-legend">
+        <span><i class="pv"></i>光伏</span><span><i class="gd"></i>电网</span><span><i class="st"></i>储能放电</span><span><i class="il"></i>未通电</span>
+      </div>
+    </div>
     <div class="panel" id="slBattBlock">
       <div class="panel-title"><span>储能系统</span><em id="slBattMeta">--</em></div>
       <div class="sl-wx" id="slBatt"></div>
@@ -487,7 +495,7 @@ window.addEventListener('error', function (e) {
 <script src="js/mqtt-ui.js?v=20261029j"></script>
 <script src="js/portal.js?v=20261031u"></script>
 <script src="js/screensaver.js?v=20261016n"></script>
-<script src="js/solar.js?v=20261102q"></script>
+<script src="js/solar.js?v=20261102u"></script>
 <script src="js/solar-scene3d.js?v=20261102p"></script>
 <script src="js/junyong.js?v=20261102q"></script>
 <script src="js/junyong-scene3d.js?v=20261102r"></script>

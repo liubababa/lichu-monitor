@@ -382,6 +382,144 @@ window.SolarUI = (function () {
         : '');
   }
 
+  /* ---------------- 实时能量流（监控右栏的小动画） ----------------
+     判定口径与三维场景 updateEnergyFlows 完全一致（2026-10-27~28 现场定稿）：
+       光伏=黄、电网=蓝、储能放电=青绿；每条线只在自己的电源有电流时亮
+       （储能不卖电；光伏充就黄、电网充就蓝——颜色看的是"谁在供电"）。
+     光伏 / 储能 / 负载三路缺一项就整段留空（--），不拿 0 顶替。 */
+  function flowVals() {
+    const pvSeen = !!(sum && num(sum.power) !== null);
+    const pv = pvSeen ? num(sum.power) / 1000 : null;
+    const r = (stor && stor.realtime) || null;
+    const st = r ? num(r.power_kw) : null;                 /* 正=放电、负=充电 */
+    const load = r ? num(r.load_kw) : null;
+    const gridKw = r ? num(r.grid_kw) : null;              /* 正=取电、负=送电 */
+    const known = pvSeen && st !== null && load !== null;
+    const meterKw = gridKw === null ? null : -gridKw;      /* 正=送出（卖电） */
+    const surplus = known ? (meterKw === null ? (pv + st - load) : meterKw) : null;
+    const pvOn = pv !== null && pv > .5, chg = st !== null && st < -.5, dis = st !== null && st > .5;
+    /* 负载优先按关口表反推（与场景同一口径）：厂商负载字段出过负数坏值 */
+    const loadEff = !known ? null : (meterKw === null ? load : Math.max(0, pv + st - meterKw));
+    const chgKw = chg ? Math.abs(st) : 0, disKw = dis ? st : 0;
+    const sell = surplus !== null && surplus > .3, buy = surplus !== null && surplus < -.3;
+    const loadOn = known && loadEff > .3;
+    const buyKw = buy ? Math.abs(surplus) : 0;
+    /* 每条线的功率 = 自己那路的 min(源, 汇)（与场景流速取"该路径自身电流"同一口径）；
+       这样"线亮着却显示 0 kW"不会出现，也不做跨线的严格分摊（三块表分不出来） */
+    const pvToSto = (pvOn && chg) ? Math.min(pv, chgKw) : 0;
+    const pvToGrid = (pvOn && sell) ? surplus : 0;
+    const gridToSto = (chg && buy) ? Math.min(buyKw, chgKw) : 0;
+    const pvToLoad = (pvOn && loadOn) ? Math.min(pv, loadEff) : 0;
+    const gridToLoad = (buy && loadOn) ? Math.min(buyKw, loadEff) : 0;
+    const stoToLoad = (dis && loadOn) ? Math.min(disKw, loadEff) : 0;
+    /* 六种能量关系：编号与场景工况一致（浮标写"工况 1+2+6"、这里同号） */
+    const its = [];
+    if (known) {
+      if (pvOn && chg) its.push(['1', '光伏→储能']);
+      if (pvOn && loadEff > .3) its.push(['2', '光伏→卫生院']);
+      if (pvOn && sell) its.push(['3', '光伏卖电上网']);
+      if (buy && loadEff > .3) its.push(['4', '电网→卫生院']);
+      if (chg && buy) its.push(['5', '电网→储能']);
+      if (dis) its.push(['6', '储能→卫生院']);
+    }
+    return {
+      known: known, pv: pv, pvSeen: pvSeen, pvOn: pvOn, st: st, chg: chg, dis: dis,
+      soc: r ? num(r.soc) : null, surplus: surplus, sell: sell, buy: buy,
+      loadEff: loadEff, loadOn: loadOn,
+      mode: its.map(function (x) { return x[0]; }).join('+'),
+      modeTxt: known ? (its.length ? its.map(function (x) { return x[1]; }).join(' + ') : '全站待机') : '',
+      modeNote: !known ? '' : (surplus > .3 ? ('关口送出 ' + surplus.toFixed(1) + ' kW')
+        : surplus < -.3 ? ('缺口 ' + Math.abs(surplus).toFixed(1) + ' kW 由电网补') : '关口基本不交换'),
+      flows: {
+        pvSto:    { on: known && pvOn && chg, kw: pvToSto },
+        pvGrid:   { on: known && pvOn && sell, kw: pvToGrid },
+        gridSto:  { on: known && chg && buy, kw: gridToSto },
+        pvHosp:   { on: known && pvOn && loadOn, kw: pvToLoad },
+        gridHosp: { on: known && buy && loadOn, kw: gridToLoad },
+        stoHosp:  { on: known && dis && loadOn, kw: stoToLoad }
+      }
+    };
+  }
+
+  /* 示意图：四张设备卡 + 六条线（源 → 汇）。SVG 只整体画一次，
+     之后只改 class / 数字 —— 每分钟重画会把滚动动画打回起点，看着就是闪（审计 B2 口径） */
+  const FLOW_LINES = [
+    ['pvSto',    'c-pv', 'M118 38 L 48 104',   78,  61, 'middle'],
+    ['pvGrid',   'c-pv', 'M202 38 L 272 104', 242,  61, 'middle'],
+    ['gridSto',  'c-gd', 'M230 126 L 90 126', 140, 119, 'end'],
+    ['pvHosp',   'c-pv', 'M160 60 L 160 192', 166, 172, 'start'],
+    ['gridHosp', 'c-gd', 'M272 148 L 202 214', 248, 186, 'start'],
+    ['stoHosp',  'c-st', 'M48 148 L 118 214',  72, 186, 'end']
+  ];
+  function flowSvgHtml() {
+    let s = '<svg viewBox="0 0 320 248" role="img" aria-label="实时能量流示意图">';
+    FLOW_LINES.forEach(function (ln) {
+      s += '<g class="fl ' + ln[1] + '" id="fl-' + ln[0] + '">'
+        + '<path class="fl-halo" d="' + ln[2] + '"/><path class="fl-core" d="' + ln[2] + '"/>'
+        + '<text class="fl-num" x="' + ln[3] + '" y="' + ln[4] + '" text-anchor="' + ln[5] + '">--</text></g>';
+    });
+    const nodes = [
+      [118, 16, '光伏', 'flPvVal', 'flPvSub'],
+      [6, 104, '储能柜', 'flStVal', 'flStSub'],
+      [230, 104, '电网（铁塔）', 'flGdVal', 'flGdSub'],
+      [118, 192, '卫生院', 'flHpVal', 'flHpSub']
+    ];
+    nodes.forEach(function (n) {
+      const cx = n[0] + 42;
+      s += '<g class="fl-node">'
+        + '<rect class="fl-box" x="' + n[0] + '" y="' + n[1] + '" width="84" height="44" rx="4"/>'
+        + '<text class="fl-title" x="' + cx + '" y="' + (n[1] + 14) + '" text-anchor="middle">' + n[2] + '</text>'
+        + '<text class="fl-val" id="' + n[3] + '" x="' + cx + '" y="' + (n[1] + 31) + '" text-anchor="middle">--</text>'
+        + '<text class="fl-sub" id="' + n[4] + '" x="' + cx + '" y="' + (n[1] + 41) + '" text-anchor="middle">--</text>'
+        + '</g>';
+    });
+    return s + '</svg>';
+  }
+
+  let flowBuilt = false;
+  function renderFlow() {
+    const box = byId('slFlow');
+    if (!box) return;
+    if (!flowBuilt) { box.innerHTML = flowSvgHtml(); flowBuilt = true; }
+    const v = flowVals();
+    const txt = function (id, t) { const el = byId(id); if (el && el.textContent !== t) el.textContent = t; };
+    txt('slFlowMode', v.known ? (v.mode ? '工况 ' + v.mode : '全站待机') : '--');
+    txt('slFlowNote', v.known
+      ? (v.modeTxt + (v.modeNote ? ' · ' + v.modeNote : ''))
+      : '数据未就绪：光伏 / 储能 / 负载三路齐了才判工况');
+    /* 四张设备卡 */
+    txt('flPvVal', v.pvSeen ? fmt(v.pv, 1) + ' kW' : '--');
+    txt('flPvSub', v.pvSeen ? (v.pvOn ? '发电中' : '无出力') : '未上报');
+    txt('flStVal', v.st === null ? '--'
+      : (Math.abs(v.st) < .5 ? '待机' : (v.chg ? '充 ' : '放 ') + fmt(Math.abs(v.st), 1) + ' kW'));
+    txt('flStSub', v.soc === null ? '--' : 'SOC ' + Math.round(v.soc) + '%');
+    txt('flGdVal', v.surplus === null ? '--' : fmt(Math.abs(v.surplus), 1) + ' kW');
+    txt('flGdSub', v.surplus === null ? '未上报' : (v.sell ? '送出' : v.buy ? '取电' : '无交换'));
+    const feeds = [];
+    if (v.pvOn && v.loadOn) feeds.push('光伏');
+    if (v.dis && v.loadOn) feeds.push('储能');
+    if (v.buy && v.loadOn) feeds.push('电网');
+    txt('flHpVal', v.known ? fmt(v.loadEff, 1) + ' kW' : '--');
+    txt('flHpSub', !v.known ? '--' : (feeds.length ? feeds.join(' + ') : '全站待机'));
+    /* 六条线：开关 / 数字 / 流速分档（改 CSS 变量会让动画相位跳一下，变了才改） */
+    FLOW_LINES.forEach(function (ln) {
+      const g = byId('fl-' + ln[0]), it = v.flows[ln[0]];
+      if (!g) return;
+      const on = !!it.on;
+      if (g.classList.contains('on') !== on) g.classList.toggle('on', on);
+      const t = g.querySelector('.fl-num');
+      if (t) {
+        const s = on ? fmt(it.kw, 1) : '--';
+        if (t.textContent !== s) t.textContent = s;
+      }
+      if (on) {
+        const dur = Math.max(1.2, Math.min(2.4, 2.4 - Math.min(1, (it.kw || 0) / 60) * 1.2));
+        const q = (Math.round(dur / .3) * .3).toFixed(1) + 's';
+        if (g.style.getPropertyValue('--dur') !== q) g.style.setProperty('--dur', q);
+      }
+    });
+  }
+
   /* ================= 整页版式（储能 / 光伏 / 收益） =================
      视觉沿用莒南「设备总览」那套卡片语言（ov-sec / gv3-* / dt-kv），
      数据来自日升云接入服务：/risen/full + /risen/trend + /risen/revenue-trend + /risen/power-trend */
@@ -745,7 +883,8 @@ window.SolarUI = (function () {
       if (v) v.classList.toggle('hidden', tab !== k);
     });
     const conf = {
-      monitor: ['slPanel', ['slBattBlock']],
+      /* 监控右栏：能量流在上、储能概览在下（原来只有储能一块，右栏太空） */
+      monitor: ['slPanel', ['slFlowBlock', 'slBattBlock']],
       solar: ['slSolarBody', ['slKpisBlock', 'slTrendBlock', 'slWxBlock', 'slDevBlock', 'slGreenBlock', 'slInfoBlock']]
     }[tab];
     if (conf) {
@@ -770,7 +909,7 @@ window.SolarUI = (function () {
 
   function render() {
     renderKpis(); renderTrend(); renderDevices(); renderInfo(); renderGreen();
-    renderWeather(); renderAlarm(); renderStorage(); pushScene();
+    renderWeather(); renderAlarm(); renderStorage(); renderFlow(); pushScene();
     renderStoragePage(); renderRevenuePage();
   }
 

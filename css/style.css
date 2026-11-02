@@ -34,6 +34,8 @@ body{
 
   /* 语义色（AGENTS 红线 5：光伏=黄、电网=蓝、储能放电=青绿、馈电=橙） */
   --info:#4aa8ff; --ok:#2ee6c8; --warn:#f5a524; --crit:#f4553d; --idle:#6b8189; --pv:#f5c542;
+  /* 能量流（与三维场景 FLOWC 同一套口径）：光伏=黄 / 电网=蓝 / 储能放电=青绿 / 未通电=暗青 */
+  --fl-pv:#ffb020; --fl-grid:#8fd8ff; --fl-sto:#3df0a0; --fl-idle:#24444a;
 
   --f-display:44px; --f-h1:32px; --f-h2:24px; --f-kpi:18px;
   --f-h3:15px; --f-body:13px; --f-table:12px; --f-label:11px;
@@ -57,6 +59,8 @@ html[data-theme="day"]{
   --line:rgba(24,58,68,.12); --line-2:rgba(24,58,68,.24);
   --t1:#0d2630; --t2:#3d5b64; --t3:#6b858d; --t4:#9ab0b6;
   --acc:#0b8f76; --acc-1:rgba(11,143,118,.08); --acc-2:rgba(11,143,118,.24); --acc-3:rgba(11,143,118,.5);
+  /* 白天浅底上整体压深一档（同三维场景 FLOWC.day） */
+  --fl-pv:#d97700; --fl-grid:#1f7fd0; --fl-sto:#159a63; --fl-idle:#6f8a86;
 }
 #app{display:flex;flex-direction:column;height:100vh}
 ::selection{background:var(--acc-2)}
@@ -1490,6 +1494,34 @@ html[data-theme="day"] .gs-warn{color:#8a5b00}
 .sl-row b{font-weight:500;color:#dff7f1;text-align:right;word-break:break-all}
 .sl-empty{font-size:12px;color:var(--dim);padding:8px 2px}
 
+/* ---------- 实时能量流（洙边监控右栏：随实时功率滚动的小动画） ----------
+   线色按"谁在供电"（与三维场景同一口径）：光伏=黄、电网=蓝、储能放电=青绿；
+   每条线只在自己的电源有电流时亮，没电流的线暗青且静止（文字照旧 --，不编数） */
+.sl-flow svg{display:block;width:100%;height:auto}
+.sl-flow .fl-box{fill:rgba(4,12,14,.5);stroke:var(--line-2);stroke-width:1}
+.sl-flow .fl-title{font-size:9.5px;fill:var(--t2);letter-spacing:1.5px}
+.sl-flow .fl-val{font-family:var(--num);font-size:12.5px;fill:var(--t1)}
+.sl-flow .fl-sub{font-size:8.5px;fill:var(--t3)}
+.sl-flow g.fl{color:var(--fl-idle)}
+.sl-flow g.fl.on.c-pv{color:var(--fl-pv)}
+.sl-flow g.fl.on.c-gd{color:var(--fl-grid)}
+.sl-flow g.fl.on.c-st{color:var(--fl-sto)}
+.sl-flow .fl-halo{fill:none;stroke:currentColor;stroke-width:5;stroke-linecap:round;opacity:0}
+.sl-flow .fl-core{fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-dasharray:3.2 6;opacity:.38}
+.sl-flow .fl-num{font-family:var(--num);font-size:8.5px;fill:currentColor;opacity:0}
+.sl-flow g.fl.on .fl-halo{opacity:.16}
+.sl-flow g.fl.on .fl-core{opacity:1;animation:slFlowDash var(--dur,2.2s) linear infinite}
+.sl-flow g.fl.on .fl-num{opacity:1}
+@keyframes slFlowDash{from{stroke-dashoffset:0}to{stroke-dashoffset:-18.4}}
+.sl-flow-note{font-size:11px;color:var(--t3);margin-top:6px;line-height:1.5}
+.sl-flow-legend{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:6px;font-size:10.5px;color:var(--t3)}
+.sl-flow-legend span{display:inline-flex;align-items:center;gap:4px}
+.sl-flow-legend i{width:7px;height:7px;border-radius:50%;display:inline-block}
+.sl-flow-legend i.pv{background:var(--fl-pv);box-shadow:0 0 6px var(--fl-pv)}
+.sl-flow-legend i.gd{background:var(--fl-grid);box-shadow:0 0 6px var(--fl-grid)}
+.sl-flow-legend i.st{background:var(--fl-sto);box-shadow:0 0 6px var(--fl-sto)}
+.sl-flow-legend i.il{background:var(--fl-idle)}
+
 /* 光伏站页面里不显示储能专属的顶栏入口 */
 body.solar-mode #mainTabs,
 body.solar-mode #dsChip{display:none}
@@ -1512,6 +1544,7 @@ html[data-theme="day"] .sl-badge.warn{color:#a86400;border-color:rgba(192,122,0,
 html[data-theme="day"] .sl-green-row b{color:#0b8f76}
 html[data-theme="day"] .sl-ranges button.on{color:#fff}
 html[data-theme="day"] .sl-row{border-bottom-color:rgba(15,150,130,.14)}
+html[data-theme="day"] .sl-flow .fl-box{fill:rgba(255,255,255,.72);stroke:rgba(15,150,130,.22)}
 
 /* ---- 光伏三维监控页：白天主题 ---- */
 html[data-theme="day"] #solarView{

@@ -71,6 +71,9 @@
     'libs/three.min.js', 'libs/OrbitControls.js', 'libs/CSS2DRenderer.js',
     'libs/CopyShader.js', 'libs/LuminosityHighPassShader.js', 'libs/EffectComposer.js',
     'libs/RenderPass.js', 'libs/ShaderPass.js', 'libs/UnrealBloomPass.js',
+    /* scene-preset 必须在场景之前：js/solar-scene3d.js 顶层就取 window.ScenePreset，
+       漏了它整个文件加载即抛错，本页会显示"场景脚本未就绪"（线上由 js/main.js 保证顺序） */
+    'js/scene-preset.js',
     'js/solar-scene3d.js'
   ];
   var i = 0;
