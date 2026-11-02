@@ -57,10 +57,12 @@ window.JunyongScene = (function () {
   /* 三维标签用：厂房名 / 每群那台（组）柜的现场编号，与平台「储能机组」表一致 */
   var GB = ['一号厂房', '二号厂房', '三号厂房'], GCABN = ['6号柜', '7号柜', '3-5号柜'];
   /* L 形：一号（柜列镜像到右）、二号在后排右，三号在前排、右墙与二号齐平（2026-10-31 用户要求右移）；
-     塔 2026-11-01 从场地正中挪到前排左侧空场（x−14 / z14）：原来塔压在画面纵轴上、又全场最高，
-     视觉中心被它抢走。这个位置在三栋的视线空档里，场坪外扩和取景包围盒都不用动。 */
+     塔 2026-11-02 从场地正中一路挪到北面（画面左上方）：先挪到前排左空场仍嫌压镜头，
+     这次退到一号厂房以北。横担沿 ±z 挑出 4.5m，塔心 z 必须 ≤ −23 才离一号北墙（−16）留出 2.5m，
+     再往南就要压到厂房屋顶。代价：场坪向北外扩约 10m，机位后退几米。 */
   var SLOT = 20, SITE = [{ x: -SLOT, z: -12, m: true }, { x: SLOT, z: -12, m: false }, { x: SLOT, z: 14, m: false }];
-  var TWR_AT = { x: -14, z: 14 };
+  var TWR_AT = { x: -24, z: -23 };
+  var LAND = 2.0;                     /* 进塔点离塔心的距离（塔基垫块外沿约 1.9m） */
 
   /* 观感数值（泛光 / 暗角 / 曝光 / 灯光量 / 地面 / 接触阴影）三站共用，在 js/scene-preset.js；
      这里只留本站的语义颜色 */
@@ -740,8 +742,10 @@ window.JunyongScene = (function () {
     /* ③ 光伏→厂房：二楼改道 → 沿西墙往南 → 西南角转弯 → 南墙二楼黑盒 */
     addFlow(grp, 'pvh', gi, [[NHI[0], 3.9, .55], [NHI[0], 3.9, D2 / 2 + .36],
       [-5.75, 3.9, D2 / 2 + .36], [-5.75, 3.9, D2 / 2 + .02]], .052);
-    /* ④ 光伏→储能：低位节点 → 柜东面接线盒 */
-    addFlow(grp, 'sto', gi, [[NLO[0], NLO[1], NLO[2]], boxE], .052);
+    /* ④ 光伏→储能：低位节点先下地，再沿柜列中线 z=CABZ 贴地平铺，到柜东面接线盒前才上翘 1m。
+       原来是墙面节点直连接线盒的一条斜线（y 1.2 → 1.0 横跨四五米空），看着像线"斜搭在半空"。 */
+    addFlow(grp, 'sto', gi, [[NLO[0], NLO[1], NLO[2]], [NLO[0], .34, NLO[2]],
+      [NLO[0], .34, CABZ], [boxE[0], .34, CABZ], boxE], .052);
     /* ⑤ 国网→储能：关口箱 → 柜前北车道 z3.15 → 折北 → 柜西面 */
     addFlow(grp, 'gsto', gi, [[TBX - .4, .36, TWRZ - .15], [TBX - .4, .34, LN.gsto],
       [boxW[0] + .75, .34, LN.gsto], [boxW[0] + .25, .36, boxW[2] + 1.0], boxW], .052);
@@ -763,8 +767,9 @@ window.JunyongScene = (function () {
     for (var lx = TBX + 2.4; lx < -7.6; lx += 2.5) lpts.push([lx, .34, LN.gl]);
     lpts.push([-7.5, .36, LN.gl], [-5.95, .40, LN.gl - .9], [-5.35, .95, 4.30], [-5.14, 1.02, 4.04]);
     addFlow(grp, 'gl', gi, lpts, .052);
-    /* 电缆墩：四条贴地车道按 x 每 2.5m 一格 */
-    [[LN.grid, NLO[0], TBX], [LN.gsto, TBX, boxW[0]], [LN.gl, TBX, -7.5], [LN.stoh, cabs[0].x, -7.5]]
+    /* 电缆墩：五条贴地车道按 x 每 2.5m 一格（④ 光伏→储能 也改成贴地了，一起排墩） */
+    [[LN.grid, NLO[0], TBX], [LN.gsto, TBX, boxW[0]], [LN.gl, TBX, -7.5],
+      [LN.stoh, cabs[0].x, -7.5], [CABZ, NLO[0], boxE[0]]]
       .forEach(function (lane) {
         var a = Math.min(lane[1], lane[2]), b = Math.max(lane[1], lane[2]);
         for (var x = Math.ceil(a / 2.5) * 2.5; x <= b - .6; x += 2.5) {
@@ -912,7 +917,7 @@ window.JunyongScene = (function () {
       }
       if (u.tagPv) {
         /* 版式同洙边：实时功率 + 今日发电（不展示总装机容量） */
-        u.tagPv.querySelector('i').textContent = dd.pv == null ? '--kW' : (+dd.pv).toFixed(2) + ' kW';
+        u.tagPv.querySelector('i').textContent = dd.pv == null ? '-- kW' : (+dd.pv).toFixed(2) + ' kW';
         u.tagPv.querySelector('em').textContent = '今日 '
           + (dd.pvToday == null ? '--' : (+dd.pvToday).toFixed(1)) + ' 度';
       }
@@ -1194,25 +1199,24 @@ window.JunyongScene = (function () {
     xs.push(TWR_AT.x - 4.5, TWR_AT.x + 4.5); zs.push(TWR_AT.z - 4.5, TWR_AT.z + 4.5);
 
     /* 每群一根线上塔：贴地到塔位，再拉线上塔中央。
-       塔挪到前排左侧空场后，三个关口箱全落在塔的东侧，所以三条线按「北 / 中 / 南」
-       三条车道进塔：每条的纵向段都停在上一条车道以北，落点各占塔的一侧。
-       改塔位时这个次序不能乱，乱了就交叉。 */
+       塔在一号厂房以北，三个关口箱全在塔的东南方，三条线按「南 / 东 / 北」三条车道进塔，
+       各占塔的一面。次序是算死的，动塔位或车道号要一起核：
+         一号（关口箱 x−4.5）：向南到 z=塔心+3.5 → 横向到塔中线 x → 从南面进塔；
+         三号（关口箱 x 2.0） ：沿 x=2.2 向北到 z=塔心+.5（在二号车道以南、一号车道以北）→ 从东面进塔；
+         二号（关口箱 x 4.5） ：向北到 z=塔心−4（最北那条）→ 从北面进塔。
+       一号的横向车道离一号北墙（z−16）留 3.5m；二号的纵向段在 x=4.5，不会切到别人车道。 */
     units.forEach(function (u, i) {
       var bx = u.tbWorld.x, bz = u.tbWorld.z, lane, pts;
       if (i === 0) {
-        /* 一号：先沿自己关口箱南侧向南，再横向到塔北边，从北脚进（lane 在塔臂以北 1m） */
-        lane = TWR_AT.z - 5.5;
-        pts = [[bx, bz], [bx, lane], [TWR_AT.x, lane], [TWR_AT.x, TWR_AT.z - 1.6]];
+        lane = TWR_AT.z + 3.5;
+        pts = [[bx, bz], [bx, lane], [TWR_AT.x, lane], [TWR_AT.x, TWR_AT.z + LAND]];
       } else if (i === 1) {
-        /* 二号：中间那条车道，进塔东脚偏北 */
-        lane = TWR_AT.z - 2.5;
-        pts = [[bx, bz], [bx, lane], [TWR_AT.x + 1.7, lane]];
+        lane = TWR_AT.z - 4;
+        pts = [[bx, bz], [bx, lane], [TWR_AT.x, lane], [TWR_AT.x, TWR_AT.z - LAND]];
       } else {
-        /* 三号：关口箱在厂房西侧（x≈2），先沿 x=2.2 向北让开自己柜列，再进塔东脚偏南。
-           x=2.2：西离三号柜地坪西沿 2.4；lane 13.6 在三号柜列北沿（14.7）以北 1.1m、
-           二号车道（11.5）以南 —— 两条车道一南一北，才不会撞上。 */
-        lane = TWR_AT.z - .4;
-        pts = [[bx, bz], [bx + .2, bz], [bx + .2, lane], [TWR_AT.x + 1.7, lane]];
+        /* x=2.2：西离三号柜地坪西沿 2.4，是本站既有的那条纵向走廊 */
+        lane = TWR_AT.z + .5;
+        pts = [[bx, bz], [bx + .2, bz], [bx + .2, lane], [TWR_AT.x + LAND, lane]];
       }
       var g = pts.map(function (p) { return [p[0], .44, p[1]]; });
       var land = g[g.length - 1];

@@ -15,8 +15,8 @@
  *       6/7号柜 ↔ 一号/二号的最终对应待厂家确认（改 STOR_GROUPS 一行即可）。
  *
  *   口径：阳光云报全站合计（972.4 kWp / 8 台逆变器 820 kW）；分群光伏按
- *   逆变器名称前缀归组（01NB… = 一号 4 台、02NB… = 二号 2 台、03NB… = 三号 2 台，
- *   2026-10-31 用户确认）。光伏 null ≠ 0（没上报 ≠ 0 kW）。
+ *   逆变器名称前缀归组（01NB… = 三号 4 台、02NB… = 二号 2 台、03NB… = 一号 2 台，
+ *   2026-10-31 确认按前缀归组；2026-11-02 用户确认一号与三号对调）。光伏 null ≠ 0（没上报 ≠ 0 kW）。
  *
  *   红线：页面上不许出现任何模拟数据。取不到就 --，并在数据源条上写明。
  * ============================================================ */
@@ -355,8 +355,10 @@ window.JunyongUI = (function () {
   }
   function firstVals(list) { return (list && list[0]) ? list[0].vals : null; }
 
-  /* 分群光伏：逆变器名称前缀 01NB/02NB/03NB → 一/二/三号机组（用户 2026-10-31 确认）。
-     只有能被前缀明确归组的逆变器才计数；一台都认不出就整体返回 null（显示 --，不编数）。 */
+  /* 分群光伏：逆变器名称前缀 01NB/02NB/03NB 归到哪个机组。
+     2026-11-02 用户确认一号与三号对调——01NB 那批实际装在 3 号厂房、03NB 在 1 号厂房，
+     二号不动。只有能被前缀明确归组的逆变器才计数；一台都认不出就整体返回 null（显示 --，不编数）。 */
+  var PV_GI = { 1: 2, 2: 1, 3: 0 };
   function pvGroups() {
     var out = [{ kw: 0, today: 0, n: 0, kwSeen: false, todaySeen: false },
       { kw: 0, today: 0, n: 0, kwSeen: false, todaySeen: false },
@@ -366,8 +368,8 @@ window.JunyongUI = (function () {
       if (Number(d.type) !== 1) return;
       invTotal++;
       var m = /^(\d{2})NB/i.exec(String(d.name || ''));
-      var gi = m ? (+m[1] - 1) : -1;
-      if (gi < 0 || gi > 2) return;
+      var gi = m ? PV_GI[+m[1]] : undefined;
+      if (gi === undefined) return;
       hit++;
       var g = out[gi];
       g.n++;
@@ -916,7 +918,8 @@ window.JunyongUI = (function () {
       + '</div></div>'
       + '<div class="jy-note">全站三群汇总：功率 / 电量 / 节数相加，SOC 与温度按柜数加权，单体取最高；'
       + '各群状态值不同时并列显示。数据源：高特 CCU（浏览器 MQTT，30 秒上报）。'
-      + '分群光伏按逆变器 01/02/03 前缀归组（2026-10-31 确认）；6/7号柜 ↔ 一号/二号的对应关系待厂家确认。</div>');
+      + '分群光伏按逆变器前缀归组（01NB→三号 / 02NB→二号 / 03NB→一号，2026-11-02 确认一三号对调）；'
+      + '6/7号柜 ↔ 一号/二号的对应关系待厂家确认。</div>');
     var list = (stor && stor.groups) || [];
     body.innerHTML = '<div class="dt-body">' + head + list.map(function (g) {
       return sec('sp12', groupTitle(g), groupChip(g), groupHero(g) + groupBody(g));
@@ -1036,7 +1039,7 @@ window.JunyongUI = (function () {
       + '<div class="panel"><div class="panel-title"><span>实时概览</span>' + srcTag() + '</div>'
       + kpis
       + '<div class="jy-note">“实时功率 / 当日发电”为电站口径（与阳光云概览一致）；设备级明细见「设备」。'
-      + '机组表与三维的分群光伏按逆变器 01/02/03 前缀归组；结算收益 / 卖电收入本站没有数据源，不摆占位卡。</div></div>'
+      + '机组表与三维的分群光伏按逆变器前缀归组（01NB→三号 / 02NB→二号 / 03NB→一号）；结算收益 / 卖电收入本站没有数据源，不摆占位卡。</div></div>'
       + '<div class="panel grow"><div class="panel-title"><span>发电趋势</span><em id="jyTrendMeta">--</em>' + rangeBtns() + '</div>'
       + '<div class="dt-chart" id="jyTrendChart"></div></div>'
       + '<div class="ov-grid">'
@@ -1185,7 +1188,7 @@ window.JunyongUI = (function () {
       + sec('sp4', '光伏发电', '阳光云口径', pvTiles)
       + sec('sp4', '储能', '高特 CCU 口径', storTiles)
       + '</div>'
-      + '<div class="jy-note">光伏 = 阳光云（全站口径，机组表与三维按逆变器 01/02/03 前缀归组）；'
+      + '<div class="jy-note">光伏 = 阳光云（全站口径，机组表与三维按逆变器前缀 01NB→三号 / 02NB→二号 / 03NB→一号 归组）；'
       + '关口 / 储能 = 高特 CCU 实时数据。本站没有结算数据源，收益类数字不展示、不估算。'
       + (missingE.length ? (missingE.join('、') + '关口电表未上报累计电量，累计取 / 馈电只按有读数机组合计。') : '')
       + '</div>'

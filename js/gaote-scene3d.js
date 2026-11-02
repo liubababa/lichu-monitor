@@ -534,7 +534,7 @@ window.GaoteScene3D = (function () {
        在扁画布上「堆 1 / 堆 2」浮标仍会横向压住（实测重叠 15×51 px） */
     const si = parseInt(String(key).replace('stack', ''), 10) || 0;
     bindLabel(addLabel(key, new THREE.Vector3(si % 2 ? 1.0 : -1.0, H + .6 + (si % 2) * .95, 0),
-      'tag3d tag3d-gt', '<b>堆 ' + (si + 1) + '</b><i>--</i><em>--</em>'), key);
+      'tag3d tag3d-gt', '<b>储能堆 · ' + (si + 1) + '号</b><i>-- kW</i><em>--</em>'), key);
     addCard(key, new THREE.Vector3(0, H + .1, 0));
     return g;
   }
@@ -593,8 +593,7 @@ window.GaoteScene3D = (function () {
        （用户问"前面那个像变压器的是啥"）——补上名称 + 实时功率 + 状态 */
     bindLabel(addLabel('pcs', new THREE.Vector3(0, H + 1.05, 0), 'tag3d tag3d-gt',
       '<b>汇流 / PCS</b><i>-- kW</i><em>--</em>'), 'pcs');
-    addCard('pcs', new THREE.Vector3(0, H + .1, 0));
-  }
+    addCard('pcs', new THREE.Vector3(0, H + .1, 0));  }
 
   /* ---------------- 并网铁塔（国网风格格构塔：收腰塔身 + 三层双侧横担 + 绝缘子串 + 架空线） ---------------- */
   function buildTower(root) {
@@ -1494,10 +1493,15 @@ window.GaoteScene3D = (function () {
       if (led) led.material.color.setHex(col);
       const el = labelEls[key];
       if (el) {
-        el.innerHTML = '<b>堆 ' + (i + 1) + '</b><i>' + (d.soc === null ? 'SOC --' : 'SOC ' + d.soc.toFixed(1) + '%')
-          + '</i><em>' + (chg ? '充电中' : (dis ? '放电中' : '待机')) + (d.maxT === null ? '' : ' · ' + d.maxT.toFixed(0) + '℃') + '</em>';
+        /* 版式照峻涌储能柜：第二行是功率、第三行「状态 · SOC」。
+           本站没有"堆功率"这个上报点，功率按已上报的直流电压 × 电流算（缺一个就 --，不编）；
+           温度从浮标挪进明细卡（那里本来就有"最高 / 最低温度"一行） */
+        const pkw = (d.vol === null || d.cur === null) ? null : d.vol * d.cur / 1000;
+        el.innerHTML = '<b>储能堆 · ' + (i + 1) + '号</b><i>' + f(pkw, 1, ' kW') + '</i><em>'
+          + (chg ? '充电中' : (dis ? '放电中' : '待机')) + ' · SOC '
+          + (d.soc === null ? '--%' : d.soc.toFixed(0) + '%') + '</em>';
       }
-      setCard(key, '堆 ' + (i + 1) + ' 明细', [
+      setCard(key, '储能堆 · ' + (i + 1) + '号', [
         ['电池堆电压', f(d.vol, 1, ' V')], ['电池堆电流', f(d.cur, 1, ' A')],
         ['SOC / SOH', f(d.soc, 1, '%') + ' / ' + f(d.soh, 0, '%')],
         ['最高 / 最低温度', f(d.maxT, 0, '℃') + ' / ' + f(d.minT, 0, '℃')],
@@ -1582,7 +1586,7 @@ window.GaoteScene3D = (function () {
       const gnum = (gpv === null || gpv === undefined) ? null : Number(gpv);
       const gqv = GaoteService.val('meter-lems-antireflux', 'meter_tot_q');
       const gtxt = gnum === null ? '--' : (Math.abs(gnum) > .5
-        ? (gnum > 0 ? '取电 ' + gnum.toFixed(1) + ' kW' : '馈电 ' + Math.abs(gnum).toFixed(1) + ' kW')
+        ? (gnum > 0 ? '受电 ' + gnum.toFixed(1) + ' kW' : '送出 ' + Math.abs(gnum).toFixed(1) + ' kW')
         : '无交换');
       gl.innerHTML = '<b>并网点</b><i>10kV 上网线路</i><em>' + gtxt + '</em>';
       setCard('grid', '并网点 · 10kV 上网线路', [
@@ -1642,7 +1646,9 @@ window.GaoteScene3D = (function () {
       facLabelEl.innerHTML = '<b>厂房（工厂用电）</b><i>受电 '
         + (facKw === null ? '-- kW' : f(facKw, 1, ' kW')) + '</i>'
         /* 第三行恒在（同峻涌厂房浮标）：原来没工况时整行不输出，标签高度会跳一下 */
-        + '<em>' + (powerMode === '—' ? (mv === null ? '--' : '电网供电') : powerMode + ' ' + powerModeTxt) + '</em>';
+        /* 第三行照峻涌厂房浮标的写法：「工况 ③ · 储能供厂房…」，没工况写原因、没数据写 -- */
+        + '<em>' + (powerMode === '—' ? (mv === null ? '--' : '电网供电 · 无储能工况')
+          : '工况 ' + powerMode + ' · ' + powerModeTxt) + '</em>';
     }
     if (cardEls.factory) setCard('factory', '厂房（工厂用电）', [
       ['当前工况', powerMode + ' ' + powerModeTxt],

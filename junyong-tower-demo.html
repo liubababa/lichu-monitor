@@ -136,13 +136,14 @@ window.addEventListener('error', function (e) {
   document.documentElement.setAttribute('data-theme', S.theme);
 
   /* ---------------- 方案表 ---------------- */
-  /* 塔位 2026-11-01 已落到前排左侧空场（x−14 / z14）。上塔线现在全部按 TWR_AT 相对排车道，
-     所以这几个 x 档在预览里会自动重路由 —— 跟线上只改一个数的效果完全一致 */
+  /* 塔位 2026-11-02 已落到一号厂房以北（x−24 / z−23，画面左上方）。
+     上塔线按「南 / 东 / 北」三条车道相对 TWR_AT 排，所以这几个档会自动重路由 */
   var TOWERS = {
-    w18: { xy: '{ x: -18, z: 14 }', name: 'x −18 再靠西' },
-    now: { xy: '{ x: -14, z: 14 }', name: 'x −14 线上现状' },
-    e11: { xy: '{ x: -11, z: 14 }', name: 'x −11 再靠东' },
-    e8:  { xy: '{ x: -8, z: 14 }', name: 'x −8 再往东一档' }
+    now:  { xy: '{ x: -24, z: -23 }', name: '北面 x−24/z−23（线上现状）' },
+    e:    { xy: '{ x: -18, z: -23 }', name: '往东收 x−18' },
+    w:    { xy: '{ x: -30, z: -23 }', name: '往西放 x−30' },
+    s:    { xy: '{ x: -24, z: -19 }', name: '往南 z−19（横担会压一号北墙，仅对照）' },
+    front: { xy: '{ x: -14, z: 14 }', name: '上一版：前排左空场' }
   };
   var CAMS = {
     home: { v: '(-.3, .42, .86)', name: '现状方位角' },
@@ -155,34 +156,50 @@ window.addEventListener('error', function (e) {
     ['tag', '塔顶浮标', '浮标在塔顶上方']
   ];
   var SCHEMES = [
-    ['A', '现状（塔已挪到前排左）', {}, '对照：塔退到画面左前，机组回到中间'],
+    ['A', '现状（塔在一号以北）', {}, '对照：塔退到画面左上、机组在中间'],
     ['B', '再叠降权四件套', { fit: 0, arm: 0, bcn: 0, tag: 0 }, '塔位不动，把亮度与机位权重也压下去（我推荐叠上）'],
     ['C', '只摘取景', { fit: 0 }, '只关「塔顶参与取景」：机位不再为塔后退，塔顶可能被裁出上沿'],
     ['D', '只灰横担', { arm: 0 }, '只把横担从亮青退成钢灰（青=储能放电语义色，塔身不该占）'],
     ['E', '只弱闪灯', { bcn: 0 }, '只收小顶部红灯光晕（全画面唯一动的红，最抓眼）'],
-    ['F', '塔再靠东 x−11', { tw: 'e11' }, '离镜头和画面中线都更近，看是否挪过头'],
-    ['G', '塔再靠西 x−18', { tw: 'w18' }, '更贴边更远，但场坪要向西外扩、机位后退，全场会缩小']
+    ['F', '往东收 x−18', { tw: 'e' }, '离画面中线近一点，看会不会又变成"压中心"'],
+    ['G', '上一版前排左空场', { tw: 'front' }, '对照用：塔在左前、离镜头近，比现在大一圈']
   ];
   var WARN = {
-    w18: 'x −18：塔更贴左，但场坪西沿要从 −33.7 再往外扩，fitDistance 会把机位顶远、三栋厂房整体缩小。',
-    e8: 'x −8：塔身已经站到三号柜列（x 3~12）的正左方，画面左半被塔占掉一块；再往东就回到"塔压中心"的老问题。'
+    s: 'z −19：横担沿 ±z 挑出 4.5m，最南端只离一号北墙（z−16）2m 不到，且塔基会压到一号的横向车道 —— 这一档只用来对照，别选它。',
+    front: '前排左空场（上一版）：相机就在西南侧，塔离镜头近，角尺寸比北面这版大不少。'
   };
 
   /* ---------------- 补丁表 ---------------- */
   /* 评审页自己要的读数口子：只加在这份运行时补丁里，不写进线上文件 */
-  var HARNESS = [['ready: function () { return inited; }',
-    'ready: function () { return inited; },\n'
-    + '    camDist: function () { return camera && controls ? camera.position.distanceTo(controls.target) : 0; },\n'
-    + '    probe: function () {\n'
-    + '      return { theme: theme, towerAt: [TWR_AT.x, TWR_AT.z], duis: duisOn,\n'
-    + '        flows: flows.map(function (f) {\n'
-    + '          return { kind: f.kind, gi: f.gi, outside: !!f.outside,\n'
-    + '            col: f.tubeMat.color.getHexString(), op: +f.tubeMat.opacity.toFixed(2), dir: f.dir };\n'
-    + '        }) };\n'
-    + '    }']];
+  var HARNESS = [
+    ['var f = { kind: kind, gi: gi, map: map, tubeMat: tm, dir: 1, spd: .06, len: len };',
+      'var f = { kind: kind, gi: gi, map: map, tubeMat: tm, dir: 1, spd: .06, len: len, mesh: core };'],
+    ['ready: function () { return inited; }',
+      'ready: function () { return inited; },\n'
+      + '    camDist: function () { return camera && controls ? camera.position.distanceTo(controls.target) : 0; },\n'
+      + '    /* 某条线的顶点在世界坐标里的高度分布：斜线 yMin 不会到地面，贴地线大部分顶点 y≈.34 */\n'
+      + '    lineY: function (kind) {\n'
+      + '      var out = [];\n'
+      + '      flows.forEach(function (f) {\n'
+      + '        if (!f.mesh || f.kind !== kind) return;\n'
+      + '        var p = f.mesh.geometry.attributes.position, v = new (T_().Vector3)(), ys = [];\n'
+      + '        for (var i = 0; i < p.count; i++) { v.fromBufferAttribute(p, i); f.mesh.localToWorld(v); ys.push(+v.y.toFixed(2)); }\n'
+      + '        ys.sort(function (a, b) { return a - b; });\n'
+      + '        out.push({ gi: f.gi, yMin: ys[0], yMax: ys[ys.length - 1],\n'
+      + '          yMed: ys[Math.floor(ys.length / 2)], onGround: ys.filter(function (y) { return y < .6; }).length + " / " + ys.length });\n'
+      + '      });\n'
+      + '      return out;\n'
+      + '    },\n'
+      + '    probe: function () {\n'
+      + '      return { theme: theme, towerAt: [TWR_AT.x, TWR_AT.z], duis: duisOn,\n'
+      + '        flows: flows.map(function (f) {\n'
+      + '          return { kind: f.kind, gi: f.gi, outside: !!f.outside,\n'
+      + '            col: f.tubeMat.color.getHexString(), op: +f.tubeMat.opacity.toFixed(2), dir: f.dir };\n'
+      + '        }) };\n'
+      + '    }']];
   function patches() {
     var p = [];
-    p.push(['var TWR_AT = { x: -14, z: 14 };', 'var TWR_AT = ' + TOWERS[S.tw].xy + ';']);
+    p.push(['var TWR_AT = { x: -24, z: -23 };', 'var TWR_AT = ' + TOWERS[S.tw].xy + ';']);
     if (S.cam !== 'home') p.push(['(-.3, .42, .86)', CAMS[S.cam].v]);
     if (!S.fit) p.push(['fitPts.push(new T.Vector3(TWR_AT.x, TWRH + 1.2, TWR_AT.z));', '/* 摘掉塔顶取景 */']);
     if (!S.arm) {
