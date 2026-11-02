@@ -140,11 +140,11 @@ window.addEventListener('error', function (e) {
   /* 2026-11-02 重排：一号挪到前排与三号齐平，铁塔接一号空出来的后排左 (−20,−12)。
      上塔线按「西 / 东 / 南」三面进塔，路由全按 TWR_AT 相对算，改档会自动重排 */
   var TOWERS = {
-    now:  { xy: '{ x: -2.5, z: -17 }', name: '后排偏左 (−2.5,−17) 线上现状' },
+    now:  { xy: '{ x: -6, z: -17 }', name: '后排偏左 (−6,−17) 线上现状' },
     mid:  { xy: '{ x: 0, z: -16 }', name: '对照：正中 (0,−16)（用户说板板）' },
-    L4:   { xy: '{ x: -4, z: -16 }', name: '往左过头 (−4,−16)：塔压到一号上塔线自己身上' },
-    L7:   { xy: '{ x: -7, z: -16 }', name: '再往左 (−7,−16)：一号/二号进塔横段同车道重叠' },
-    c44:  { xy: '{ x: 0, z: -22 }', name: '只往后 (0,−22)' },
+    q:    { xy: '{ x: -2.5, z: -17 }', name: '对照：只错半格 (−2.5,−17)（用户说还呆板）' },
+    L8:   { xy: '{ x: -8, z: -17 }', name: '再往左 (−8,−17)：屏幕贴上一号厂房东角' },
+    c44:  { xy: '{ x: -6, z: -22 }', name: '同 x 再往后 (−6,−22)' },
     front: { xy: '{ x: -20, z: -12 }', name: '对照：后排左原一号坑位' }
   };
   var CAMS = {
@@ -166,9 +166,9 @@ window.addEventListener('error', function (e) {
   ];
   var WARN = {
     mid: '正中 (0,−16)：x 卡在两列厂房的中轴、z 又跟二号北墙共线 —— 两条看不见的对齐就是"板板"的来源。',
-    L4: '往左过头：一号的上塔线沿世界 x=−4.5 一路北上，塔心 −4 时塔在屏幕上正压在这条线上（实测差 7px），像塔挂在线上；且进塔点开始往回打弯。',
-    L7: '再往左：一号那段"向东进塔"的横段跟二号的进塔横段都落在 z=TWR_AT.z 同一条车道上，从 x=−5 到 −4.5 这一段两根管子重叠（共面闪烁）。',
-    c44: '只往后：机位不变（塔不进取景盒），但塔更贴画面上沿，注意会不会被裁。',
+    q: '只错半格 (−2.5,−17)：塔心刚好接上一号上塔线的进塔点（那根是一条直线进塔），但屏幕位移只有 37px，用户还是觉得呆板。',
+    L8: '再往左：屏幕上塔心 1030px 左右，跟一号厂房东角（1045px）贴住了，塔像挂在房角上。',
+    c44: '同 x 再往后：机位不变（塔不进取景盒），但塔更贴画面上沿，注意会不会被裁。',
     front: '更早那版塔在前排左空场：离镜头近，角尺寸比现在大不少。'
   };
 
@@ -279,7 +279,7 @@ window.addEventListener('error', function (e) {
       + '        if (f.kind !== "lead" && f.kind !== "tower") return;\n'
       + '        var p = f.mesh.geometry.attributes.position, v = new T.Vector3(), a = [];\n'
       + '        for (var i = 0; i < p.count; i++) { v.fromBufferAttribute(p, i); f.mesh.localToWorld(v); a.push(v.clone()); }\n'
-      + '        list.push({ n: f.kind + "#" + f.gi, a: a });\n'
+      + '        list.push({ n: f.kind + "#" + f.gi, gi: f.gi, a: a });\n'
       + '      });\n'
       + '      var out = [];\n'
       + '      for (var i = 0; i < list.length; i++) for (var j = i + 1; j < list.length; j++) {\n'
@@ -287,7 +287,8 @@ window.addEventListener('error', function (e) {
       + '        for (var x = 0; x < list[i].a.length; x += 3) for (var y = 0; y < list[j].a.length; y += 3) {\n'
       + '          var d = list[i].a[x].distanceTo(list[j].a[y]); if (d < m) m = d;\n'
       + '        }\n'
-      + '        if (m < 1.2) out.push(list[i].n + " ↔ " + list[j].n + " 最近 " + m.toFixed(2) + "m");\n'
+      + '        if (list[i].gi === list[j].gi) continue;   /* 同一群的 lead↔tower 本来就在进塔点相接 */\n'
+      + '        out.push(list[i].n + " ↔ " + list[j].n + " 最近 " + m.toFixed(2) + "m" + (m < .3 ? "  ← 管子贴上了" : ""));\n'
       + '      }\n'
       + '      return out;\n'
       + '    },\n'
@@ -300,7 +301,7 @@ window.addEventListener('error', function (e) {
       + '    }']];
   function patches() {
     var p = [];
-    p.push(['var TWR_AT = { x: -2.5, z: -17 };', 'var TWR_AT = ' + TOWERS[S.tw].xy + ';']);
+    p.push(['var TWR_AT = { x: -6, z: -17 };', 'var TWR_AT = ' + TOWERS[S.tw].xy + ';']);
     if (S.cam !== 'home') p.push(['(-.3, .42, .86)', CAMS[S.cam].v]);
     /* 塔完全不进包围盒（场坪是固定 460×240 的大板，塔挪哪都在板上）：
        机位不再为塔后退，厂房大小不受塔位影响。fit=0 就是"恢复让塔参与取景"，用来对照 */
