@@ -73,8 +73,11 @@ function tmp(name, content) {
     await exec(conn, 'sudo mkdir -p ' + DIR + ' ' + DATA_DIR + ' && sudo chown -R ' + USER + ':' + USER + ' ' + DIR + ' ' + DATA_DIR);
     await put(conn, path.join(__dirname, 'solar-service.js'), DIR + '/solar-service.js');
     console.log('已上传 solar-service.js');
+    await put(conn, path.join(__dirname, 'solar-reauth.js'), DIR + '/solar-reauth.js');
+    console.log('已上传 solar-reauth.js（授权失效后自动用无头浏览器重登）');
 
-    /* 凭据（只落在服务器上，600） */
+    /* 凭据（只落在服务器上，600）。cfg.user / cfg.pass = 阳光云网页登录账号（自动重授权用），
+       没填也能跑，只是授权失效后要人工走一次 /solar/authorize */
     const env = [
       'SOLAR_APPKEY=' + cfg.appkey,
       'SOLAR_SECRET=' + cfg.secret,
@@ -85,7 +88,9 @@ function tmp(name, content) {
       'SOLAR_PORT=' + PORT,
       'SOLAR_DIR=' + DATA_DIR,
       'SOLAR_POLL=300',
-      'SOLAR_DAYS=3'
+      'SOLAR_DAYS=3',
+      'SOLAR_USER=' + (cfg.user || ''),
+      'SOLAR_PASS=' + (cfg.pass || '')
     ].join('\n') + '\n';
     await put(conn, tmp('lichu-solar.env', env), '/tmp/lichu-solar.env');
     await exec(conn, 'sudo mv /tmp/lichu-solar.env /etc/lichu-solar.env && sudo chmod 600 /etc/lichu-solar.env');

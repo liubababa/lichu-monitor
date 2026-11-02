@@ -77,8 +77,11 @@ function tmp(name, content) {
     await exec(conn, 'sudo mkdir -p ' + DIR + ' ' + DATA_DIR + ' && sudo chown -R ' + USER + ':' + USER + ' ' + DIR + ' ' + DATA_DIR);
     await put(conn, path.join(__dirname, 'solar-service.js'), DIR + '/solar-service.js');
     console.log('已上传 solar-service.js → ' + DIR);
+    await put(conn, path.join(__dirname, 'solar-reauth.js'), DIR + '/solar-reauth.js');
+    console.log('已上传 solar-reauth.js（授权失效后自动重登用）');
 
-    /* 凭据（同一套应用；psId2 未配置就留空，服务自动取账号下第一个电站） */
+    /* 凭据（同一套应用；psId2 未配置就留空，服务自动取账号下第一个电站）。
+       cfg.user2 / cfg.pass2 = 峻涌账号的网页登录账号（自动重授权用；没填则失效后要人工） */
     const env = [
       'SOLAR_APPKEY=' + cfg.appkey,
       'SOLAR_SECRET=' + cfg.secret,
@@ -89,7 +92,9 @@ function tmp(name, content) {
       'SOLAR_PORT=' + PORT,
       'SOLAR_DIR=' + DATA_DIR,
       'SOLAR_POLL=300',
-      'SOLAR_DAYS=3'
+      'SOLAR_DAYS=3',
+      'SOLAR_USER=' + (cfg.user2 || ''),
+      'SOLAR_PASS=' + (cfg.pass2 || '')
     ].join('\n') + '\n';
     await put(conn, tmp('lichu-solar-junyong.env', env), '/tmp/lichu-solar-junyong.env');
     await exec(conn, 'sudo mv /tmp/lichu-solar-junyong.env /etc/lichu-solar-junyong.env && sudo chmod 600 /etc/lichu-solar-junyong.env');
