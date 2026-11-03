@@ -888,19 +888,11 @@ window.JunyongScene = (function () {
 
   function updateFlows() {
     var F = FLOWC[theme];
-    /* 全站一个流速（三站共用 ScenePreset.flowSpd，口径同旭日东明）：
-       参考功率 = 「全站储能合计 / 全站关口合计 / 全站光伏」里绝对值最大的那个，除以储能额定 625kW。
-       原来是每个群按自己那点功率各算各的（分母却已经是全站额定 625/972.4）——
-       三个群之间一快一慢，而且单群功率除以全站额定只会一直偏慢，看着像"电流不够"。 */
-    var stSum = 0, gridSum = 0, hasSt = 0, hasGrid = 0;
-    data.forEach(function (d) {
-      if (!d) return;
-      if (d.st != null && isFinite(+d.st)) { stSum += +d.st; hasSt = 1; }
-      if (d.grid != null && isFinite(+d.grid)) { gridSum += +d.grid; hasGrid = 1; }
-    });
-    var refP = Math.max(hasSt ? Math.abs(stSum) : 0, hasGrid ? Math.abs(gridSum) : 0,
-      stationPv.seen ? Math.abs(stationPv.kw) : 0);
-    var spd = SP.flowSpd(refP, 625);
+    /* 全站一个流速：三站共用 ScenePreset.FLOW.speed 的固定档。原来取「全站储能合计 / 全站关口
+       合计 / 全站光伏」里最大的那个再除以额定 625kW——洙边不含光伏、东明没有光伏，
+       同一个公式喂进去的量不同，三站就一快一慢。群与群之间本来就一致（都取这个 spd），
+       负载差异继续由亮灭 / 方向 / 颜色和浮标数值表达。 */
+    var spd = SP.FLOW.speed;
     units.forEach(function (u, i) {
       var c = cond(data[i]);
       function lit(f, on, color, dir) {

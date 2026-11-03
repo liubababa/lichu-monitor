@@ -1435,12 +1435,6 @@ window.GaoteScene3D = (function () {
     return sum;
   }
 
-  /* 全站额定功率（kW）：5 堆 × 125 kW，与峻涌同一基数，用来把"当时功率"换算成 0~1 的负载比例
-     （光纹速度全站共用这一个比例）。原来取 CCU 上报的「允许充 / 放功率」：待机时那两个点是 0，
-     代码就回落到 250（在线那台 CCU 只管 2 柜），而东明关口常年挂着几百 kW 的厂房直供负荷
-     （实测 354 kW），比例直接顶满，光纹恒定跑上限、比洙边 / 峻涌快一大截 */
-  const RATED_KW = 625;
-
   function update() {
     if (!inited) return;
     const emuP = stationPower();
@@ -1516,13 +1510,10 @@ window.GaoteScene3D = (function () {
     const meterP = GaoteService.val('meter-lems-antireflux', 'meter_tot_p');
     const mv = (meterP === null || meterP === undefined) ? null : Number(meterP);
     const chgNow = pNum < -0.5, disNow = pNum > 0.5;
-    /* 全站一个流速：同一时刻所有电缆的光纹跑得一样快（"到厂房"与"到储能"不再一快一慢）。
-       参考功率取"全站功率 / 关口功率"里大的那个（谁在动就按谁），除以全站额定 625 kW。
-       原来储能电缆拿"每堆功率"、并网线拿"关口功率"，都除以 100，口径差一个堆数
-       （5 个堆就慢 5 倍；关口功率还含储能充电那部分，会更快顶到上限），所以看着不一样 */
-    const refP = Math.max(Math.abs(pNum), Math.abs(mv === null ? 0 : mv));
-    /* 公式本体已提到三站共用的 ScenePreset.flowSpd（洙边 / 峻涌现在都按这条走） */
-    const stSpd = window.ScenePreset.flowSpd(refP, RATED_KW);
+    /* 全站一个流速：三站共用 ScenePreset.FLOW.speed 的固定档，不再按负载比例加减
+       （原来除以全站额定，三站喂进去的参考功率口径不同就一快一慢；负载大小仍由
+       亮灭 / 方向 / 颜色和浮标数值表达，理由见 scene-preset.js 的 FLOW 注释） */
+    const stSpd = window.ScenePreset.FLOW.speed;
 
     for (let i = 0; i < flows.length; i++) {
       const fl = flows[i];

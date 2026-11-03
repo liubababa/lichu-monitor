@@ -74,23 +74,15 @@ window.ScenePreset = (function () {
     return k;
   }
 
-  /* ---------------- 电流光纹流速规则（三站同一条，口径取自旭日东明） ----------------
-     全站一个速度：同一时刻所有亮着的电缆光纹跑得一样快，不按"这条线归哪个群 / 哪个堆"各算各的。
-     ref = 全站参考功率（谁在动就取谁的绝对值里最大的那个），rated = 全站额定功率；比例钳在 1。
-     base/span 定"多快"，roll 是每站滚动时共用的系数（原来三站各自硬写 .35，改一次要翻三个文件）。
-     2026-11-02 用户"再做的快一点"：.25/1.6/.35（顶速 1.85×.35=0.65 UV/s）→ .3/2.0/.45（顶速 2.3×.45=1.04，约 1.6 倍）。
-     2026-11-02 又要求"再快一点"：只动 roll，.45 → .60（×1.33，顶速 2.3×.60=1.38 UV/s；
-     三站光纹密度都是每 4.2 米一段，换算成眼睛看到的就是满载 5.8 米/秒、刚有电 0.76 米/秒）。
+  /* ---------------- 电流光纹流速规则（三站同一条） ----------------
+     固定同一速度：三站所有亮着的电缆都按 FLOW.speed 跑，不再按负载比例加减。
+     原来是 `FLOW.base + min(1, 参考功率 / 额定) × FLOW.span`，公式虽共用、三站喂进去的量却不一样
+     （峻涌把全站光伏算进参考功率、洙边只算储能和关口且额定只有 100 kW、东明没有光伏），
+     于是同样"刚有电"的三站看着一快一慢——用户要的是三站一致。
+     负载大小仍由亮灭、方向、颜色和浮标数值表达，不再用速度编码。
+     roll 是滚动系数（三站共用，原来各自硬写 .35，改一次要翻三个文件）；实际速率 = speed × roll。
      方向不在这儿：符号全在各站自己的 fl.dir（±1，灭线 0），roll 是正数，改它不会把电流调头。 */
-  const FLOW = { base: .3, span: 2.0, roll: .60 };
-
-  function flowSpd(refKw, ratedKw) {
-    const r = Number(ratedKw);
-    const rated = (isFinite(r) && r > 0) ? r : 1;
-    const p = Number(refKw);
-    const ratio = Math.min(1, Math.abs(isFinite(p) ? p : 0) / rated);
-    return FLOW.base + ratio * FLOW.span;
-  }
+  const FLOW = { speed: 1, roll: .60 };
 
   function env(theme) { return ENV[theme] || ENV.night; }
 
@@ -389,7 +381,7 @@ window.ScenePreset = (function () {
   return {
     ENV: ENV, env: env, rng: rng, YARD_Y: YARD_Y,
     LBL: LBL, scaleLabelTo: scaleLabelTo,
-    FLOW: FLOW, flowSpd: flowSpd,
+    FLOW: FLOW,
     paveTexture: paveTexture,
     contactTexture: contactTexture, contact: contact,
     glowSleeve: glowSleeve, syncSleeve: syncSleeve,

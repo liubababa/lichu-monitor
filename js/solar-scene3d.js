@@ -52,7 +52,6 @@ window.SolarScene = (function () {
   let raf = null, W = 0, H = 0;
   let camHome = null;                                /* 默认机位（按画布宽高比算好后存下来，重置视角复用） */
   const flows = [];                 // 电流光纹：{ map, tubeMat, kind, on, speed }
-  let flowSpd = .25;                // 全站统一光纹流速（updateEnergyFlows 里按"储能/关口参考功率"算）
   const labelPairs = [];            // { obj, el } 浮标：缩放 / 遮挡 / 显隐都看它
   const cards = {};                 // 设备明细卡：key -> .card3d 元素
   let activeCard = null;
@@ -1578,7 +1577,7 @@ window.SolarScene = (function () {
     flows.forEach(function (fl) {
       if (fl.kind !== 'pv') return;                        /* 储能/关口/负载支线由 updateEnergyFlows 管 */
       fl.on = on;
-      fl.speed = flowSpeed();
+      fl.speed = SP.FLOW.speed;
       /* 颜色（光伏出力=黄）由 updateEnergyFlows 定；这里只负责没出力时压回 idle 色。
          光伏线只被光伏自己驱动：不发（夜里 / 没太阳）就不动、不上色——电网往里送电时它不亮 */
       if (!fl.on) fl.tubeMat.color.setHex(p.idle);
@@ -1706,12 +1705,7 @@ window.SolarScene = (function () {
     }
   }
 
-  /* 电流光纹沿电缆滚动（速度随功率，方向随充放/买卖电，无输出时静止变暗） */
-  /* 光纹流速：与旭日东明同一口径——"全站一个流速"，参考功率在 updateEnergyFlows 里算好
-     写进 flowSpd；这里各条线直接取它，所以同一时刻所有电缆的光纹跑得一样快 */
-  function flowSpeed() {
-    return flowSpd;
-  }
+  /* 电流光纹沿电缆滚动（三站固定同一速度，方向随充放 / 买卖电，无输出时静止变暗） */
   function stepFlow(dt) {
     if (!flows.length || !dt) return;
     for (let i = 0; i < flows.length; i++) {
@@ -1750,9 +1744,6 @@ window.SolarScene = (function () {
     /* 负载量优先用关口表反推（pv + st − surplus，和现场"负载 = 电网 + 交流 + 光伏"同一口径）：
        厂商负载字段实测出过 −0.5 / −4.2 这种坏值，按它算负载线会整条灭掉，而电明明在往楼里流 */
     const loadEff = meterKw === null ? load : Math.max(0, pv + st - meterKw);
-    /* 全站一个流速（三站共用 ScenePreset.flowSpd，口径同旭日东明）：参考功率取"储能 / 关口"里大的那个，
-       除以储能额定 100kW —— 同一时刻所有电缆的光纹跑得一样快 */
-    flowSpd = SP.flowSpd(Math.max(Math.abs(st), Math.abs(surplus === null ? 0 : surplus)), 100);
     flows.forEach(function (fl) {
       if (fl.kind === 'stoh') {
         /* 储能→卫生院（柜正面 → 南墙墙脚黑盒，'储能设备供卫生院'）：储能在放电且楼里有负载
@@ -1760,7 +1751,7 @@ window.SolarScene = (function () {
         fl.on = known && loadEff > .3 && dis;
         fl.dir = 1;
         fl.tint = c.dis;
-        fl.speed = flowSpeed();
+        fl.speed = SP.FLOW.speed;
         if (!fl.on) fl.tubeMat.color.setHex(c.idle);
       } else if (fl.kind === 'pvh') {
         /* 光伏→卫生院（西墙二楼支线 → 南墙黑盒，'光伏接入卫生院'）：光伏有出力、楼里有负载就流——
@@ -1768,7 +1759,7 @@ window.SolarScene = (function () {
         fl.on = known && loadEff > .3 && pvOn;
         fl.dir = 1;
         fl.tint = c.ac;
-        fl.speed = flowSpeed();
+        fl.speed = SP.FLOW.speed;
         if (!fl.on) fl.tubeMat.color.setHex(c.idle);
       } else if (fl.kind === 'sto') {
         /* 储能线（低位分岔节点 ↔ 储能柜东面）：只有"光伏正在给储能充电"时才亮（黄、节点 → 柜）；
@@ -1777,7 +1768,7 @@ window.SolarScene = (function () {
         fl.on = known && pvOn && chg;
         fl.dir = 1;
         fl.tint = c.ac;
-        fl.speed = flowSpeed();
+        fl.speed = SP.FLOW.speed;
         if (!fl.on) fl.tubeMat.color.setHex(c.idle);
       } else if (fl.kind === 'gsto') {
         /* 国网→储能柜（终端箱 → 柜西面，'国网直接供储能设备'）：只要"从电网买电"（关口取电）
@@ -1786,7 +1777,7 @@ window.SolarScene = (function () {
         fl.on = known && chg && surplus < -.3;
         fl.dir = 1;
         fl.tint = c.buy;
-        fl.speed = flowSpeed();
+        fl.speed = SP.FLOW.speed;
         if (!fl.on) fl.tubeMat.color.setHex(c.idle);
       } else if (fl.kind === 'grid') {
         /* 并网段（低位分岔节点 → 终端箱）：**只有光伏卖电上网**时才亮——黄、节点 → 塔上行；
@@ -1794,7 +1785,7 @@ window.SolarScene = (function () {
         fl.on = surplus !== null && surplus > .3 && pvOn;
         fl.dir = 1;
         fl.tint = c.sell;
-        fl.speed = flowSpeed();
+        fl.speed = SP.FLOW.speed;
         if (!fl.on) fl.tubeMat.color.setHex(c.idle);
       } else if (fl.kind === 'tower') {
         /* 铁塔段（终端箱 ↔ 塔身中央）：光伏余电卖=黄上行、从电网受电=蓝下行——
@@ -1804,7 +1795,7 @@ window.SolarScene = (function () {
         fl.on = selling || buying;
         fl.dir = selling ? 1 : -1;
         fl.tint = selling ? c.sell : c.buy;
-        fl.speed = flowSpeed();
+        fl.speed = SP.FLOW.speed;
         if (!fl.on) fl.tubeMat.color.setHex(c.idle);
       } else if (fl.kind === 'gl') {
         /* 电网直供线（铁塔 → 卫生院南墙黑盒）：从电网取电且楼里真有负载才亮蓝（塔 → 楼），
@@ -1813,7 +1804,7 @@ window.SolarScene = (function () {
         fl.on = known && surplus < -.3 && loadEff > .3;
         fl.dir = 1;
         fl.tint = c.buy;
-        fl.speed = flowSpeed();
+        fl.speed = SP.FLOW.speed;
         if (!fl.on) fl.tubeMat.color.setHex(c.idle);
       } else if (fl.kind === 'pvlow') {
         /* 光伏干线（二楼分岔点 → 低位节点 1.2m）：只有"有多余的电继续往下走"才亮——
@@ -1822,7 +1813,7 @@ window.SolarScene = (function () {
         fl.on = known && pvOn && (chg || surplus > .3);
         fl.dir = 1;
         fl.tint = c.ac;
-        fl.speed = flowSpeed();
+        fl.speed = SP.FLOW.speed;
         if (!fl.on) fl.tubeMat.color.setHex(c.idle);
       } else if (fl.kind === 'pv') {
         /* 光伏干线（屋面 → 二楼分岔点）：光伏出力就上光伏黄——这截承载全部光伏电流；
@@ -1830,7 +1821,7 @@ window.SolarScene = (function () {
            开关和流速也在这里定：setPower 那边按"出力比 > 0.5%"判，额定 110.16kWp 时是 0.55kW，
            会在 0.5~0.55kW 这一档出现"模式说光伏在出力、光伏线却是灭的"——跟模式统一用 pvOn */
         fl.on = cur.pvSeen && pvOn;
-        fl.speed = flowSpeed();
+        fl.speed = SP.FLOW.speed;
         fl.tint = pvOn ? c.ac : 0;
       }
     });
