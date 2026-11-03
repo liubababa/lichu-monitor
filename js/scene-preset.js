@@ -84,6 +84,11 @@ window.ScenePreset = (function () {
      方向不在这儿：符号全在各站自己的 fl.dir（±1，灭线 0），roll 是正数，改它不会把电流调头。 */
   const FLOW = { speed: 1, roll: .60 };
 
+  /* 柜侧 SOC 光柱（柜子两边那根竖条）统一冷白，不再随充放电变色（用户：三站都改成白色）。
+     不用纯 0xffffff：夜里泛光会炸成一团白、白天又和浅色柜体糊在一起，这个值泛光后正好是"发白的灯条"。
+     充放电状态仍然看得见——柜顶色条、柜门指示灯、柜底光晕和电缆光纹都照旧按工况上色。 */
+  const SOC_BAR = 0xe9f4f1;
+
   function env(theme) { return ENV[theme] || ENV.night; }
 
   /* ---------------- 确定性伪随机 ----------------
@@ -381,7 +386,7 @@ window.ScenePreset = (function () {
   return {
     ENV: ENV, env: env, rng: rng, YARD_Y: YARD_Y,
     LBL: LBL, scaleLabelTo: scaleLabelTo,
-    FLOW: FLOW,
+    FLOW: FLOW, SOC_BAR: SOC_BAR,
     paveTexture: paveTexture,
     contactTexture: contactTexture, contact: contact,
     glowSleeve: glowSleeve, syncSleeve: syncSleeve,

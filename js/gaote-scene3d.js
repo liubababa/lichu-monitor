@@ -4,7 +4,7 @@
  * 与场景对齐真实拓扑：储能柜（数量按上报自动排布）+ 汇流/PCS 柜 + 并网杆塔，
  * 数据全部来自 GaoteService（高特协议实时值）：
  *   柜顶色条   —— 充电(蓝) / 放电(青) / 待机(灰)
- *   柜侧光柱   —— 该柜 SOC：高度从下往上按 SOC 生长，颜色随充放电状态
+ *   柜侧光柱   —— 该柜 SOC：高度从下往上按 SOC 生长，颜色固定冷白（三站统一）
  *   电缆能量流 —— 每根柜线按该柜电流方向流动；并网线（站内 → 铁塔）只画余电上网（橙、上塔），
  *                储能供电期间不亮（现场口径 2026-10-27：储能供电时电网不供电，
  *                关口在取电也不画——那是表读数，只看并网点浮标）；充电 / 待机时按关口表方向画
@@ -481,7 +481,7 @@ window.GaoteScene3D = (function () {
       g.add(box(.05, colH + .08, .3, M.slot, sgn * (W / 2 + .035), .16 + H * .5, colZ));
       const socGeo = new THREE.BoxGeometry(.045, colH, .24);
       socGeo.translate(0, colH / 2, 0);                     // 原点移到底部 → scale.y 即"从下往上长"
-      const socBar = new THREE.Mesh(socGeo, new THREE.MeshBasicMaterial({ color: 0x6f9a94, toneMapped: false }));
+      const socBar = new THREE.Mesh(socGeo, new THREE.MeshBasicMaterial({ color: window.ScenePreset.SOC_BAR, toneMapped: false }));
       socBar.position.set(sgn * (W / 2 + .062), colBase, colZ);
       g.add(socBar);
       /* 外层光晕：柱体只是涂色，待机色偏暗就看着"没亮"。套一层加色壳，
@@ -1461,7 +1461,7 @@ window.GaoteScene3D = (function () {
         /* 待机也要看得出是一圈亮边（原来 .12 基本是灭的，整台柜子看着"没通电"） */
         strip.material.emissiveIntensity = (chg || dis) ? .9 : .38;
       }
-      /* 柜侧 SOC 光柱：高度按 SOC 从下往上长，颜色随充放电状态（左右各一条） */
+      /* 柜侧 SOC 光柱：高度按 SOC 从下往上长，颜色固定冷白（三站统一，见 ScenePreset.SOC_BAR） */
       const gg = gauges[key];
       if (gg) {
         const raw = d.soc;
@@ -1470,7 +1470,7 @@ window.GaoteScene3D = (function () {
         gg.forEach(function (b) {
           /* 没上报 SOC 就留一截暗槽（不是缩到看不见，也不是假装满格） */
           b.scale.y = soc == null ? .12 : Math.max(.08, soc / 100);
-          b.material.color.setHex(col);
+          b.material.color.setHex(window.ScenePreset.SOC_BAR);
           window.ScenePreset.syncSleeve(b);
         });
       }
