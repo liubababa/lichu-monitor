@@ -6,7 +6,7 @@
  *     一号机组 1 台光储一体柜、二号机组 1 台、三号机组 3 台（共 5 台）
  *   每群 = 一栋厂房（13×6.2×8，白墙 + 二层格窗 + 门斗雨棚台阶 + 北墙空调外机）
  *         + 屋面光伏 4 排 × 5 块（规格同洙边）
- *         + 储能柜（柜门 / 顶部空调 / 侧面 SOC 光柱，光柱固定冷白）
+ *         + 储能柜（柜门 / 顶部空调 / 侧面 SOC 光柱，光柱固定绿）
  *         + 洙边那九条线（贴地电缆 + 电缆墩，空中不架线）+ 本群关口终端箱
  *   并网：一座铁塔立在后排偏左 (−9,−17)（2026-11-02 重排：一号挪到前排跟三号齐平，塔先落后排左、
  *        又往右挪到接近中心 (0,−16)、当天再按"整体太板板"往左后错开半格；转 90°，10kV 穿越导线沿东西跨，
@@ -620,7 +620,7 @@ window.JunyongScene = (function () {
     [-1, 1].forEach(function (s) {
       g.add(rbox(.06, colH + .1, .32, M.dark, s * (w / 2 + .04), .18 + h * .5, d * .2, .02));
       var geo = new T.BoxGeometry(.05, colH, .26); geo.translate(0, colH / 2, 0);
-      var bar = new T.Mesh(geo, new T.MeshBasicMaterial({ color: SP.SOC_BAR, transparent: true, opacity: .85, toneMapped: false }));
+      var bar = new T.Mesh(geo, new T.MeshBasicMaterial({ color: SP.socBar(theme), transparent: true, opacity: .85, toneMapped: false }));
       bar.position.set(s * (w / 2 + .07), base, d * .2);
       g.add(bar);
       /* 外层光晕：柱体只是涂色，色一暗就看着"没亮"。做成子物体，
@@ -924,14 +924,14 @@ window.JunyongScene = (function () {
         f.dir = on ? (c.sell ? 1 : -1) : 0; f.spd = on ? spd : 0;
       });
       /* 指示灯 / 柜底光晕跟工况（放电青绿 / 光伏充黄 / 电网充蓝 / 待机暗绿）；
-         SOC 光柱与东明 / 洙边一致，固定冷白（SP.SOC_BAR），只用高度表达电量。
+         SOC 光柱与东明 / 洙边一致，固定绿（SP.socBar(theme)），只用高度表达电量。
          待机用 bar 而不是线路的 idle——idle 是给"没电的线"用的近黑色，拿来涂柜体就看着像没亮 */
       var cc = c.dis ? F.dis : (c.chg ? (c.buy ? F.buy : F.ac) : F.bar);
       var soc = (data[i].soc == null) ? null : Math.max(0, Math.min(100, data[i].soc));
       u.cabs.forEach(function (cb) {
         var ud = cb.ref.userData;
         ud.bars.forEach(function (b) {
-          b.material.color.setHex(SP.SOC_BAR);
+          b.material.color.setHex(SP.socBar(theme));
           b.scale.y = soc == null ? .12 : Math.max(.08, soc / 100);   /* 没上报 SOC 就留一截暗槽，不装样子 */
           SP.syncSleeve(b);
         });

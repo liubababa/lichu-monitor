@@ -823,7 +823,7 @@ window.SolarScene = (function () {
     [-1, 1].forEach(function (sgn) {
       g.add(rbox(.06, colH + .1, .32, dark, sgn * (W / 2 + .04), .18 + H * .5, D * .2, .02));
       const geo = new T.BoxGeometry(.05, colH, .26); geo.translate(0, colH / 2, 0);
-      const bar = new T.Mesh(geo, new T.MeshBasicMaterial({ color: SP.SOC_BAR, toneMapped: false }));
+      const bar = new T.Mesh(geo, new T.MeshBasicMaterial({ color: SP.socBar(theme), toneMapped: false }));
       bar.position.set(sgn * (W / 2 + .07), base, D * .2);
       g.add(bar);
       /* 外层光晕：柱体只是涂色，待机色偏暗就看着"没亮"。套一层加色壳，
@@ -1623,11 +1623,11 @@ window.SolarScene = (function () {
     const pvOnNow = cur.pvSeen && Number(cur.power) > .5;
     const fc = FLOWC[theme] || FLOWC.night;
     /* 指示灯 / 柜底光晕跟着工况走，和光纹同一套口径：光伏充=黄 / 电网充=蓝 / 放电=青绿 / 待机=暗青。
-       SOC 光柱则与旭日东明 / 峻涌一致：固定冷白（SP.SOC_BAR），只用高度表达电量 */
+       SOC 光柱则与旭日东明 / 峻涌一致：固定绿（SP.socBar(theme)），只用高度表达电量 */
     const col = chg ? (pvOnNow ? fc.ac : fc.chg) : (dis ? fc.dis : fc.bar);
     cabSocBars.forEach(function (bar) {
       bar.scale.y = socSeen ? Math.max(.08, soc / 100) : .12;
-      bar.material.color.setHex(SP.SOC_BAR);
+      bar.material.color.setHex(SP.socBar(theme));
       SP.syncSleeve(bar);
     });
     if (cabLed) cabLed.material.color.setHex(col);
