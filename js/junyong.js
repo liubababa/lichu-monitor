@@ -312,17 +312,21 @@ window.JunyongUI = (function () {
     var h = Math.floor(t / 60), m = t % 60;
     return h + ' 小时' + (m ? ' ' + m + ' 分' : '');
   }
+  /* 原始报文只进 title 备查，不进眼睛 */
+  function attr(v) { return String(v || '').replace(/"/g, '&quot;').slice(0, 300); }
   function srcTag() {
-    if (!payload) return '<em>数据源：' + (lastErr ? ('光伏读不到（' + lastErr + '）') : '未接入') + '</em>';
+    if (!payload) return '<em class="stale" title="' + attr(lastErr) + '">数据源：光伏读不到（阳光云接入服务未就绪）</em>';
     var s = st();
     var t = s.data_time ? fmtDevTime(s.data_time) : fmtTime(s.updated_at);
     var up = s.updated_at ? Date.parse(s.updated_at) : NaN;
     var age = isFinite(up) ? (Date.now() - up) / 60000 : null;
     if (age !== null && age > STALE_MIN) {
       var why = /token|授权/i.test(String(lastErr || '')) ? '阳光云授权已过期，需重新授权' : '接入服务已停止更新';
-      return '<em class="stale">数据停更 · 最后更新 ' + t + '（已 ' + overText(age) + '）· ' + why + ' · 图上仍是上一次的数据</em>';
+      return '<em class="stale" title="' + attr(lastErr) + '">数据停更 · 最后更新 ' + t + '（已 ' + overText(age) + '）· ' + why + ' · 图上仍是上一次的数据</em>';
     }
-    return '<em>光伏 · 阳光云 更新 ' + t + (lastErr ? '（读取失败，显示上次数据）' : '') + '</em>';
+    /* 数据仍是新的 = 那一次失败已被服务端自动重取补上了，不再显示"读取失败"（用户：以后别提示）；
+       原始报文只留在悬停里备查 */
+    return '<em title="' + attr(lastErr) + '">光伏 · 阳光云 更新 ' + t + '</em>';
   }
 
   /* ================= 储能（高特 CCU · 三套机组） =================
@@ -1216,7 +1220,8 @@ window.JunyongUI = (function () {
     var bar = byId('jyAlarmBar'), txt = byId('jyAlarmText');
     if (!txt) return;
     if (!payload) {
-      txt.textContent = '数据源未接入：' + (lastErr || '等待配置') + ' · 三维走线为待机态';
+      txt.textContent = '还没有读到光伏数据（阳光云接入服务未就绪）· 三维走线为待机态';
+      txt.title = String(lastErr || '等待配置').slice(0, 300);
       if (bar) bar.className = 'alarm warn';
       return;
     }
@@ -1232,8 +1237,12 @@ window.JunyongUI = (function () {
     if (s.online === 0) parts.push('电站离线');
     var age = null;
     if (s.updated_at) { var t0 = Date.parse(s.updated_at); if (isFinite(t0)) age = (Date.now() - t0) / 60000; }
-    if (age != null && age > 10) parts.push('数据延迟 ' + Math.round(age) + ' 分钟');
-    if (lastErr) parts.push('读取失败：' + lastErr);
+    /* 数据仍是新的 = 那一次拉取失败已经被服务端自动重取补上了，这种自愈的失败不再上告警条
+       （用户："以后能不能不提示"）；真停更才用中文写明原因，原始报文只进 title 备查 */
+    var pvStale = age != null && age > STALE_MIN;
+    if (pvStale) parts.push('光伏数据停更 · 最后更新 ' + fmtTime(s.updated_at) + '（已 ' + overText(age) + '）'
+      + (/token|授权/i.test(String(lastErr || '')) ? ' · 阳光云授权失效，需重新授权' : ''));
+    if (lastErr) txt.title = String(lastErr).slice(0, 300);
     var S = storSum(), nAlm = 0, almNames = [];
     ((stor && stor.groups) || []).forEach(function (g, gi) {
       (g.alarms || []).forEach(function (a) {
@@ -1246,7 +1255,7 @@ window.JunyongUI = (function () {
     else parts.push('储能 ' + S.online + '/' + (S.count || 3) + ' 在线'
       + (nAlm ? (' · 告警 ' + nAlm + ' 条（' + almNames.slice(0, 2).join('、') + (almNames.length > 2 ? '…' : '') + '）') : ' · 无告警'));
     txt.textContent = parts.join('　·　');
-    var bad = !!alarms || s.online === 0 || (age != null && age > 10) || !!lastErr || nAlm > 0;
+    var bad = !!alarms || s.online === 0 || pvStale || nAlm > 0;
     if (bar) bar.className = 'alarm ' + (bad ? 'bad' : 'ok');
   }
 
