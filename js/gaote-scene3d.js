@@ -42,7 +42,7 @@ window.GaoteScene3D = (function () {
      三站共用，在 js/scene-preset.js 的 ENV 里，别再各写各的 */
   const THEMES = {
     night: {
-      bg: 0x04090c, fog: 0x0b1c24, fogNear: 105, fogFar: 300,
+      bg: 0x0a1826, fog: 0x14323e, fogNear: 105, fogFar: 300,
       hemiSky: 0xbfe9ff, hemiGround: 0x0a1518,
       sunColor: 0xcfe8ff, fillColor: 0x2ee6c8,
       /* 状态色：充电(蓝) / 放电(青) / 待机(暗绿——原来用近灰的 0x6f9a94，
@@ -50,7 +50,7 @@ window.GaoteScene3D = (function () {
       stateChg: 0x8fd8ff, stateDis: 0x3df0a0, stateIdle: 0x2f8f7d,
       /* 电流光纹：放电(青) / 充电(蓝) / 馈电卖电(橙) / 待机(暗)；夜里用加色混合发光 */
       flowDis: 0x3df0a0, flowChg: 0x8fd8ff, flowSell: 0xffb020, flowIdle: 0x16303a, flowBlend: 1,
-      sky: [[0, '#04080c'], [.42, '#071219'], [.66, '#0d2530'], [.84, '#123743'], [1, '#17505f']]
+      sky: window.ScenePreset.skyStops('night')
     },
     day: {
       bg: 0xdbe9f0, fog: 0xd3e3ec, fogNear: 120, fogFar: 340,
@@ -62,7 +62,7 @@ window.GaoteScene3D = (function () {
       flowDis: 0x159a63, flowChg: 0x1f7fd0, flowSell: 0xd97700, flowIdle: 0x9aa9a9, flowBlend: 0,
       /* 天空穹顶的竖直渐变：天顶蓝 → 地平线白雾（相机基本平视，
          所以蓝色要压到接近地平线才看得见，否则整片都是白的） */
-      sky: [[0, '#2f74b8'], [.45, '#5fa6d8'], [.62, '#9ccbe4'], [.78, '#cfe2ec'], [1, '#dbe9f0']]
+      sky: window.ScenePreset.skyStops('day')
     }
   };
 

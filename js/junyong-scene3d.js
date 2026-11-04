@@ -97,8 +97,8 @@ window.JunyongScene = (function () {
      这里只留本站的语义颜色 */
   var THEMES = {
     night: {
-      sky: [[0, '#04080c'], [.42, '#071219'], [.66, '#0d2530'], [.84, '#123743'], [1, '#17505f']],
-      bg: 0x050b0d, fog: { c: 0x0b1c24, near: 105, far: 300 },
+      sky: SP.skyStops('night'),
+      bg: 0x0a1826, fog: { c: 0x14323e, near: 105, far: 300 },
       sweep: SP.ENV.night.sweep, cloud: 0x22343c,
       key: SP.ENV.night.lights.key, keyRad: .42, hemi: SP.ENV.night.lights.hemi, fill: SP.ENV.night.lights.fill,
       steel: 0x46565d, dark: 0x1b272c, top: 0x2b3a42, pad: 0x2a3a40, frame: 0x5a6a70,
@@ -111,7 +111,7 @@ window.JunyongScene = (function () {
       edge: 0x2ee6c8, glow: 0x2ee6c8, glowO: .1, cabBase: '#dfe5e6', cabBase2: '#dfe5e6'
     },
     day: {
-      sky: [[0, '#2f74b8'], [.45, '#5fa6d8'], [.62, '#9ccbe4'], [.78, '#cfe2ec'], [1, '#dbe9f0']],
+      sky: SP.skyStops('day'),
       bg: 0xdbe9f0, fog: { c: 0xd3e3ec, near: 120, far: 340 },
       sweep: SP.ENV.day.sweep, cloud: 0xffffff,
       key: SP.ENV.day.lights.key, keyRad: .22, hemi: SP.ENV.day.lights.hemi, fill: SP.ENV.day.lights.fill,

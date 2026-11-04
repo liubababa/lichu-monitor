@@ -333,6 +333,16 @@ window.ScenePreset = (function () {
      峻涌三群厂区最远机位 320，给它更大的值，否则拉到最远会穿出穹顶。 */
   const SKY = { r: 180, segW: 24, segH: 16, texW: 16, texH: 256 };
 
+  /* ---------------- 天空色标（夜 / 昼，三站同一份） ----------------
+     原来三站各自抄一份（值相同但分散在三个 scene3d 里），改一次要翻三个文件、容易漂。
+     2026-11-04：用户说"背景太黑"，夜色整体提亮一档——天顶从近黑 (#04080c) 提到
+     深蓝青 (#0a1826)，地平线仍留青调；白天那份保持原样。 */
+  const SKY_STOPS = {
+    night: [[0, '#0a1826'], [.42, '#0f2131'], [.66, '#163341'], [.84, '#1c4553'], [1, '#235b6c']],
+    day: [[0, '#2f74b8'], [.45, '#5fa6d8'], [.62, '#9ccbe4'], [.78, '#cfe2ec'], [1, '#dbe9f0']]
+  };
+  function skyStops(theme) { return SKY_STOPS[theme] || SKY_STOPS.night; }
+
   function skyTexture(T, sky) {
     const stops = (sky && sky.stops) || sky || [];
     const c = document.createElement('canvas');
@@ -448,6 +458,7 @@ window.ScenePreset = (function () {
     compose: compose, resizeComposer: resizeComposer, applyThemeToPasses: applyThemeToPasses,
     setupRenderer: setupRenderer, setExposure: setExposure,
     SKY: SKY, skyTexture: skyTexture, makeSkyDome: makeSkyDome,
+    skyStops: skyStops,
     refreshSkyDome: refreshSkyDome, setSkyBackground: setSkyBackground,
     buildEnvironment: buildEnvironment,
     roundedBox: roundedBox, roundedBoxCached: roundedBoxCached

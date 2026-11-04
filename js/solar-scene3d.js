@@ -72,10 +72,10 @@ window.SolarScene = (function () {
      与主题相关的数值都收在这里，applyTheme() 一处套用 */
   const THEMES = {
     night: {
-      sky: [[0, '#04080c'], [.42, '#071219'], [.66, '#0d2530'], [.84, '#123743'], [1, '#17505f']],
+      sky: SP.skyStops('night'),
       /* 穹顶之外的兜底色，与旭日东明站同一组值（穹顶可见时其实用不到，留着好对表） */
-      bg: 0x04090c,
-      fog: { color: 0x0b1c24, near: 105, far: 300 },
+      bg: 0x0a1826,
+      fog: { color: 0x14323e, near: 105, far: 300 },
       lights: {
         key: { color: 0xcfe8ff, base: SP.ENV.night.lights.key, rad: .42 },
         hemi: { sky: 0xbfe9ff, ground: 0x0a1518, base: SP.ENV.night.lights.hemi },
@@ -89,7 +89,7 @@ window.SolarScene = (function () {
       trim: 0x2c4048, base: 0x1b2830, par: 0x1f2f38, winI: .5
     },
     day: {
-      sky: [[0, '#2f74b8'], [.45, '#5fa6d8'], [.62, '#9ccbe4'], [.78, '#cfe2ec'], [1, '#dbe9f0']],
+      sky: SP.skyStops('day'),
       bg: 0xdbe9f0,
       fog: { color: 0xd3e3ec, near: 120, far: 340 },
       lights: {
