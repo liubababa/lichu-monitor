@@ -118,7 +118,8 @@ window.MqttService = (function () {
     emit('conn', { state: 'connecting', url: url });
     sys('开始连接 Broker：' + url);
     const opts = {
-      reconnectPeriod: 5000, connectTimeout: 10000, keepalive: 120, clean: true,
+      /* keepalive 60（原 120）：后台标签页被节流时定时器会漂，60 秒更稳，见 gaote.js 同处说明 */
+      reconnectPeriod: 5000, connectTimeout: 10000, keepalive: 60, clean: true,
       clientId: 'zhhn-web-' + Math.random().toString(16).slice(2, 10)
     };
     if (c.username) opts.username = c.username;

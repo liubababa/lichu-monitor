@@ -506,7 +506,9 @@ window.GaoteService = (function () {
     if (cfg.deviceSN && devices[devKey(cfg.productSN, cfg.deviceSN)]) activeKey = devKey(cfg.productSN, cfg.deviceSN);
     emit('conn', { state: 'connecting', url: url });
     sys('连接 Broker：' + url + '　ProductSN=' + cfg.productSN);
-    const opts = { reconnectPeriod: 5000, connectTimeout: 10000, keepalive: 120, clean: true, clientId: 'gaote-web-' + Math.random().toString(16).slice(2, 10) };
+    /* keepalive 60（原 120）：标签页在后台被浏览器节流时，60 秒的定时器还能按点跑，
+       120 秒会漂到 2 分钟以上，网关按 1.5×keepalive 判超时就容易把会话掐掉（今天实测一天掉百来次） */
+    const opts = { reconnectPeriod: 5000, connectTimeout: 10000, keepalive: 60, clean: true, clientId: 'gaote-web-' + Math.random().toString(16).slice(2, 10) };
     if (cfg.username) opts.username = cfg.username;
     if (cfg.password) opts.password = cfg.password;
     try { client = mqtt.connect(url, opts); } catch (e) { sys('连接异常：' + e.message); emit('conn', { state: 'error', error: e.message }); return; }
@@ -587,13 +589,17 @@ window.GaoteService = (function () {
         if (lastMsgAt && now - lastMsgAt > 180000) resetClient();
       } else if (now - lastResetAt > 60000) resetClient();
     }, 15000);
-    document.addEventListener('visibilitychange', function () {
-      if (document.visibilityState === 'visible' && cfg && cfg.url && client && !client.connected) resetClient();
-    });
-    window.addEventListener('online', function () {
-      if (cfg && cfg.url && client && !client.connected) resetClient();
-    });
   }
+  /* 页签切回 / 网络恢复这两个监听：只在模块加载时挂一次。
+     原来挂在 startWatchdog() 里面，而 connect() 会被守护反复重建（掉线时每 60 秒一次），
+     每调一次就多一对匿名监听且永不解绑 —— 挂几小时能积上百个回调，
+     每次切回页签全部跑一遍 resetClient()。定时器自己有 clearInterval，不在这条泄漏里。 */
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'visible' && cfg && cfg.url && client && !client.connected) resetClient();
+  });
+  window.addEventListener('online', function () {
+    if (cfg && cfg.url && client && !client.connected) resetClient();
+  });
 
   /* ---------------- 告警（遥信） ----------------
      只认状态帧里"告警类"的点：
