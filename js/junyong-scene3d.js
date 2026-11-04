@@ -62,6 +62,14 @@ window.JunyongScene = (function () {
      屋面侧同一个 x 也刚好躲开所有东西：组件西端 −5.82、导轨/线槽端 −6.07/−6.12、
      西女儿墙内皮 −6.35 → −6.25 是"出了阵列、又没撞女儿墙"的那条缝。 */
   var PVX = -6.25;
+  /* 光伏进楼黑盒在南墙的落点 x（2026-11-04 用户标注：线拉到门洞正上方；原来只往东走 0.5m，
+     正面看就是"墙角一小截"，认不出这是光伏→厂房那条线）。
+     标注终点按图反推：门洞中心在原图 x=1230（局部 0）、窗间距 271px = 2.975m、
+     门洞宽 200px = 2.6m → 该处约 77px/m，红线止于 x=1242 → 局部 +0.15，取整 0.4。
+     0.4 仍在门套（x ±1.7、顶 3.2）与雨棚（柱在 x ±2.5、z 5.85）之间的墙皮通道上，
+     3.9 高这条水平线上下都躲开腰线（3.32…3.48）和二层窗带下沿（4.225）。
+     黑盒和 ③ 这条线共用这一个常量，改落点不会只改一半 */
+  var PVH_X = 0.4;
   var COLS = 5, MW = 2.28, MD = 1.13, MT = .045, TILT = .49, ROW_Y = .62, RAIL_Z = .40, RAIL_DROP = .0525;
   var ROWZ = [-2.55, -1.05, 1.05, 2.55], rowW = COLS * MW + (COLS - 1) * .06;
   var GN = ['一号机组', '二号机组', '三号机组'], GCAB = [1, 1, 3];
@@ -192,12 +200,16 @@ window.JunyongScene = (function () {
   /* 浮标可点：标签图层本身 pointer-events:none，这里把 .tag3d 单独打开，
      点「储能柜 / 屋顶光伏 / 厂房 / 铁塔」直接开对应卡片，不用赌射线打到哪个模型 */
   function bindLabel(el, key) {
-    if (!el) return;
+    if (!el) return el;
     el.classList.add('clickable');
     el.addEventListener('click', function (e) {
       e.preventDefault(); e.stopPropagation();
       showCard(key);
     });
+    /* 把元素还回去（同洙边 / 东明）：调用侧哪天写成 `tagX = bindLabel(label(...), key)`
+       而不回值就会接到 undefined，刷新处 `if (tagX)` 全跳过、浮标永远停在初始 "--"
+       —— 2026-11-02 洙边四个浮标整屏没数就是这个坑（见 更新记录 / 05 红线） */
+    return el;
   }
   /* 浮标按相机距离缩放：HTML 浮标是固定像素大小，拉远后模型缩成一点、浮标还是原尺寸，
      就会糊成一片把设备全盖住。基准取"默认机位距离 = 100%"，随画幅自动跟着变 */
@@ -543,7 +555,7 @@ window.JunyongScene = (function () {
     g.add(box(.52, .05, .38, M.frame, -W2 / 2 - 2.2, 3.34, -2.6));
     g.add(cyl(.022, .022, .8, M.steel, -W2 / 2 - 2.2, 3.76, -2.6, 6));
     /* 南墙三个进线黑盒 + 分岔端子 + 过墙套管 */
-    g.add(box(.34, .44, .10, M.box, -5.75, 3.9, D2 / 2 + .03));
+    g.add(box(.34, .44, .10, M.box, PVH_X, 3.9, D2 / 2 + .03));
     g.add(box(.34, .44, .10, M.box, -6.35, .86, D2 / 2 + .03));
     g.add(box(.30, .40, .10, M.box, -5.12, 1.02, D2 / 2 + .05));
     /* 南墙分岔端子：压在窗芯 PVX 上（跟着干线走，不落在玻璃上） */
@@ -772,9 +784,9 @@ window.JunyongScene = (function () {
       [FX, 6.4, FZ], [FX, 3.9, FZ]], .052);
     /* ② 光伏下段：二楼分岔点 → 低位节点（同在南墙，一根竖直） */
     addFlow(grp, 'pvlow', gi, [[FX, 3.9, FZ], [FX, 1.2, FZ]], .052);
-    /* ③ 光伏→厂房：分岔点沿南墙往东 0.5m，直角进二楼黑盒（端点扎进墙里，藏在盒内）。
+    /* ③ 光伏→厂房：分岔点沿南墙往东到 PVH_X（门套上方），直角进二楼黑盒（端点扎进墙里，藏在盒内）。
        末段给到 z=3.94 而不是墙皮外——短于 .35 的拐点会被 addFlow 去重掉，直角就变成斜线了 */
-    addFlow(grp, 'pvh', gi, [[FX, 3.9, FZ], [-5.75, 3.9, FZ], [-5.75, 3.9, 3.94]], .052);
+    addFlow(grp, 'pvh', gi, [[FX, 3.9, FZ], [PVH_X, 3.9, FZ], [PVH_X, 3.9, 3.94]], .052);
     /* ④ 光伏→储能：低位节点从南墙落到贴地档 → 沿楼前 z=4.36 向西 → 到柜东面车道折北 →
        上翘进柜东面接线盒（原来整条斜挂在半空） */
     addFlow(grp, 'sto', gi, [[FX, 1.2, FZ], [FX, .34, FZ],
@@ -1285,7 +1297,7 @@ window.JunyongScene = (function () {
     var x0 = Math.min.apply(null, xs) - 6, x1 = Math.max.apply(null, xs) + 6;
     var z0 = Math.min.apply(null, zs) - 6, z1 = Math.max.apply(null, zs) + 6;
     var sw = x1 - x0, sd = z1 - z0;
-    M.slab.map.repeat.set(19, 10);
+    M.slab.map.repeat.set(SLAB_REPEAT[0], SLAB_REPEAT[1]);
     var slab = new T.Mesh(new T.BoxGeometry(460, .18, 240), M.slab);
     slab.position.set((x0 + x1) / 2, .09, (z0 + z1) / 2); slab.receiveShadow = true; root.add(slab);
     var ed = new T.LineSegments(new T.EdgesGeometry(new T.BoxGeometry(460, .18, 240)), M.edge);

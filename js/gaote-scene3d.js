@@ -1128,7 +1128,10 @@ window.GaoteScene3D = (function () {
     root.add(ground);
     /* 场合坪：洙边同款网格场坪（尺寸按本站设备范围） */
     slabYardMat = new THREE.MeshStandardMaterial({
-      map: paveTex(true), roughness: .76, metalness: .05, envMapIntensity: PE.envInt
+      map: paveTex(true), roughness: .76, metalness: .05, envMapIntensity: PE.envInt,
+      /* 场坪顶面 y=.18 和地坪（700 见方、y=0）不共面，但和压在上头的接触阴影/走线很贴近：
+         补上洙边、峻涌同款的多边形偏移，否则远处斜视会闪 z-fighting 条纹 */
+      polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1
     });
     slabYardMat.map.repeat.set(SLAB_REPEAT[0], SLAB_REPEAT[1]);
     root.add(box(460, .18, 240, slabYardMat, 0, .09, 0));
