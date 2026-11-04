@@ -323,6 +323,59 @@ window.ScenePreset = (function () {
     if (renderer) renderer.toneMappingExposure = env(theme).exposure;
   }
 
+  /* ---------------- 天空穹顶（三站同一份配置，取旭日东明站） ----------------
+     三站的 sky 渐变配置本来就抄的同一份，画出来却对不上，差的是材质上这个开关：
+     穹顶若跟着色调映射走，ACES + 曝光会把整张渐变重压一遍——
+       白天 天顶 #2f74b8 → #2e88c8、中段 #5fa6d8 → #85bed9（蓝天变灰白）
+       夜里 地平线 #17505f → #00586e（发青）、天顶 #04080c → #000102（更黑）
+     toneMapped:false 之后各站显示的就是配置里的原色，和东明一致。
+     半径只决定"相机退到多远还罩得住"，与颜色无关：默认 180（东明/洙边，最远机位 95 / 110），
+     峻涌三群厂区最远机位 320，给它更大的值，否则拉到最远会穿出穹顶。 */
+  const SKY = { r: 180, segW: 24, segH: 16, texW: 16, texH: 256 };
+
+  function skyTexture(T, sky) {
+    const stops = (sky && sky.stops) || sky || [];
+    const c = document.createElement('canvas');
+    c.width = SKY.texW; c.height = SKY.texH;
+    const g = c.getContext('2d');
+    const grd = g.createLinearGradient(0, 0, 0, SKY.texH);
+    stops.forEach(function (s) { grd.addColorStop(s[0], s[1]); });
+    g.fillStyle = grd; g.fillRect(0, 0, SKY.texW, SKY.texH);
+    return new T.CanvasTexture(c);
+  }
+
+  function makeSkyDome(T, sky, r) {
+    const mesh = new T.Mesh(
+      new T.SphereGeometry(r || SKY.r, SKY.segW, SKY.segH),
+      new T.MeshBasicMaterial({
+        map: skyTexture(T, sky), side: T.BackSide,
+        depthWrite: false, fog: false, toneMapped: false
+      })
+    );
+    mesh.renderOrder = -1;
+    return mesh;
+  }
+
+  /* 换主题只换贴图，几何不动；旧贴图必须 dispose，否则切几轮主题穹顶贴图把显存吃满 */
+  function refreshSkyDome(T, dome, sky) {
+    if (!dome) return null;
+    const old = dome.material.map;
+    dome.material.map = skyTexture(T, sky);
+    dome.material.needsUpdate = true;
+    if (old) old.dispose();
+    return dome.material.map;
+  }
+
+  /* 背景兜底色：穹顶在的时候背景交给穹顶（background=null，否则穹顶边缘会露出一圈死色）；
+     没有穹顶的场景才退回纯色底。三站走同一条判断，不再各写各的 */
+  function setSkyBackground(T, scene, dome, bgHex) {
+    if (!scene) return;
+    if (dome && dome.visible) { scene.background = null; return; }
+    if (bgHex === undefined) return;
+    if (scene.background && scene.background.isColor) scene.background.setHex(bgHex);
+    else scene.background = new T.Color(bgHex);
+  }
+
   /* ---------------- 天空反射（IBL） ----------------
      拿穹顶渐变烘一张环境贴图。没有它，金属和玻璃就是死一片纯色。 */
   function buildEnvironment(T, renderer, scene, skyMap, prevRT) {
@@ -394,6 +447,8 @@ window.ScenePreset = (function () {
     vignetteShader: vignetteShader,
     compose: compose, resizeComposer: resizeComposer, applyThemeToPasses: applyThemeToPasses,
     setupRenderer: setupRenderer, setExposure: setExposure,
+    SKY: SKY, skyTexture: skyTexture, makeSkyDome: makeSkyDome,
+    refreshSkyDome: refreshSkyDome, setSkyBackground: setSkyBackground,
     buildEnvironment: buildEnvironment,
     roundedBox: roundedBox, roundedBoxCached: roundedBoxCached
   };

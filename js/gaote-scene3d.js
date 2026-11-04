@@ -70,24 +70,9 @@ window.GaoteScene3D = (function () {
      切主题时统一替换（颜色 / 贴图 / 自发光），设备就不会白天还是一团黑 */
   const themeMats = [];
   function regMat(mat, night, day) { themeMats.push({ mat: mat, night: night, day: day }); return mat; }
+  /* 天空穹顶（渐变贴图 + 球壳材质）三站共用，在 js/scene-preset.js；
+     本站这套就是那份配置的原型，别再在这里留第二份实现 */
   let skyDome = null;
-  function skyTexture(sky) {
-    const stops = sky.stops || sky;
-    return tex(function (g, w, h) {
-      const grd = g.createLinearGradient(0, 0, 0, h);
-      stops.forEach(function (s) { grd.addColorStop(s[0], s[1]); });
-      g.fillStyle = grd; g.fillRect(0, 0, w, h);
-    }, 16, 256);
-  }
-  function makeSkyDome(sky) {
-    const t = skyTexture(sky);
-    const mesh = new THREE.Mesh(
-      new THREE.SphereGeometry(180, 24, 16),
-      new THREE.MeshBasicMaterial({ map: t, side: THREE.BackSide, depthWrite: false, fog: false, toneMapped: false })
-    );
-    mesh.renderOrder = -1;
-    return mesh;
-  }
 
   /* 浮标按相机距离缩放：规则三站共用（ScenePreset.scaleLabelTo），基准跟默认机位实距走（同峻涌）。
      2026-11-02 改掉写死的 26：机位实距约 83m，26 会把系数钳在下限 .42，共用规则里
@@ -1787,7 +1772,6 @@ window.GaoteScene3D = (function () {
     const p = THEMES[theme];
     const PE = window.ScenePreset.env(theme);
     if (!scene) return;
-    scene.background = new THREE.Color(p.bg);
     if (scene.fog) { scene.fog.color.setHex(p.fog); scene.fog.near = p.fogNear; scene.fog.far = p.fogFar; }
     /* 水泥地坪 / 场坪跟着主题重画：夜里深灰、白天浅灰（固定种子，切主题不会重排） */
     if (groundMat) {
@@ -1828,23 +1812,14 @@ window.GaoteScene3D = (function () {
     /* 天空：白天用渐变穹顶（顶部蓝 → 地平线雾白），夜里也用穹顶给一条地平线微光，
        地面边缘才有"融进大气"的收口，而不是直接淡进纯黑 */
     if (p.sky) {
-      if (!skyDome) { skyDome = makeSkyDome(p.sky); scene.add(skyDome); }
-      else {
-        const oldSky = skyDome.material.map;
-        skyDome.material.map = skyTexture(p.sky);
-        skyDome.material.needsUpdate = true;
-        if (oldSky) oldSky.dispose();
-      }
+      if (!skyDome) { skyDome = window.ScenePreset.makeSkyDome(THREE, p.sky); scene.add(skyDome); }
+      else window.ScenePreset.refreshSkyDome(THREE, skyDome, p.sky);
       skyDome.visible = true;
-      scene.background = null;
       /* 穹顶顺手烘一张环境贴图：金属件和玻璃没有它一定是平、哑、塑料感 */
       envRT = window.ScenePreset.buildEnvironment(THREE, renderer, scene, skyDome.material.map, envRT);
-    } else if (skyDome) {
-      skyDome.visible = false;
-      scene.background = new THREE.Color(p.bg);
-    } else {
-      scene.background = new THREE.Color(p.bg);
-    }
+    } else if (skyDome) skyDome.visible = false;
+    /* 背景兜底色走共用规则（穹顶可见=null），三站同一个判断 */
+    window.ScenePreset.setSkyBackground(THREE, scene, skyDome, p.bg);
 
     /* 设备材质：浅色柜体 / 深色柜体两套配置，一次切完。
        自发光允许写数字或 THREE.Color —— 只当数字处理会把 Color 对象算成黑 */

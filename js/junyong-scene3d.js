@@ -376,13 +376,7 @@ window.JunyongScene = (function () {
       g.fillStyle = grd; g.fillRect(0, 0, w, h);
     }, 128, 8);
   }
-  function skyTex(stops) {
-    return tex(function (g, w, h) {
-      var grd = g.createLinearGradient(0, 0, 0, h);
-      stops.forEach(function (s) { grd.addColorStop(s[0], s[1]); });
-      g.fillStyle = grd; g.fillRect(0, 0, w, h);
-    }, 16, 256);
-  }
+  /* 天空穹顶的渐变贴图与球壳材质三站共用，在 js/scene-preset.js（含"不吃色调映射"这一条） */
   function tagTex(txt) {
     return tex(function (g, w, h) {
       g.fillStyle = '#1d2a2e'; g.fillRect(0, 0, w, h);
@@ -1169,9 +1163,10 @@ window.JunyongScene = (function () {
     var T = T_();
     root = new T.Group(); root.userData.M = M; scene.add(root);
     var th = THEMES[theme];
-    dome = new T.Mesh(new T.SphereGeometry(210, 28, 18),
-      new T.MeshBasicMaterial({ map: skyTex(th.sky), side: T.BackSide, depthWrite: false, fog: false }));
-    dome.renderOrder = -1;
+    /* 穹顶三站同一份配置（js/scene-preset.js，取东明站那套：材质不吃色调映射，
+       天空显示的就是 sky 表里写的原色）。半径给 360 而不是东明的 180：
+       本站三群厂区最远机位 320，180 会让镜头退到穹顶外面去。 */
+    dome = SP.makeSkyDome(T, th.sky, 360);
     root.add(dome);
     hemi = new T.HemisphereLight(theme === 'night' ? 0xbfe9ff : 0xdff0ff,
       theme === 'night' ? 0x0a1518 : 0x76815f, th.hemi);
@@ -1381,7 +1376,7 @@ window.JunyongScene = (function () {
     activeCard = null;
     build(M);
     scene.fog.color.setHex(th.fog.c); scene.fog.near = th.fog.near; scene.fog.far = th.fog.far;
-    scene.background.setHex(th.bg);
+    SP.setSkyBackground(T_(), scene, dome, th.bg);
     SP.setExposure(renderer, theme);
     SP.applyThemeToPasses(bloomPass, vigPass, theme);
     refreshEnv();
@@ -1496,6 +1491,9 @@ window.JunyongScene = (function () {
       console.error('峻涌 3D 场景初始化失败', e);
       return;
     }
+    /* 穹顶建好后再定背景：穹顶可见就交给穹顶（与东明/洙边同一条判断），
+       上面那句 scene.background 只是建穹顶之前的占位 */
+    SP.setSkyBackground(T, scene, dome, THEMES[theme].bg);
 
     /* 点设备 → 明细卡（卡片打开时浮标全藏，同洙边） */
     var down = null;

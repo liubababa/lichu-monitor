@@ -73,6 +73,8 @@ window.SolarScene = (function () {
   const THEMES = {
     night: {
       sky: [[0, '#04080c'], [.42, '#071219'], [.66, '#0d2530'], [.84, '#123743'], [1, '#17505f']],
+      /* 穹顶之外的兜底色，与旭日东明站同一组值（穹顶可见时其实用不到，留着好对表） */
+      bg: 0x04090c,
       fog: { color: 0x0b1c24, near: 105, far: 300 },
       lights: {
         key: { color: 0xcfe8ff, base: SP.ENV.night.lights.key, rad: .42 },
@@ -88,6 +90,7 @@ window.SolarScene = (function () {
     },
     day: {
       sky: [[0, '#2f74b8'], [.45, '#5fa6d8'], [.62, '#9ccbe4'], [.78, '#cfe2ec'], [1, '#dbe9f0']],
+      bg: 0xdbe9f0,
       fog: { color: 0xd3e3ec, near: 120, far: 340 },
       lights: {
         key: { color: 0xfff2d0, base: SP.ENV.day.lights.key, rad: .22 },
@@ -494,13 +497,9 @@ window.SolarScene = (function () {
   const RAIL_Z = .40;                            /* 导轨在排内的前后位置 */
   const RAIL_DROP = .0525;                       /* 导轨中心比组件面低多少（导轨顶面贴组件底面） */
 
-  function skyTexture(stops) {
-    return tex(function (g, w, h) {
-      const grd = g.createLinearGradient(0, 0, 0, h);
-      stops.forEach(function (s) { grd.addColorStop(s[0], s[1]); });
-      g.fillStyle = grd; g.fillRect(0, 0, w, h);
-    }, 16, 256);
-  }
+  /* 天空穹顶（渐变贴图 + 球壳材质）三站共用，在 js/scene-preset.js：
+     原来这里自己写了一份，材质没关色调映射，同一份 sky 配置被 ACES 压成灰白天空，
+     和旭日东明站的蓝天对不上——现在三站走同一个生成器 */
 
   /* ---------------- 场地 ---------------- */
   function buildSite() {
@@ -1156,10 +1155,9 @@ window.SolarScene = (function () {
 
     /* 天空：渐变穹顶（背景交给穹顶，雾色取地平线色） */
     const tp = THEMES[theme] || THEMES.night;
-    skyDome = new T.Mesh(new T.SphereGeometry(210, 28, 18),
-      new T.MeshBasicMaterial({ map: skyTexture(tp.sky), side: T.BackSide, depthWrite: false, fog: false }));
-    skyDome.renderOrder = -1;
+    skyDome = SP.makeSkyDome(T, tp.sky);
     scene.add(skyDome);
+    SP.setSkyBackground(T, scene, skyDome, tp.bg);
     scene.fog = new T.Fog(tp.fog.color, tp.fog.near, tp.fog.far);
 
     camera = new T.PerspectiveCamera(46, 1, .1, 900);
@@ -1471,10 +1469,8 @@ window.SolarScene = (function () {
     theme = document.documentElement.getAttribute('data-theme') === 'day' ? 'day' : 'night';
     const p = THEMES[theme] || THEMES.night;
     if (skyDome) {
-      const old = skyDome.material.map;
-      skyDome.material.map = skyTexture(p.sky);
-      skyDome.material.needsUpdate = true;
-      if (old) old.dispose();
+      SP.refreshSkyDome(THREE_(), skyDome, p.sky);
+      SP.setSkyBackground(THREE_(), scene, skyDome, p.bg);
       refreshEnv();
     }
     /* 地面 / 场坪贴图重画（夜：深底 + 青格网；昼：浅色水泥 + 淡格线） */
