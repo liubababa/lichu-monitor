@@ -1,7 +1,10 @@
 # 力储未来能源综合管理系统 · 智能体交接包（合并版）
 
-> 本文件是 `agent-pack/` 下全部内容的合并单文件版本，供一次投喂给无法读取文件的智能体使用。
-> 项目：H:\dianzhan · 线上：https://mqtt.ykdesign.top/dianzhan/ · 生成日期 2026-10-27
+> 本文件是 `agent-pack/` 下各份文档的合并单文件版本，供一次投喂给无法读取文件的智能体使用。
+> 项目：仓库根目录（见仓库 `README.md`） · 线上：https://mqtt.ykdesign.top/dianzhan/ · 更新日期 2026-11-13
+>
+> **注意**：这是手工合并的快照，`07-洙边-当前状态与交接.md` 未并入（篇幅大、独立性强）。
+> 能读文件时一律以各分册原文为准。
 
 ## 目录
 
@@ -23,8 +26,11 @@
 > 这份包是写给**另一个 AI 智能体**（或新接手的开发者）的：看完就能上手改这个项目，
 > 不用再从代码里反推项目在干什么、哪些规则不能碰。
 >
-> 项目根：`H:\dianzhan`（git 仓库 `liubababa/lichu-monitor`，**公开仓库**）
+> 项目根 = 仓库根目录（有 `index.html` 的那一层；各机器克隆路径不同，命令都在这一层执行）
+> git 仓库：`liubababa/lichu-monitor`，**公开仓库**
 > 线上入口：`https://mqtt.ykdesign.top/dianzhan/`
+>
+> **第一次接触本项目：先读仓库根目录的 `README.md`**（一页看懂这是什么），再按下面顺序深入。
 
 ---
 
@@ -345,7 +351,7 @@ mosquitto ──订阅#──► lichu-history(8095) ──nginx /history,/daily
 
 ```bash
 # 0) 首次：装依赖（关键：aedes 必须是 0.51.3，装成 1.x 会出现"连上了但收不到 CONNACK"）
-cd H:\dianzhan\tools && npm i
+cd tools && npm i
 
 # 1) 本地 broker：TCP 1884（设备/模拟器）+ WS 9001（页面）
 node tools/local-broker.js
@@ -356,8 +362,8 @@ node tools/gateway.js --upstream mqtt://127.0.0.1:1884 --listen 9002
 # 3) 高特 CCU 模拟器（演示用 5 秒周期；协议正常是 30 秒）
 node tools/ccu-simulator.js --url mqtt://127.0.0.1:1884 --dsn SN2025B3781TEST --interval 5
 
-# 4) 静态站点（不要用 file:// 打开）
-cd H:\dianzhan && python -m http.server 8080 --bind 127.0.0.1
+# 4) 静态站点（在仓库根目录跑；不要用 file:// 打开）
+python -m http.server 8080 --bind 127.0.0.1
 ```
 
 可选的本地联调组件：

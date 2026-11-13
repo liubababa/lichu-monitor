@@ -1,12 +1,13 @@
 # AGENTS.md · 力储未来能源综合管理系统
 
 > 给所有接手本项目的 AI 智能体的**精简速查**。详细内容看 `agent-pack/`（README.md 是入口）。
+> 第一次接手：先读仓库根目录的 `README.md`（一页看懂这是什么、怎么跑、红线有哪些）。
 
 ## 这是什么
 
-「力储未来能源综合管理系统」：工商业储能/光伏电站的网页监控平台。
+「力储未来能源综合管理系统」：工商业储能/光伏电站的网页监控平台（**三个站**：旭日东明 / 洙边 / 峻涌）。
 **纯静态前端**（`index.html` + `js/*`，无构建工具，每个 js 挂一个全局对象）+ `tools/` 下一组 Node 服务
-（MQTT broker/网关、阳光电源 iSolarCloud 接入、东方日升日升云接入、历史服务、设备模拟器）。
+（MQTT broker/网关、阳光电源 iSolarCloud 接入（两个账号两路）、东方日升日升云接入、历史服务、设备模拟器）。
 线上入口 **https://mqtt.ykdesign.top/dianzhan/**，服务器 43.129.27.206（mosquitto + nginx + systemd）。
 
 ## 动手前必读（红线）
@@ -26,7 +27,8 @@
 
 - 改完 → `node --check` → 浏览器里真跑一遍（连真实数据/现场报文）→ 看渲染结果（截图）→ 与厂家后台或原始报文对照数值。
   核对走线时用 `?nowires=1`（洙边）把电线全隐藏，只看建筑与线路路径。
-- **部署才算完成**：前端 `node tools/deploy-site.js`，服务用对应 `tools/deploy-<svc>.js`。
+- **部署才算完成**：前端上传 `index.html/css/js/libs` 到 `/var/www/lichu`（**`tools/deploy-site.js` 不在仓库里**，
+  含口令被排除；见 `agent-pack/03` 的「前端怎么传」），服务用对应 `tools/deploy-<svc>.js`（从 `SRV_PASS` 取口令）。
 - 本地四件套：`tools/local-broker.js`(1884/9001) + `tools/gateway.js --listen 9002` +
   `tools/ccu-simulator.js`(SN2025B3781TEST) + `python -m http.server 8080`。
 

@@ -23,6 +23,9 @@ desktop.ini
 dist/
 .wrangler/
 
+# 临时预览页（内联假报文 SN-PREVIEW，仅本地调试用，不是正式入口）
+__preview.html
+
 # 含接入凭据的文件（不进仓库）
 给厂家的接入参数.md
 给厂家的接入参数.docx

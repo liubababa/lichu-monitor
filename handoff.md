@@ -60,18 +60,18 @@
 ## 四、启动步骤（四个窗口）
 
 ```bash
-# 窗口 1：本地 broker（TCP 1884 + WS 9001）
-cd H:\dianzhan\tools
+# 窗口 1：本地 broker（TCP 1884 + WS 9001）——以下命令都在仓库根目录执行
+cd tools
 node local-broker.js
 
-# 窗口 2：前后分离网关（网页连这里；上游指向本地 broker）
-node gateway.js --upstream mqtt://127.0.0.1:1884 --listen 9002
+# 窗口 2：前后分离网关（网页连这里；上游指向本地 broker）——回到仓库根目录
+cd ..
+node tools/gateway.js --upstream mqtt://127.0.0.1:1884 --listen 9002
 
 # 窗口 3：高特 CCU 模拟器（周期 5 秒便于观察；正常按协议是 30 秒）
-node ccu-simulator.js --url mqtt://127.0.0.1:1884 --dsn SN2025B3781TEST --interval 5
+node tools/ccu-simulator.js --url mqtt://127.0.0.1:1884 --dsn SN2025B3781TEST --interval 5
 
 # 窗口 4：静态站点（index.html 不要用 file:// 双击打开，用 http 起）
-cd H:\dianzhan
 python -m http.server 8080 --bind 127.0.0.1
 ```
 
