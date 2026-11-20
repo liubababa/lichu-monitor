@@ -125,7 +125,15 @@
   /* ---------- 数据渲染 ---------- */
   function renderKpis(d) {
     tweenNum(byId('kpiStorageVal'), d.kpis.chargeToday);
-    tweenNum(byId('kpiLoadVal'), d.kpis.loadToday);
+    /* 负载电量：本站无负载上报点时显 --，别把"没有测"画成"用了 0 kWh" */
+    const lv = d.kpis.loadToday;
+    const loadEl = byId('kpiLoadVal');
+    if (lv === null || lv === undefined) {
+      loadEl.dataset.v = '0';
+      loadEl.textContent = '--';
+    } else {
+      tweenNum(loadEl, lv);
+    }
     tweenNum(byId('kpiGridVal'), d.kpis.gridToday);
     tweenNum(byId('socVal'), Math.round(d.soc), v => String(Math.round(v)));
     const c = 2 * Math.PI * 33, ring = byId('socRing');

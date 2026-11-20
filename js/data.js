@@ -79,6 +79,7 @@ window.DataService = (function () {
     tags: null, devices: null, alarms: [], soc: null, flow: 1,
     acc: { storage: 0, load: 0, grid: 0, tPrev: 0 },
     dailyEnergy: null, dayCharge: null, dayDischarge: null, dir: 1,
+    loadSeen: false,   /* 本会话是否收到过负载功率点：旭日东明/峻涌无此点，KPI 该显 -- 而不是 0 */
     hints: { storage: '', load: '', grid: '' }
   };
   let lastReport = null;
@@ -264,7 +265,7 @@ window.DataService = (function () {
     if (!(dtH > 0) || dtH > 0.5) dtH = 0;
     M.acc.tPrev = tNow;
     if (pcsP  !== null) M.acc.storage += Math.abs(pcsP) * dtH;
-    if (loadP !== null) M.acc.load    += Math.max(0, loadP) * dtH;
+    if (loadP !== null) { M.loadSeen = true; M.acc.load += Math.max(0, loadP) * dtH; }
     if (gridP !== null) M.acc.grid    += Math.max(0, gridP) * dtH;
 
     /* 今日电量：优先设备给的"全站日电量"（各簇/各 PCS 求和）；充电/放电分开存，界面按当前方向二选一 */
@@ -280,11 +281,11 @@ window.DataService = (function () {
       M.hints = {
         storage: '今日充电 ' + (M.dayCharge === null ? '--' : M.dayCharge.toFixed(1)) + ' + 放电 '
           + (M.dayDischarge === null ? '--' : M.dayDischarge.toFixed(1)) + ' kWh（' + src + '）',
-        load: 'LoadPower 功率积分（会话累计）', grid: 'GRID_P 功率积分（会话累计）'
+        load: M.loadSeen ? 'LoadPower 功率积分（会话累计）' : '本站无负载功率上报点，无法统计', grid: 'GRID_P 功率积分（会话累计）'
       };
     } else {
       M.dailyEnergy = null;
-      M.hints = { storage: 'PCS_P 功率积分（会话累计）', load: 'LoadPower 功率积分（会话累计）', grid: 'GRID_P 功率积分（会话累计）' };
+      M.hints = { storage: 'PCS_P 功率积分（会话累计）', load: M.loadSeen ? 'LoadPower 功率积分（会话累计）' : '本站无负载功率上报点，无法统计', grid: 'GRID_P 功率积分（会话累计）' };
     }
     /* 当前充放电方向：功率为负=充电、为正=放电；待机时沿用上一次方向，避免来回翻 */
     if (pcsP !== null) {
@@ -318,7 +319,7 @@ window.DataService = (function () {
         chargeToday: Math.round(kpiToday()),
         dayCharge: M.dayCharge === null ? null : Math.round(M.dayCharge),
         dayDischarge: M.dayDischarge === null ? null : Math.round(M.dayDischarge),
-        loadToday:   Math.round(M.acc.load),
+        loadToday:   M.loadSeen ? Math.round(M.acc.load) : null,
         gridToday:   Math.round(M.acc.grid)
       },
       dir: M.dir,
@@ -351,7 +352,8 @@ window.DataService = (function () {
       chargeToday: Math.round(kpiToday()),
       dayCharge: M.dayCharge === null ? null : Math.round(M.dayCharge),
       dayDischarge: M.dayDischarge === null ? null : Math.round(M.dayDischarge),
-      loadToday: Math.round(M.acc.load),
+      loadSeen: M.loadSeen,
+      loadToday: M.loadSeen ? Math.round(M.acc.load) : null,
       gridToday: Math.round(M.acc.grid),
       hints: M.hints
     };
