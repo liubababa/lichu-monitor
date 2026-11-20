@@ -1476,9 +1476,10 @@ window.GaoteScene3D = (function () {
       if (el) {
         /* 版式照峻涌储能柜：第二行是功率、第三行「状态 · SOC」。
            本站没有"堆功率"这个上报点，功率按已上报的直流电压 × 电流算（缺一个就 --，不编）；
+           这是直流侧功率，与 PCS 交流总功率差转换损耗，标注"直流"免得和汇流/并网点对不上；
            温度从浮标挪进明细卡（那里本来就有"最高 / 最低温度"一行） */
         const pkw = (d.vol === null || d.cur === null) ? null : d.vol * d.cur / 1000;
-        el.innerHTML = '<b>储能堆 · ' + (i + 1) + '号</b><i>' + f(pkw, 1, ' kW') + '</i><em>'
+        el.innerHTML = '<b>储能堆 · ' + (i + 1) + '号</b><i>直流 ' + f(pkw, 1, ' kW') + '</i><em>'
           + (chg ? '充电中' : (dis ? '放电中' : '待机')) + ' · SOC '
           + (d.soc === null ? '--%' : d.soc.toFixed(0) + '%') + '</em>';
       }
@@ -1592,9 +1593,10 @@ window.GaoteScene3D = (function () {
         powerModeNote = (mv === null ? '电塔供厂房并给储能充电（关口表暂无数据）' : '电塔供厂房，同时给储能充电');
       }
     } else if (disNow) {
-      /* ③ 只说明"储能放电供电"这一件事。现场口径（2026-10-27）：储能供电时电网不供电——
-         不再按关口方向分"储能 + 电网一起供"那一档，放电期间一律按"储能供厂房"写；
-         关口取电与否只体现在并网点浮标的数值上，不进工况文案（余电上网是馈电，仍照写） */
+      /* ③ 表示"储能放电供电"（2026-11-20 修订，替代 2026-10-27"放电一律写电网不供电"口径）。
+         本站 PCS 按计划功率放电、不跟随负荷，且无独立负荷表：放电时若关口仍在明显受电
+         （mv > tol），说明负荷缺口由电网同时补足，属正常运行状态——文案必须如实写
+         "电网同时补充"，否则与并网点浮标的受电数值自相矛盾。余电上网是馈电，仍照写 */
       const tol = Math.max(1.5, Math.abs(pNum) * .08);
       powerMode = '③';
       if (mv === null) {
@@ -1602,7 +1604,7 @@ window.GaoteScene3D = (function () {
       } else if (mv < -tol) {
         powerModeTxt = '储能供厂房 + 余电上网'; powerModeNote = '储能放电供厂房，余电往电网送';
       } else if (mv > tol) {
-        powerModeTxt = '储能单独供厂房'; powerModeNote = '储能放电直供厂房，电网不参与供电';
+        powerModeTxt = '储能供厂房 + 电网补充'; powerModeNote = '储能放电供厂房，负荷缺口由电网同时补足（PCS 按计划功率放电，非跟随负荷）';
       } else {
         powerModeTxt = '储能单独供厂房'; powerModeNote = '储能放电直供厂房，关口基本不交换';
       }
@@ -1617,12 +1619,13 @@ window.GaoteScene3D = (function () {
       facWinBase = wb * (day ? .3 : .58);
     }
     if (facLabelEl) {
-      /* 数值行固定是"受电 x kW"（版式：名称 / 受电功率 / 供电工况）：
-         储能供电时就是储能功率；充电 / 待机时是电网进线（关口取电 − 储能充电吃掉的部分），
+      /* 数值行口径（版式：名称 / 进线功率 / 供电工况）：
+         放电=储能直供（PCS 交流功率，本站无独立负荷表，不写"受电"以免被当成负荷实测值）；
+         充电 / 待机=电网进线（关口取电 − 储能充电吃掉的部分），
          正好与电网→厂房直供线"真正送进厂房的那部分"同口径（见上面 stepFlow） */
       const facKw = facOn ? emuP : (mv === null ? null : Math.max(0, mv - (chgNow ? Math.abs(pNum) : 0)));
-      facLabelEl.innerHTML = '<b>厂房（工厂用电）</b><i>受电 '
-        + (facKw === null ? '-- kW' : f(facKw, 1, ' kW')) + '</i>'
+      facLabelEl.innerHTML = '<b>厂房（工厂用电）</b><i>'
+        + (facKw === null ? '-- kW' : (facOn ? '储能直供 ' + f(facKw, 1, ' kW') : '受电 ' + f(facKw, 1, ' kW'))) + '</i>'
         /* 第三行恒在（同峻涌厂房浮标）：原来没工况时整行不输出，标签高度会跳一下 */
         /* 第三行照峻涌厂房浮标的写法：「工况 ③ · 储能供厂房…」，没工况写原因、没数据写 -- */
         + '<em>' + (powerMode === '—' ? (mv === null ? '--' : '电网供电 · 无储能工况')
@@ -1631,6 +1634,7 @@ window.GaoteScene3D = (function () {
     if (cardEls.factory) setCard('factory', '厂房（工厂用电）', [
       ['当前工况', powerMode + ' ' + powerModeTxt],
       ['工况说明', powerModeNote],
+      ['负荷口径', '本站无独立负荷表' + (facOn ? '，放电时显示 PCS 交流功率' : '，按关口功率估算')],
       ['厂房进线', facOn ? ('储能直供 ' + f(emuP, 1, ' kW')) : '由电网供电'],
       ['并网点功率', f(GaoteService.val('meter-lems-antireflux', 'meter_tot_p'), 1, ' kW')],
       ['储能 SOC', f(emuSoc, 1, '%')]
