@@ -172,7 +172,13 @@ window.GaoteService = (function () {
     const reg = devices[dk] || (devices[dk] = { psn: info.psn, dsn: info.dsn, firstSeen: Date.now(), lastSeen: 0, msgs: 0 });
     reg.lastSeen = Date.now();
     reg.msgs++;
-    if (!activeKey) activeKey = dk;                       // 第一个上报的设备作为默认查看对象
+    /* 首个上报设备的锁定要分情况（2026-11-21 修订）：配置里指定了设备号（portal 给旭日东明绑了
+       R250907J0038）时只认它——broker 上多站 CCU 同屏发流，"谁先到锁谁"会把别的站的数据
+       锁成本站画面且永不纠正；没配设备号（自动发现的站）才沿用"第一个"兜底 */
+    if (!activeKey) {
+      const want = (cfg && cfg.productSN && cfg.deviceSN) ? devKey(cfg.productSN, cfg.deviceSN) : '';
+      if (!want || dk === want) activeKey = dk;
+    }
     const st = stateByDev[dk] || (stateByDev[dk] = {});
     const bucket = st[instKey] || (st[instKey] = { _meta: info, _t: Date.now() });
     bucket._t = Date.now();

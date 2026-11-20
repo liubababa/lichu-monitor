@@ -36,7 +36,11 @@ const OPT = {
   listen: parseInt(arg('listen', process.env.HIST_PORT || '8095'), 10),
   step: parseInt(arg('step', '300'), 10),        // 默认降采样粒度（秒）
   sampleGap: parseInt(arg('gap', '20'), 10),     // 同一设备两次采样最小间隔（秒）
-  filter: arg('filter', '#')
+  filter: arg('filter', '#'),
+  /* 只采样指定设备（2026-11-21 新增）：broker 上现在同时有多站 CCU（东明 + 峻涌三台）发流，
+     不按 SN 过滤的话 /history 的 SOC/功率曲线和 /daily 的日电量会把几台设备混在一起
+     （实测 /daily chg 混进峻涌柜的 2726 kWh）。旭日东明 = R250907J0038，用 --dsn 指定 */
+  dsn: arg('dsn', process.env.HIST_DSN || '')
 };
 
 fs.mkdirSync(OPT.dir, { recursive: true });
@@ -122,6 +126,8 @@ function onMessage(topic, buf) {
   if (seg[3] !== 'data') return;
   const sn = seg[1];
   if (!sn) return;
+  /* 指定了 --dsn 时只采样该设备：别的站 CCU 的帧直接丢弃，杜绝跨站混数 */
+  if (OPT.dsn && sn !== OPT.dsn) return;
   let p = null;
   try { p = JSON.parse(buf.toString()); } catch (_) { return; }
   if (!p || typeof p !== 'object') return;
