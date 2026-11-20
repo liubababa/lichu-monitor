@@ -49,7 +49,9 @@ window.GaoteService = (function () {
       reg.msgs = d.msgs || 0;
       reg.cached = true;                 /* 标记：这批数是上次会话留下的 */
     });
-    if (!activeKey && Object.keys(devices).length) activeKey = Object.keys(devices)[0];
+    /* 这里不再顺手锁 activeKey（2026-11-21）：缓存里存着全部设备，按"第一个"锁又是同一次竞态。
+       绑定统一交给 connect()——cfg.deviceSN 指定的设备缓存里有就直接绑上，没有则等它的
+       第一个活帧（见 ingest），没配设备号的站维持"首个活帧"兜底 */
     return Object.keys(devices).length > 0;
   }
   function saveCache() {
