@@ -251,7 +251,12 @@ window.MqttUI = (function () {
         username: CFG.username, password: CFG.password,
         productSN: CFG.psn || 'kp23bhcpmt91n2v8', deviceSN: CFG.sn
       });
-      if (window.GaoteView) GaoteView.open();
+      /* 洙边/峻涌页面里连接（含开机自动连接）不弹东明视图：两个视图同 z-index 会叠在一起，
+         东明还在底下每 2 秒空转渲染。只有当前不在别的站点视图里才打开东明 */
+      const inOtherStation = ['solarView', 'jyView'].some(function (id) {
+        const e = byId(id); return e && !e.classList.contains('hidden');
+      });
+      if (window.GaoteView && !inOtherStation) GaoteView.open();
       if (!auto) toast(CFG.username ? '正在连接网关（高特协议）…' : '正在连接网关（高特协议 · 只读：未填账号，下发不生效）…');
       return;
     }
