@@ -203,6 +203,9 @@ function readPoints(fromMs, toMs) {
       let r = null;
       try { r = JSON.parse(line); } catch (_) { return; }
       if (!r || !r.t || r.t < fromMs || r.t > toMs) return;
+      /* 读取层同样按 --dsn 过滤：修复上线前已落盘的"混合样本"（修复前的旧文件里
+         凌晨那几行是峻涌柜的数据），这样当天的 /history、/daily 立刻就干净 */
+      if (OPT.dsn && r.sn && r.sn !== OPT.dsn) return;
       if (r.soc === null && r.p === null) return;
       out.push(r);
     });
