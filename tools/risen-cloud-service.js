@@ -68,11 +68,24 @@ const state = {
   token: null, plants: [], plant: null, binding: null, snap: null,
   things: [], subs: [], pcs: null, bcu: null, air: null, complete: null,
   stats: null, storage: null, revenue: null, fault: null, alarms: null, pemsStats: null,
-  polls: 0, errors: 0, last: null, lastError: null, lastSlow: 0, slowRuns: 0, raw: {}
+  polls: 0, errors: 0, last: null, lastError: null, lastSlow: 0, slowRuns: 0, raw: {},
+  failStreak: 0, lastFailAt: 0
 };
 let refreshing = null;
 
 function log(line) { console.log(new Date().toTimeString().slice(0, 8) + '  ' + line); }
+
+/* 带超时的 fetch（2026-11-21）：日升云接口偶尔挂起，Node 的 fetch 没有默认超时，
+   一次挂住能把 60 秒一轮的轮询拖到几分钟以上，页面就长期"连不上"还查不到原因 */
+async function fetchT(url, opt, ms) {
+  const ac = new AbortController();
+  const t = setTimeout(function () { try { ac.abort(); } catch (_) {} }, ms || 30000);
+  try {
+    return await fetch(url, Object.assign({}, opt || {}, { signal: ac.signal }));
+  } finally {
+    clearTimeout(t);
+  }
+}
 
 /* ---------------- 凭据 ---------------- */
 function loadCfg() {
@@ -104,7 +117,7 @@ async function call(pathname, params, opt) {
   Object.keys(params || {}).forEach(function (k) {
     if (params[k] !== undefined && params[k] !== null && params[k] !== '') url.searchParams.set(k, params[k]);
   });
-  const res = await fetch(url, {
+  const res = await fetchT(url, {
     headers: {
       'Authorization': 'Bearer ' + cfg.accessToken,
       'tenant-id': String(cfg.tenantId),
@@ -138,7 +151,7 @@ async function refreshToken() {
     try {
       const url = new URL(API_BASE + '/system/auth/refresh-token');
       url.searchParams.set('refreshToken', cfg.refreshToken);
-      const res = await fetch(url, {
+      const res = await fetchT(url, {
         method: 'POST',
         headers: {
           'tenant-id': String(cfg.tenantId),
@@ -216,7 +229,7 @@ async function login() {
     for (let j = 0; j < LOGIN_TYPES.length; j++) {
       const type = LOGIN_TYPES[j];
       try {
-        const res = await fetch(API_BASE + '/system/auth/login/decrypt', {
+        const res = await fetchT(API_BASE + '/system/auth/login/decrypt', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -336,6 +349,9 @@ function poll() {
   return polling;
 }
 async function doPoll() {
+  /* 连续失败退避（2026-11-21）：连续 15 次拉不下来（≈15 分钟）就放缓到 5 分钟一次，
+     别每分钟去敲平台接口把账号触发风控；期间 /risen/* 继续吐最后一次成功快照 */
+  if ((state.failStreak || 0) >= 15 && Date.now() - (state.lastFailAt || 0) < 300000) return;
   state.polls++;
   const now = Date.now();
   /* 慢轮询：电站/统计/收益/曲线这些变化慢的，每 5 分钟拉一次；
@@ -425,6 +441,7 @@ async function doPoll() {
 
     state.last = new Date().toISOString();
     state.lastError = null;
+    state.failStreak = 0;
     log('拉取成功：SOC ' + (state.snap ? state.snap.totalSoc : '--') + '%　' +
       statusText(state.snap ? state.snap.energyStorageStatus : null) +
       '　PCS ' + (state.pcs ? state.pcs.totalActivePower + 'kW' : '--') +
@@ -433,7 +450,9 @@ async function doPoll() {
   } catch (e) {
     state.errors++;
     state.lastError = e.message;
-    log('拉取失败：' + e.message);
+    state.failStreak = (state.failStreak || 0) + 1;
+    state.lastFailAt = Date.now();
+    log('拉取失败（连续第 ' + state.failStreak + ' 次）：' + e.message);
   }
 }
 

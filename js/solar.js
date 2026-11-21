@@ -45,6 +45,7 @@ window.SolarUI = (function () {
     try { localStorage.setItem(SNAP_KEY, JSON.stringify({ data: d, at: Date.now() })); } catch (_) {}
   }
   let stor = null, storDevs = [], storTrend = [], revTrend = [], powTrend = [];
+  let storErr = null;                     /* 日升云最近一次拉取失败原因：储能页停更提示用 */
   let storChart = null, revChart = null, powChart = null;
   /* ---------------- 小工具 ---------------- */
   const num = v => (v === null || v === undefined || v === '' || isNaN(Number(v))) ? null : Number(v);
@@ -208,6 +209,8 @@ window.SolarUI = (function () {
         if (b && b.data) {
           stor = b.data;
           if (Array.isArray(b.data.devices)) storDevs = b.data.devices;
+          /* 接入服务的 last_error 一并透出：日升云那路挂了要在页面上看得见（2026-11-21） */
+          storErr = b.last_error ? String(b.last_error) : null;
         }
         const st = await getJSON('trend?range=today', API_STOR + '/risen/');
         if (st && Array.isArray(st.points)) storTrend = st.points;
@@ -215,7 +218,10 @@ window.SolarUI = (function () {
         if (rt && Array.isArray(rt.points)) revTrend = rt.points;
         const pt = await getJSON('power-trend?days=7', API_STOR + '/risen/');
         if (pt && Array.isArray(pt.points)) powTrend = pt.points;
-      } catch (_) {}
+      } catch (e) {
+        /* 此前这里是 catch (_) {} 静默吞错：日升云挂了页面照常挂旧数，谁也看不出为什么 */
+        storErr = String((e && e.message) || e);
+      }
       render();
       if (src) paintSrc(src, srcState(sum, s && s.last_error));
     } catch (e) {
@@ -348,13 +354,26 @@ window.SolarUI = (function () {
     const box = byId('slBatt'), meta = byId('slBattMeta');
     if (!box) return;
     if (!stor) {
-      if (meta) meta.textContent = '--';
-      box.innerHTML = '<div class="sl-empty">储能数据暂时读不到（日升云接入服务未启动，或凭据过期需重新登录）。</div>';
+      if (meta) { meta.textContent = storErr ? '日升云拉取失败' : '--'; meta.className = storErr ? 'stale' : ''; }
+      box.innerHTML = '<div class="sl-empty">储能数据暂时读不到（日升云接入服务未启动，或凭据过期需重新登录）。'
+        + (storErr ? '<br>最近一次失败：' + storErr.replace(/</g, '&lt;') : '') + '</div>';
       return;
     }
     const r = stor.realtime || {}, td = stor.today || {}, tt = stor.total || {}, dv = stor.device || {};
     const pc = stor.pcs || null, bt = stor.battery || null;
-    if (meta) meta.textContent = '日升云 · 更新 ' + String(r.time || '--').slice(11, 16);
+    /* 停更检测（2026-11-21）：设备上报时间超 15 分钟没动、或最近一次拉取失败，
+       储能页标题就打红字——此前日升云那路失败被静默吞掉，图上挂着旧数谁也看不出为什么 */
+    let metaStale = false, metaTxt = '日升云 · 更新 ' + String(r.time || '--').slice(11, 16);
+    const rAge = r.time ? (Date.now() - Date.parse(String(r.time).replace(' ', 'T') + '+08:00')) / 60000 : null;
+    if (rAge !== null && isFinite(rAge) && rAge > STALE_MIN) {
+      metaStale = true;
+      metaTxt = '数据停更 · 最后更新 ' + String(r.time).slice(11, 16) + '（已 ' + Math.round(rAge) + ' 分钟）'
+        + (storErr ? ' · 日升云拉取失败：' + storErr.slice(0, 80) : ' · 日升云接入异常');
+    } else if (storErr) {
+      metaStale = true;
+      metaTxt = '日升云拉取失败：' + storErr.slice(0, 90) + '（图上仍是 ' + String(r.time || '--').slice(11, 16) + ' 的数据）';
+    }
+    if (meta) { meta.textContent = metaTxt; meta.className = metaStale ? 'stale' : ''; }
     const row = (k, v) => '<div class="sl-wx-row"><span>' + k + '</span><b>' + v + '</b></div>';
     const big = (label, v, u) => '<div class="sl-green-row"><b>' + v + '</b><u>' + u + '</u><span>' + label + '</span></div>';
     const arrRow = (label, arr, unit, d) => row(label, Array.isArray(arr) ? (arr.map(v => fmt(v, d)).join(' / ') + ' ' + unit) : '--');
@@ -580,7 +599,8 @@ window.SolarUI = (function () {
     const view = byId('slStorView'), box = byId('slStorBody');
     if (!view || !box || view.classList.contains('hidden')) return;
     if (!stor) {
-      box.innerHTML = '<div class="sl-empty">储能数据暂时读不到（日升云接入服务未启动，或凭据过期需重新登录）。</div>';
+      box.innerHTML = '<div class="sl-empty">储能数据暂时读不到（日升云接入服务未启动，或凭据过期需重新登录）。'
+        + (storErr ? '<br>最近一次失败：' + storErr.replace(/</g, '&lt;') : '') + '</div>';
       return;
     }
     const r = stor.realtime || {}, td = stor.today || {}, tt = stor.total || {}, dv = stor.device || {};
