@@ -29,12 +29,24 @@ function arg(name, def) {
 const OPT = {
   interval: parseInt(arg('interval', process.env.WATCHDOG_INTERVAL || '60'), 10) * 1000,
   listen: parseInt(arg('listen', process.env.WATCHDOG_PORT || '8094'), 10),
+  /* 告警通道三选一（按配置的环境变量自动识别，2026-11-21）：
+     · 企业微信群机器人：WECOM_WEBHOOK=https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxx
+     · Server酱（微信公号"方糖"收）：SERVERCHAN_KEY=SCTxxxx
+     · PushPlus（微信公号"pushplus"收）：PUSHPLUS_TOKEN=xxx */
   webhook: process.env.WECOM_WEBHOOK || '',
+  serverchanKey: process.env.SERVERCHAN_KEY || '',
+  pushplusToken: process.env.PUSHPLUS_TOKEN || '',
   staleMin: 15,            // updated_at 超过多少分钟算停更
   alertAfterMin: 5,        // 异常持续多少分钟才推送（避免抖动）
   remindMin: 60,           // 异常持续多久后重复提醒
   quietMin: 30             // 两次推送的最小间隔
 };
+function alertChannel() {
+  if (OPT.webhook) return 'wecom';
+  if (OPT.serverchanKey) return 'serverchan';
+  if (OPT.pushplusToken) return 'pushplus';
+  return 'none';
+}
 
 function log(line) { console.log(new Date().toTimeString().slice(0, 8) + '  ' + line); }
 function now() { return Date.now(); }
@@ -144,24 +156,52 @@ function st(name) {
 }
 
 async function pushWeCom(md) {
-  if (!OPT.webhook) { log('（未配置 WECOM_WEBHOOK，仅记录）' + md.replace(/\n/g, ' | ')); return false; }
+  const ch = alertChannel();
+  if (ch === 'none') { log('（未配置告警通道，仅记录）' + md.replace(/\n/g, ' | ')); return false; }
+  const ac = new AbortController();
+  const t = setTimeout(function () { try { ac.abort(); } catch (_) {} }, 10000);
   try {
-    const ac = new AbortController();
-    const t = setTimeout(function () { try { ac.abort(); } catch (_) {} }, 10000);
-    const res = await fetch(OPT.webhook, {
+    let res;
+    if (ch === 'wecom') {
+      res = await fetch(OPT.webhook, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ msgtype: 'markdown', markdown: { content: md } }),
+        signal: ac.signal
+      });
+      const j = await res.json().catch(function () { return {}; });
+      if (j.errcode === 0) return true;
+      log('wecom 返回异常：' + JSON.stringify(j).slice(0, 160));
+      return false;
+    }
+    if (ch === 'serverchan') {
+      res = await fetch('https://sctapi.ftqq.com/' + OPT.serverchanKey + '.send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ title: md.split('\n')[0].replace(/\*/g, ''), desp: md }).toString(),
+        signal: ac.signal
+      });
+      const j = await res.json().catch(function () { return {}; });
+      if (j.code === 0) return true;
+      log('serverchan 返回异常：' + JSON.stringify(j).slice(0, 160));
+      return false;
+    }
+    /* pushplus */
+    res = await fetch('http://www.pushplus.plus/send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ msgtype: 'markdown', markdown: { content: md } }),
+      body: JSON.stringify({ token: OPT.pushplusToken, title: md.split('\n')[0].replace(/\*/g, ''), content: md, template: 'markdown' }),
       signal: ac.signal
     });
-    clearTimeout(t);
     const j = await res.json().catch(function () { return {}; });
-    if (j.errcode === 0) return true;
-    log('webhook 返回异常：' + JSON.stringify(j).slice(0, 160));
+    if (j.code === 200) return true;
+    log('pushplus 返回异常：' + JSON.stringify(j).slice(0, 160));
     return false;
   } catch (e) {
-    log('webhook 发送失败：' + e.message);
+    log('告警推送失败（' + ch + '）：' + e.message);
     return false;
+  } finally {
+    clearTimeout(t);
   }
 }
 
@@ -198,7 +238,7 @@ async function runOnce() {
 const server = http.createServer(function (req, res) {
   res.setHeader('cache-control', 'no-store');
   if (req.url === '/healthz') {
-    const out = { ok: true, started: new Date(state.started).toISOString(), webhook: !!OPT.webhook, checks: [] };
+    const out = { ok: true, started: new Date(state.started).toISOString(), channel: alertChannel(), checks: [] };
     for (const chk of CHECKS) {
       const s = st(chk.name);
       out.checks.push({ name: chk.name, ok: s.ok, since: s.since || null, why: s.why, alertSent: s.alertSent });
@@ -210,7 +250,7 @@ const server = http.createServer(function (req, res) {
 });
 
 server.listen(OPT.listen, '127.0.0.1', function () {
-  log('看门狗已启动：http://127.0.0.1:' + OPT.listen + '/healthz　间隔 ' + OPT.interval / 1000 + 's　webhook ' + (OPT.webhook ? '已配置' : '未配置（仅日志）'));
+  log('看门狗已启动：http://127.0.0.1:' + OPT.listen + '/healthz　间隔 ' + OPT.interval / 1000 + 's　告警通道 ' + alertChannel());
 });
 server.on('error', function (e) { log('监听失败：' + e.message); process.exit(1); });
 
