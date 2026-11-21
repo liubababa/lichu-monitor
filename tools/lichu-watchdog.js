@@ -36,6 +36,7 @@ const OPT = {
   webhook: process.env.WECOM_WEBHOOK || '',
   serverchanKey: process.env.SERVERCHAN_KEY || '',
   pushplusToken: process.env.PUSHPLUS_TOKEN || '',
+  wxpusherSpt: process.env.WXPUSHER_SPT || '',
   staleMin: 15,            // updated_at 超过多少分钟算停更
   alertAfterMin: 5,        // 异常持续多少分钟才推送（避免抖动）
   remindMin: 60,           // 异常持续多久后重复提醒
@@ -43,6 +44,7 @@ const OPT = {
 };
 function alertChannel() {
   if (OPT.webhook) return 'wecom';
+  if (OPT.wxpusherSpt) return 'wxpusher';
   if (OPT.serverchanKey) return 'serverchan';
   if (OPT.pushplusToken) return 'pushplus';
   return 'none';
@@ -172,6 +174,24 @@ async function pushWeCom(md) {
       const j = await res.json().catch(function () { return {}; });
       if (j.errcode === 0) return true;
       log('wecom 返回异常：' + JSON.stringify(j).slice(0, 160));
+      return false;
+    }
+    if (ch === 'wxpusher') {
+      /* 极简推送 SPT：免费免实名，summary=标题 content=正文(markdown) */
+      res = await fetch('https://wxpusher.zjiecode.com/api/send-message/simple-push', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          spt: OPT.wxpusherSpt,
+          summary: md.split('\n')[0].replace(/\*/g, '').slice(0, 99),
+          content: md,
+          contentType: 3
+        }),
+        signal: ac.signal
+      });
+      const j = await res.json().catch(function () { return {}; });
+      if (j.code === 1000) return true;
+      log('wxpusher 返回异常：' + JSON.stringify(j).slice(0, 160));
       return false;
     }
     if (ch === 'serverchan') {
