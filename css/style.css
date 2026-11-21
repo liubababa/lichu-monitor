@@ -1763,3 +1763,16 @@ html[data-theme="day"] #jyView{background:linear-gradient(165deg,rgba(240,246,24
 html[data-theme="day"] #jyLeft{background:#e8eef0}
 html[data-theme="day"] #jyRight{background:linear-gradient(165deg,rgba(255,255,255,.94),rgba(236,243,245,.96))}
 html[data-theme="day"] #jyRight .side-handle{color:#0b8f76;background:linear-gradient(180deg,rgba(15,150,130,.16),rgba(15,150,130,.04))}
+
+/* ===== 计划时段人工台账（详细信息页，2026-11-21） ===== */
+.dt-planrows{display:flex;flex-direction:column;gap:5px;padding:6px 0}
+.dt-planrow{display:flex;gap:6px;align-items:center}
+.dt-planin{background:rgba(255,255,255,.06);border:1px solid rgba(120,160,150,.35);color:#cfeee8;border-radius:4px;padding:3px 6px;font-size:12px;font-family:inherit}
+.dt-planin:focus{outline:none;border-color:rgba(46,230,200,.6)}
+html[data-theme="day"] .dt-planin{background:#fff;color:#333;border-color:#c5d2cd}
+.dt-planbtn,.dt-plandel{background:rgba(46,230,200,.12);border:1px solid rgba(46,230,200,.4);color:#2ee6c8;border-radius:4px;padding:3px 10px;font-size:12px;cursor:pointer;font-family:inherit}
+.dt-plandel{background:rgba(255,110,80,.1);border-color:rgba(255,110,80,.4);color:#ff6e50;padding:3px 8px}
+.dt-planbtn:hover,.dt-plandel:hover{filter:brightness(1.25)}
+html[data-theme="day"] .dt-planbtn{color:#0d8f7a;border-color:#9fd8cd;background:#eefaf7}
+html[data-theme="day"] .dt-plandel{color:#c0392b;border-color:#e8b7ac;background:#fdf1ee}
+.dt-planops{display:flex;gap:8px;padding-top:4px}

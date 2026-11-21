@@ -1406,6 +1406,35 @@ window.GaoteScene3D = (function () {
     if (status) { st.style.display = ''; st.textContent = status; } else { st.style.display = 'none'; }
   }
 
+  /* 计划时段卡文本（2026-11-21）：数据来自人工台账（详细信息页可编辑，localStorage 共享），
+     设备回读到 planPower 时优先显示回读的使能与间隔。回答"现在为什么在充/放电" */
+  function planCardText() {
+    let rows = [], echo = null;
+    try { rows = JSON.parse(localStorage.getItem('dianzhan.plan.v1') || '[]') || []; } catch (_) {}
+    try { echo = JSON.parse(localStorage.getItem('dianzhan.plan.echo.v1') || 'null'); } catch (_) {}
+    if (echo && echo.payload && echo.payload['10'] !== undefined) {
+      const en = Number(echo.payload['10']);
+      if (en === 0) return '计划未使能';
+    }
+    if (!rows.length) return '未录入（详细信息页可编辑）';
+    const m = new Date().getHours() * 60 + new Date().getMinutes();
+    for (let i = 0; i < rows.length; i++) {
+      const a = planMin(rows[i].from), b = planMin(rows[i].to);
+      if (a === null || b === null) continue;
+      const inRange = (a <= b) ? (m >= a && m < b) : (m >= a || m < b);
+      if (inRange) {
+        const pw = +rows[i].pw;
+        return f(pw, 0, ' kW') + (rows[i].label ? ' · ' + rows[i].label : '')
+          + (pw > 0 ? '（放电）' : (pw < 0 ? '（充电）' : ''));
+      }
+    }
+    return '当前时段无计划';
+  }
+  function planMin(t) {
+    const mm = /^(\d{1,2}):(\d{2})$/.exec(String(t || '').trim());
+    return mm ? (+mm[1]) * 60 + (+mm[2]) : null;
+  }
+
   /* 全站有功功率：优先 EMS 汇总点，缺失时用各 PCS 有功相加 */
   function stationPower() {
     const p = GaoteService.val('emu', 'PCSSumsActivePower');
@@ -1549,6 +1578,7 @@ window.GaoteScene3D = (function () {
       ['母线电压', f(GaoteService.val('emu', 'DCBusVol'), 1, ' V')],
       ['允许充电功率', f(GaoteService.val('emu', 'MaxAllowChargPower'), 0, ' kW')],
       ['允许放电功率', f(GaoteService.val('emu', 'MinAllowChargPower'), 0, ' kW')],
+      ['计划时段', planCardText()],
       ['系统 SOC', f(emuSoc, 1, '%')]
     ], emuP === null ? '' : (emuP < 0 ? '充电中' : (emuP > 0 ? '放电中' : '待机')));
     const pl = labelEls.pcs;

@@ -71,6 +71,113 @@ window.GaoteDetail = (function () {
     return (dis || 0) * ((cfg.tip + cfg.peak) / 2) - (chg || 0) * ((cfg.valley + cfg.deep) / 2);
   }
 
+  /* ---------------- 计划时段（人工台账） ----------------
+     高特协议没有"召测"：cmd/get/emu/planPower 的回读帧只在现场下发计划后才出现。
+     所以计划由人工录入（localStorage，正=放电 / 负=充电），设备一旦回读就以回读为准。
+     大屏 PCS 卡与这里共用同一份数据（dianzhan.plan.v1 / dianzhan.plan.echo.v1）。 */
+  const PLAN_KEY = 'dianzhan.plan.v1';
+  function planStore() {
+    try { return JSON.parse(localStorage.getItem(PLAN_KEY) || '[]') || []; } catch (_) { return []; }
+  }
+  function planSave(rows) { try { localStorage.setItem(PLAN_KEY, JSON.stringify(rows)); } catch (_) {} }
+  function planEcho() {
+    try { return JSON.parse(localStorage.getItem('dianzhan.plan.echo.v1') || 'null'); } catch (_) { return null; }
+  }
+  function planMinutes(t) {
+    const m = /^(\d{1,2}):(\d{2})$/.exec(String(t || '').trim());
+    return m ? (+m[1]) * 60 + (+m[2]) : null;
+  }
+  /* 按时段表插值出 0-23 每小时的计划功率；空表返回 null */
+  function planHourly() {
+    const rows = planStore();
+    if (!rows.length) return null;
+    const out = [];
+    for (let h = 0; h < 24; h++) {
+      const m = h * 60 + 30;                       // 每小时取半点时刻落在哪个时段
+      let v = null;
+      for (const r of rows) {
+        const a = planMinutes(r.from), b = planMinutes(r.to);
+        if (a === null || b === null) continue;
+        const inRange = (a <= b) ? (m >= a && m < b) : (m >= a || m < b);   // 支持跨零点
+        if (inRange) { v = +r.pw; break; }
+      }
+      out.push(v);
+    }
+    return out.some(x => x !== null) ? out : null;
+  }
+  function planNow() {
+    const hourly = planHourly();
+    if (!hourly) return null;
+    return hourly[new Date().getHours()];
+  }
+  function planPanel() {
+    const rows = planStore();
+    const echo = planEcho();
+    const wrap = el('section', 'dt-panel');
+    const h = el('div', 'dt-ptitle');
+    h.appendChild(el('b', '', '计划时段（人工台账）'));
+    h.appendChild(el('em', '', '正=放电 / 负=充电（kW）'));
+    wrap.appendChild(h);
+    /* 编辑表 */
+    const tbl = el('div', 'dt-planrows');
+    if (!rows.length) tbl.appendChild(el('div', 'dt-note', '还没有录入时段。填一行示例：00:00 ~ 08:00，功率 -100（谷段充电）。'));
+    rows.forEach(function (r, idx) {
+      const line = el('div', 'dt-planrow');
+      const mk = (val, ph, w) => { const inp = el('input', 'dt-planin'); inp.value = val; inp.placeholder = ph; inp.style.width = w; return inp; };
+      const inF = mk(r.from, '08:00', '52px');
+      const inT = mk(r.to, '17:00', '52px');
+      const inP = mk(r.pw, '-100', '58px');
+      const inL = mk(r.label || '', '谷段充电', '86px');
+      const del = el('button', 'dt-plandel'); del.textContent = '删';
+      del.addEventListener('click', function () { rows.splice(idx, 1); planSave(rows); render(true); });
+      line.appendChild(inF); line.appendChild(inT); line.appendChild(inP); line.appendChild(inL); line.appendChild(del);
+      tbl.appendChild(line);
+      line.dataset.idx = idx;
+      line._inputs = { from: inF, to: inT, pw: inP, label: inL };
+    });
+    wrap.appendChild(tbl);
+    const ops = el('div', 'dt-planops');
+    const add = el('button', 'dt-planbtn'); add.textContent = '+ 加一行';
+    add.addEventListener('click', function () { rows.push({ from: '', to: '', pw: 0, label: '' }); planSave(rows); render(true); });
+    const save = el('button', 'dt-planbtn'); save.textContent = '保存台账';
+    save.addEventListener('click', function () {
+      const next = [];
+      wrap.querySelectorAll('.dt-planrow').forEach(function (line) {
+        const i = line._inputs;
+        const from = i.from.value.trim(), to = i.to.value.trim(), pw = parseFloat(i.pw.value);
+        if (planMinutes(from) !== null && planMinutes(to) !== null && isFinite(pw)) {
+          next.push({ from: from, to: to, pw: pw, label: i.label.value.trim() });
+        }
+      });
+      planSave(next);
+      render(true);
+    });
+    ops.appendChild(add); ops.appendChild(save);
+    wrap.appendChild(ops);
+    /* 设备回读信息（有就展示，覆盖人工台账的展示口径） */
+    const echoNote = el('div', 'dt-note');
+    if (echo && echo.payload) {
+      const itv = echo.payload['0'], en = echo.payload['10'], tblA = echo.payload['1'];
+      echoNote.textContent = '设备回读（' + new Date(echo.at).toTimeString().slice(0, 5) + '）：'
+        + (en !== undefined ? '使能 ' + en + '　' : '')
+        + (itv !== undefined ? '间隔 ' + itv + ' 分钟　' : '')
+        + (Array.isArray(tblA) ? 'A 表 ' + tblA.length + ' 点' : '');
+    } else {
+      echoNote.textContent = '设备回读：暂无（现场下发计划后会自动捕获）';
+    }
+    wrap.appendChild(echoNote);
+    return wrap;
+  }
+  function drawPlanChart() {
+    const hourly = planHourly();
+    if (!hourly) return;
+    const nowH = new Date().getHours();
+    drawBar('dtChartPlan', 'chartPlan', '计划(kW)',
+      hourly.map(function (v, h) { return v === null ? 0 : v; }),
+      hourly.map(function (v, h) { return (h < 10 ? '0' : '') + h + ':00' + (h === nowH ? '＊' : ''); }),
+      '#ffb020');
+  }
+
   function loadHistory(range) {
     histMode = range;
     histLoading = true;
@@ -341,6 +448,10 @@ window.GaoteDetail = (function () {
           + (dToday ? '；今日尚未放电，暂为负值属正常' : '')
         : '柱上数字即数值，鼠标悬停不再弹提示框'));
     colR.appendChild(panel('充放电量统计', '今日充 / 放电量（kWh）', 'dtChartCycle', '纵轴从 0 起，柱长即为数值比例'));
+    /* 计划时段（人工台账，2026-11-21）：设备没有召测机制、回读帧只在下发后出现，
+       所以计划由人工录入（localStorage），按小时展开画柱 + 标出当前时段；设备回读到
+       planPower 时（下发计划后会出现）优先展示回读值。正=放电 / 负=充电 */
+    colR.appendChild(planPanel());
     grid.appendChild(colR);
 
     host.appendChild(grid);
@@ -375,6 +486,7 @@ window.GaoteDetail = (function () {
         drawBar('dtChartPay', 'chartPay', '收益(元)', [profit === null ? 0 : +profit.toFixed(2)], ['累计收益'], '#2ee6c8');
       }
       drawBar('dtChartCycle', 'chartCycle', '电量(kWh)', [dayChg || 0, dayDis || 0], ['今日充电', '今日放电'], '#7aa2ff');
+      drawPlanChart();
     }, 30);
     if (scroller) scroller.scrollTop = keepTop;      // 重绘后恢复滚动位置
   }

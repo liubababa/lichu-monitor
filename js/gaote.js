@@ -548,6 +548,11 @@ window.GaoteService = (function () {
       const info = parseTopic(topic);
       if (info && info.kind === 'cmd' && info.cls === 'get') {
         log('↓', topic, text.slice(0, 300), '下发回读 ' + (info.func || ''));
+        /* 24 小时计划回读（2026-11-21）：设备没有召测机制，回读帧只在下发后出现——
+           见一次存一次（localStorage），详细信息页/PCS 卡显示"设备回读的计划"时有就用 */
+        if (info.func === 'planPower') {
+          try { localStorage.setItem('dianzhan.plan.echo.v1', JSON.stringify({ at: Date.now(), dsn: info.dsn, payload: json })); } catch (_) {}
+        }
         emit('cmdget', { func: info.func, payload: json, topic: topic });
         return;
       }
