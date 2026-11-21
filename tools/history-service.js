@@ -48,8 +48,8 @@ fs.mkdirSync(OPT.dir, { recursive: true });
 function log(line) { console.log(new Date().toTimeString().slice(0, 8) + '  ' + line); }
 
 /* ---------------- 采样 ---------------- */
-const devices = {};   // sn -> { soc, p, clu:[], ts, lastSaved }
-const pcsDay = {};    // sn -> 逆变器实例 -> { c: 日充电, d: 日放电 }
+const devices = {};   // sn -> { soc, p, clu:[], soh, difV, ts, lastSaved }
+const pcsDay = {};    // sn -> 逆变器实例 -> { c/d: 交流日电量, dc/dd: 直流日电量 }
 const cluDay = {};    // sn -> 簇实例  -> { c: 日充电, d: 日放电 }
 let saved = 0;
 
@@ -65,6 +65,17 @@ function dayTotals(sn) {
     return has ? { c: c, d: d } : null;
   };
   return sum(pcsDay[sn]) || sum(cluDay[sn]) || null;
+}
+/* 直流侧日电量（资产健康页算 DC→AC 效率用） */
+function dayTotalsDc(sn) {
+  const m = pcsDay[sn];
+  if (!m) return null;
+  let c = 0, d = 0, has = false;
+  Object.keys(m).forEach(function (k) {
+    if (isFinite(m[k].dc)) { c += m[k].dc; has = true; }
+    if (isFinite(m[k].dd)) { d += m[k].dd; has = true; }
+  });
+  return has ? { c: c, d: d } : null;
 }
 
 function dayFile(ms) {
@@ -97,6 +108,11 @@ function save(sn) {
   const dt = dayTotals(sn);
   const rec = { t: now, sn: sn, soc: d.soc, p: d.p, clu: d.clu.slice(0, 8) };
   if (dt) { rec.chg = +dt.c.toFixed(2); rec.dis = +dt.d.toFixed(2); }     // 当日累计充/放电量(kWh)
+  /* 资产健康扩展（2026-11-21）：直流日电量 / SOH / 单体压差 */
+  const dtDc = dayTotalsDc(sn);
+  if (dtDc) { rec.dcChg = +dtDc.c.toFixed(2); rec.dcDis = +dtDc.d.toFixed(2); }
+  if (d.soh !== null && d.soh !== undefined) rec.soh = d.soh;
+  if (d.difV !== null && d.difV !== undefined) rec.difV = d.difV;
   try {
     fs.appendFileSync(dayFile(now), JSON.stringify(rec) + '\n');
     saved++;
@@ -135,7 +151,7 @@ function onMessage(topic, buf) {
   let dim = seg[4];
   if (dim === 'meter' && seg[5]) dim = 'meter-' + seg[5] + '-' + seg[6];
 
-  const d = devices[sn] || (devices[sn] = { soc: null, p: null, clu: [], ts: 0, lastSaved: 0 });
+  const d = devices[sn] || (devices[sn] = { soc: null, p: null, clu: [], soh: null, difV: null, ts: 0, lastSaved: 0 });
   const num = function (k) { const v = p[k]; const n = Number(v); return isFinite(n) ? n : null; };
 
   /* 断网补传帧（几小时前的数据）不入库：设备会周期性重发，混进来会让曲线在两个值之间跳。
@@ -178,11 +194,21 @@ function onMessage(topic, buf) {
     const dd = (p.comdisday_cap !== undefined) ? num('comdisday_cap') : num('110010120');
     if (c !== null) rec.c = c;
     if (dd !== null) rec.d = dd;
+    /* 直流侧日电量（资产健康页算 DC→AC 效率用，2026-11-21 新增） */
+    const dc = (p.chgday_cap !== undefined) ? num('chgday_cap') : num('110010069');
+    const dcd = (p.disday_cap !== undefined) ? num('disday_cap') : num('110010070');
+    if (dc !== null) rec.dc = dc;
+    if (dcd !== null) rec.dd = dcd;
     return;
   }
   if (dim === 'array') {
     const soc = (p.arrSOC !== undefined) ? num('arrSOC') : num('3');
     if (soc !== null && d.soc === null) d.soc = soc;    // 没有汇总帧时用堆 SOC 兜底
+    /* SOH / 单体压差（资产健康页用，2026-11-21 新增）：命名键或索引双向兼容 */
+    const soh = (p.arrSOH !== undefined) ? num('arrSOH') : num('20');
+    if (soh !== null) d.soh = soh;
+    const dif = (p.CellVolDif !== undefined) ? num('CellVolDif') : num('27');
+    if (dif !== null) d.difV = dif;
   }
 }
 client.on('message', onMessage);
@@ -220,16 +246,22 @@ function downsample(rows, stepSec) {
   const buckets = {};
   rows.forEach(function (r) {
     const k = Math.floor(r.t / step) * step;
-    const b = buckets[k] || (buckets[k] = { t: k, socSum: 0, socN: 0, pSum: 0, pN: 0 });
+    const b = buckets[k] || (buckets[k] = { t: k, socSum: 0, socN: 0, pSum: 0, pN: 0, sohSum: 0, sohN: 0, difvMax: null });
     if (r.soc !== null && r.soc !== undefined) { b.socSum += Number(r.soc); b.socN++; }
     if (r.p !== null && r.p !== undefined) { b.pSum += Number(r.p); b.pN++; }
+    if (r.soh !== null && r.soh !== undefined && isFinite(Number(r.soh))) { b.sohSum += Number(r.soh); b.sohN++; }
+    if (r.difV !== null && r.difV !== undefined && isFinite(Number(r.difV))) {
+      b.difvMax = (b.difvMax === null) ? Number(r.difV) : Math.max(b.difvMax, Number(r.difV));
+    }
   });
   return Object.keys(buckets).map(function (k) {
     const b = buckets[k];
     return {
       t: Math.round(Number(k) / 1000),
       soc: b.socN ? +(b.socSum / b.socN).toFixed(2) : null,
-      p: b.pN ? +(b.pSum / b.pN).toFixed(2) : null
+      p: b.pN ? +(b.pSum / b.pN).toFixed(2) : null,
+      soh: b.sohN ? +(b.sohSum / b.sohN).toFixed(2) : null,
+      difV: b.difvMax === null ? null : +b.difvMax.toFixed(3)
     };
   }).sort(function (a, b) { return a.t - b.t; });
 }
@@ -262,12 +294,17 @@ function dailySummary(days) {
     const to = from + 86400000 - 1;
     const rows = readPoints(from, to);
     let chg = null, dis = null, ichg = 0, idis = 0, prev = null;
+    let dcchg = null, dcdis = null, soh = null, difv = 0, difvSeen = false;
     rows.forEach(function (r) {
       /* 设备的"当日累计"跨零点不一定清零（实测：今天最早的样本还是昨天末尾的 507/459，
          到白天某个时刻才回落到 499/0），所以不能简单取当天最大值——
          按"最后一次回落之后的最大值"取当天累计，回落前的那段是昨天的残留 */
       if (isFinite(r.chg)) chg = (chg !== null && r.chg < chg) ? r.chg : ((chg === null) ? r.chg : Math.max(chg, r.chg));
       if (isFinite(r.dis)) dis = (dis !== null && r.dis < dis) ? r.dis : ((dis === null) ? r.dis : Math.max(dis, r.dis));
+      if (isFinite(r.dcChg)) dcchg = (dcchg !== null && r.dcChg < dcchg) ? r.dcChg : ((dcchg === null) ? r.dcChg : Math.max(dcchg, r.dcChg));
+      if (isFinite(r.dcDis)) dcdis = (dcdis !== null && r.dcDis < dcdis) ? r.dcDis : ((dcdis === null) ? r.dcDis : Math.max(dcdis, r.dcDis));
+      if (isFinite(r.soh)) soh = r.soh;                          // 当日最后一次 SOH
+      if (isFinite(r.difV) && r.difV > difv) { difv = r.difV; difvSeen = true; }   // 当日最大单体压差
       if (prev && isFinite(r.p)) {
         const dt = (r.t - prev.t) / 1000;
         if (dt > 0 && dt < 3600) {
@@ -281,6 +318,8 @@ function dailySummary(days) {
       date: fmtDay(from), day: i === 0 ? '今日' : (i === 1 ? '昨日' : fmtDay(from).slice(5)),
       chg: chg, dis: dis,                         // 设备当日累计电量(kWh)，可能为 null
       ichg: +ichg.toFixed(2), idis: +idis.toFixed(2),   // 按功率积分兜底
+      dcchg: dcchg === null ? null : +dcchg.toFixed(2), dcdis: dcdis === null ? null : +dcdis.toFixed(2),
+      soh: soh, difv: difvSeen ? +difv.toFixed(3) : null,   // 资产健康：SOH / 当日最大单体压差(V)
       samples: rows.length, today: i === 0
     });
   }

@@ -178,6 +178,35 @@ window.GaoteDetail = (function () {
       '#ffb020');
   }
 
+  /* ---------------- 资产健康（SOH / 压差 / DC→AC 效率 / 循环次数） ---------------- */
+  const RATED_KWH = 522;    // 旭日东明额定容量（250kW / 522kWh）
+  function healthNote() {
+    const days = dailyRows();
+    const totalDis = days.reduce(function (s, d) { return s + (d.dis || 0); }, 0);
+    const totalChg = days.reduce(function (s, d) { return s + (d.chg || 0); }, 0);
+    const hasSoh = (histData && (histData.soh || []).some(function (x) { return x !== null && x !== undefined; }));
+    return '累计放电 ' + Math.round(totalDis) + ' kWh ≈ ' + (totalDis / RATED_KWH).toFixed(1) + ' 次满循环（额定 ' + RATED_KWH + ' kWh，统计窗口 ' + days.length + ' 天）'
+      + '；SOH / 压差随采样积累（SOH 长期缓降属正常，压差突然增大要警惕）'
+      + (hasSoh ? '' : '；SOH/压差采样今天起开始积累，暂无历史曲线');
+  }
+  function drawHealthCharts() {
+    const hd = histData || {};
+    const hasSoh = (hd.soh || []).some(function (x) { return x !== null && x !== undefined; });
+    if (hasSoh) {
+      drawLine('dtChartHealth', 'chartHealth', [
+        { name: 'SOH(%)', data: hd.soh, axis: 0, color: '#2ee6c8' },
+        { name: '单体压差(V)', data: hd.difV, axis: 1, color: '#ff6e50' }
+      ], hd.labels);
+    }
+    const days = dailyRows().filter(function (d) { return d.dcdis && d.dcdis > 20 && d.dis; });
+    if (days.length) {
+      drawBar('dtChartEff', 'chartEff', '效率(%)',
+        days.map(function (d) { return +(d.dis / d.dcdis * 100).toFixed(1); }),
+        days.map(function (d) { return d.day; }),
+        '#7aa2ff');
+    }
+  }
+
   function loadHistory(range) {
     histMode = range;
     histLoading = true;
@@ -195,13 +224,15 @@ window.GaoteDetail = (function () {
               ? (String(d.getMonth() + 1) + '-' + String(d.getDate()) + ' ' + hm) : hm;
           }),
           soc: pts.map(function (p) { return p.soc; }),
-          p: pts.map(function (p) { return p.p; })
+          p: pts.map(function (p) { return p.p; }),
+          soh: pts.map(function (p) { return p.soh === undefined ? null : p.soh; }),
+          difV: pts.map(function (p) { return p.difV === undefined ? null : p.difV; })
         };
         histLoading = false;
         render(true);
       })
       .catch(function () {
-        histData = { labels: [], soc: [], p: [] };
+        histData = { labels: [], soc: [], p: [], soh: [], difV: [] };
         histLoading = false;
         render(true);
       });
@@ -379,6 +410,10 @@ window.GaoteDetail = (function () {
     });
     colL.appendChild(pChart1);
     colL.appendChild(panel('功率曲线', '关口功率 · 储能功率 · 负荷(kW)', 'dtChart2', ''));
+    /* 资产健康（2026-11-21）：SOH / 单体压差趋势 + DC→AC 日效率 + 累计循环 */
+    colL.appendChild(panel('资产健康', 'SOH(%) · 单体压差(V，右轴)', 'dtChartHealth', healthNote()));
+    colL.appendChild(panel('DC→AC 日效率', '交流放电 ÷ 直流放电（反映 PCS 与线路损耗）', 'dtChartEff',
+      '仅统计直流放电 > 20 kWh 的日子；效率长期缓降属正常，突然下探要查'));
     grid.appendChild(colL);
 
     /* 中列：实时状态 + 分时电量 + 收益 */
@@ -487,6 +522,7 @@ window.GaoteDetail = (function () {
       }
       drawBar('dtChartCycle', 'chartCycle', '电量(kWh)', [dayChg || 0, dayDis || 0], ['今日充电', '今日放电'], '#7aa2ff');
       drawPlanChart();
+      drawHealthCharts();
     }, 30);
     if (scroller) scroller.scrollTop = keepTop;      // 重绘后恢复滚动位置
   }
