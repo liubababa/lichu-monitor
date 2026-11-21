@@ -177,16 +177,10 @@ async function pushWeCom(md) {
       return false;
     }
     if (ch === 'wxpusher') {
-      /* 极简推送 SPT：免费免实名，summary=标题 content=正文(markdown) */
-      res = await fetch('https://wxpusher.zjiecode.com/api/send-message/simple-push', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          spt: OPT.wxpusherSpt,
-          summary: md.split('\n')[0].replace(/\*/g, '').slice(0, 99),
-          content: md,
-          contentType: 3
-        }),
+      /* 极简推送 SPT（2026-11-21 实测可用端点）：GET /api/send/message/{SPT}/{URL编码内容}，
+         欢迎邮件里的 /api/send-message/ 是旧写法，实际会报 1004 不存在 */
+      const content = encodeURIComponent(md.replace(/\n/g, ' · ').slice(0, 480));
+      res = await fetch('https://wxpusher.zjiecode.com/api/send/message/' + OPT.wxpusherSpt + '/' + content, {
         signal: ac.signal
       });
       const j = await res.json().catch(function () { return {}; });
