@@ -33,6 +33,9 @@
  *   · 平时用 refreshToken 自动续期，新值写回配置文件
  *   · refreshToken 过期后：有账号密码就自己重新登录（无需人工）
  *   · 没配账号密码才需要浏览器登录一次再导出（tools/risen-cloud-token.js）
+ *   · 密码错误/账户锁定 → 立即停止自动登录（阻塞状态写进配置文件，重启也不重试），
+ *     密码更新后自动恢复；账户锁定 35 分钟后只试一次；POST /risen/relogin 手动重试
+ *   · 登录要求滑块验证码（captcha）→ 同样立即停下并明确提示，不堆错误次数
  *
  *   用法：node tools/risen-cloud-service.js [--port 8097] [--poll 300] [--dir logs/risen]
  * ============================================================ */
@@ -68,15 +71,14 @@ const state = {
   token: null, plants: [], plant: null, binding: null, snap: null,
   things: [], subs: [], pcs: null, bcu: null, air: null, complete: null,
   stats: null, storage: null, revenue: null, fault: null, alarms: null, pemsStats: null,
-  polls: 0, errors: 0, last: null, lastError: null, lastSlow: 0, slowRuns: 0, raw: {},
-  failStreak: 0, lastFailAt: 0
+  polls: 0, errors: 0, last: null, lastError: null, lastSlow: 0, slowRuns: 0, raw: {}
 };
 let refreshing = null;
 
 function log(line) { console.log(new Date().toTimeString().slice(0, 8) + '  ' + line); }
 
-/* 带超时的 fetch（2026-11-21）：日升云接口偶尔挂起，Node 的 fetch 没有默认超时，
-   一次挂住能把 60 秒一轮的轮询拖到几分钟以上，页面就长期"连不上"还查不到原因 */
+/* 带超时的 fetch（2026-11-21 补）：日升云接口偶尔挂起，Node 的 fetch 没有默认超时，
+   一次挂住能把 60 秒一轮的轮询拖死，页面长期"连不上"；30 秒超时快速失败走正常重试链 */
 async function fetchT(url, opt, ms) {
   const ac = new AbortController();
   const t = setTimeout(function () { try { ac.abort(); } catch (_) {} }, ms || 30000);
@@ -106,12 +108,52 @@ function saveCfg(cfg) {
   } catch (e) { log('凭据写回失败：' + e.message); }
 }
 
+/* ---------------- 登录阻塞（密码错误不再反复重试） ----------------
+ * 凭据类失败（密码不对 / 账户锁定）后把阻塞状态写进配置文件（authBlock）：
+ *  · 密码没变就不再碰登录接口，每轮轮询只报错、不重试（避免把账户越锁越死）
+ *  · 密码更新后自动解除；「账户锁定」类阻塞 35 分钟后自动只试一次
+ *  · POST /risen/relogin 手动解除并完整试一遍（怀疑加密方案变了时用）
+ * ------------------------------------------------------------------ */
+function pwHash(cfg) {
+  return crypto.createHash('sha256').update(String(cfg.username || '') + '\u0000' + String(cfg.password || '')).digest('hex');
+}
+function activeBlock(cfg) {
+  const b = cfg && cfg.authBlock;
+  if (!b) return null;
+  if (b.pwHash !== pwHash(cfg)) return null;                 /* 密码已更新 → 解除 */
+  if (b.retryAfter && Date.now() >= b.retryAfter) return null; /* 锁定期满 → 允许试一次 */
+  return b;
+}
+function blockMessage(cfg) {
+  const b = activeBlock(cfg);
+  if (!b) return null;
+  if (b.reason === 'locked') {
+    return '日升云账户被锁定（此前密码错误次数过多），已暂停登录，' + new Date(b.retryAfter).toTimeString().slice(0, 5) + ' 后自动试一次；若密码已改请更新服务器密码';
+  }
+  if (b.reason === 'captcha') {
+    return '日升云登录要求滑块验证码，自动登录已暂停 —— 浏览器登录一次后导出 token（node tools/risen-cloud-token.js），或联系厂家对 API 关闭验证码';
+  }
+  return '日升云账号密码不正确，已停止自动重试 —— 更新服务器密码（/etc/lichu-risen.env 的 RISEN_PASSWORD）后自动恢复';
+}
+function setBlock(cfg, reason, msg, retryAfter) {
+  cfg.authBlock = { reason: reason, msg: msg, pwHash: pwHash(cfg), at: new Date().toISOString(), retryAfter: retryAfter || 0 };
+  saveCfg(cfg);
+  state.lastError = blockMessage(cfg) || msg;
+  log('已停止自动登录：' + msg + (retryAfter ? '（' + new Date(retryAfter).toTimeString().slice(0, 5) + ' 后再试一次）' : '（更新密码或 POST /risen/relogin 后恢复）'));
+}
+function clearBlock(cfg) {
+  if (cfg.authBlock) { delete cfg.authBlock; saveCfg(cfg); }
+}
+const isCredErr = msg => /账号密码不正确|密码错误|账号或密码|用户名或密码|password/i.test(String(msg || ''));
+const isLocked = msg => /锁定|locked/i.test(String(msg || ''));
+const isCaptchaErr = msg => /验证码|captcha/i.test(String(msg || ''));
+
 /* ---------------- 请求 ---------------- */
 async function call(pathname, params, opt) {
   const cfg = loadCfg();
   if (!cfg.accessToken) {
     if (!(opt && opt.loginTried) && await login()) return call(pathname, params, { loginTried: true });
-    throw new Error('没有 accessToken，自动登录也不可用（检查 RISEN_USERNAME / RISEN_PASSWORD）');
+    throw new Error(blockMessage(loadCfg()) || '没有 accessToken，自动登录也不可用（检查 RISEN_USERNAME / RISEN_PASSWORD）');
   }
   const url = new URL(API_BASE + pathname);
   Object.keys(params || {}).forEach(function (k) {
@@ -165,11 +207,14 @@ async function refreshToken() {
       cfg.accessToken = json.data.accessToken;
       cfg.refreshToken = json.data.refreshToken || cfg.refreshToken;
       cfg.refreshedAt = new Date().toISOString();
+      delete cfg.authBlock;                 /* 续期成功说明凭据链还活着，清掉历史阻塞 */
       saveCfg(cfg);
       state.token = cfg.accessToken;
       log('token 已续期');
       return true;
     } catch (e) {
+      const blocked = blockMessage(loadCfg());
+      if (blocked) { state.lastError = blocked; return false; }  /* 阻塞中不再试登录 */
       state.lastError = 'token 续期失败：' + e.message;
       log('token 续期失败：' + e.message + '，改用账号密码重新登录');
       return await login();
@@ -182,8 +227,9 @@ async function refreshToken() {
 
 /* ---------------- 自动登录 ----------------
  * 登录接口是 /system/auth/login/decrypt：前端把密码用 AES 加密后提交，密钥写死在前端
- * bundle 里（dfrs7aa0290b15bc）。服务端不区分「解密失败」和「密码不对」，所以这里把几种
- * 常见方案依次试一遍，第一个成功的会记进配置文件（密码对的话通常第一次就成）。
+ * bundle 里（dfrs7aa0290b15bc）。服务端不区分「解密失败」和「密码不对」。
+ * 首次登录把几种常见方案依次试一遍，成功的记进配置文件（loginScheme）；
+ * 之后只用这个已知方案 —— 密码不对时一次就停（setBlock），不再反复试错把账户锁死。
  * 账号密码放 /etc/lichu-risen.env：RISEN_USERNAME / RISEN_PASSWORD。
  * ------------------------------------------------------------------ */
 const LOGIN_KEY = Buffer.from('dfrs7aa0290b15bc', 'utf8');
@@ -218,50 +264,82 @@ const LOGIN_SCHEMES = [
 ];
 const LOGIN_TYPES = ['uname', 'mobile'];
 
-async function login() {
+let loggingIn = null;
+function login(manual) {
+  /* 并发请求可能同时触发登录：共用同一次尝试，别各试各的堆错误次数 */
+  if (loggingIn) return loggingIn;
+  loggingIn = doLogin(manual).then(function (ok) { loggingIn = null; return ok; },
+    function (e) { loggingIn = null; throw e; });
+  return loggingIn;
+}
+async function doLogin(manual) {
   const cfg = loadCfg();
   if (!cfg.username || !cfg.password) {
     log('没有账号密码，跳过自动登录（需要的话在 /etc/lichu-risen.env 里填 RISEN_USERNAME / RISEN_PASSWORD）');
     return false;
   }
+  if (!manual) {
+    if (activeBlock(cfg)) return false;   /* 阻塞中：不碰登录接口，安静等密码更新/锁定期满 */
+    if (cfg.authBlock) { log('登录阻塞已解除（密码更新或锁定期满），重新尝试登录'); clearBlock(cfg); }
+  } else {
+    clearBlock(cfg);                      /* 手动触发：清阻塞，完整试一遍（含重新探测方案） */
+  }
+
+  /* 已知成功方案优先且单独判定：它失败报「密码不正确」就是密码错了，立即停 */
+  const attempts = [];
+  const known = String(cfg.loginScheme || '').split(' / type=');
+  const knownScheme = LOGIN_SCHEMES.filter(function (s) { return s[0] === known[0]; })[0];
+  const knownType = (known[1] === 'uname' || known[1] === 'mobile') ? known[1] : null;
+  if (!manual && knownScheme && knownType) attempts.push([knownScheme, knownType, true]);
   for (let i = 0; i < LOGIN_SCHEMES.length; i++) {
-    const label = LOGIN_SCHEMES[i][0], enc = LOGIN_SCHEMES[i][1];
     for (let j = 0; j < LOGIN_TYPES.length; j++) {
-      const type = LOGIN_TYPES[j];
-      try {
-        const res = await fetchT(API_BASE + '/system/auth/login/decrypt', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'tenant-id': String(cfg.tenantId),
-            'language': 'zh',
-            'Accept': 'application/json, text/plain, */*'
-          },
-          body: JSON.stringify({
-            loginType: type === 'mobile' ? 'sms' : 'uname',
-            username: cfg.username, password: enc(cfg.password), type: type,
-            mobile: '', mobileCode: '', rememberMe: true, tenantName: '', readed: true
-          })
-        });
-        const json = await res.json();
-        if (json.code === 200 && json.data && json.data.accessToken) {
-          cfg.accessToken = json.data.accessToken;
-          cfg.refreshToken = json.data.refreshToken || cfg.refreshToken;
-          cfg.loginScheme = label + ' / type=' + type;
-          cfg.loggedInAt = new Date().toISOString();
-          saveCfg(cfg);
-          state.token = cfg.accessToken;
-          log('自动登录成功（' + cfg.loginScheme + '）');
-          return true;
-        }
-        log('登录未通过：' + label + ' / type=' + type + ' → ' + (json.msg || json.code));
-      } catch (e) {
-        log('登录请求出错：' + label + ' → ' + e.message);
-      }
-      await new Promise(r => setTimeout(r, 1200));      /* 别把失败次数堆得太快 */
+      if (knownScheme && LOGIN_SCHEMES[i][0] === knownScheme[0] && LOGIN_TYPES[j] === knownType) continue;
+      attempts.push([LOGIN_SCHEMES[i], LOGIN_TYPES[j], false]);
     }
   }
-  log('自动登录所有方案都没通过 —— 先确认账号密码对不对（密码改过就更新 RISEN_PASSWORD 再重启服务）');
+
+  for (let k = 0; k < attempts.length; k++) {
+    const scheme = attempts[k][0], type = attempts[k][1], isKnown = attempts[k][2];
+    const label = scheme[0], enc = scheme[1];
+    try {
+      const res = await fetchT(API_BASE + '/system/auth/login/decrypt', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'tenant-id': String(cfg.tenantId),
+          'language': 'zh',
+          'Accept': 'application/json, text/plain, */*'
+        },
+        body: JSON.stringify({
+          loginType: type === 'mobile' ? 'sms' : 'uname',
+          username: cfg.username, password: enc(cfg.password), type: type,
+          mobile: '', mobileCode: '', rememberMe: true, tenantName: '', readed: true
+        })
+      });
+      const json = await res.json();
+      if (json.code === 200 && json.data && json.data.accessToken) {
+        cfg.accessToken = json.data.accessToken;
+        cfg.refreshToken = json.data.refreshToken || cfg.refreshToken;
+        cfg.loginScheme = label + ' / type=' + type;
+        cfg.loggedInAt = new Date().toISOString();
+        delete cfg.authBlock;
+        saveCfg(cfg);
+        state.token = cfg.accessToken;
+        state.lastError = null;
+        log('自动登录成功（' + cfg.loginScheme + '）');
+        return true;
+      }
+      const msg = String(json.msg || json.code);
+      log('登录未通过：' + label + ' / type=' + type + ' → ' + msg);
+      if (isLocked(msg)) { setBlock(cfg, 'locked', msg, Date.now() + 35 * 60000); return false; }
+      if (isCaptchaErr(msg)) { setBlock(cfg, 'captcha', msg, 0); return false; }
+      if (isKnown && isCredErr(msg)) { setBlock(cfg, 'bad_password', msg, 0); return false; }
+    } catch (e) {
+      log('登录请求出错：' + label + ' → ' + e.message);
+    }
+    await new Promise(r => setTimeout(r, 1200));      /* 别把失败次数堆得太快 */
+  }
+  setBlock(cfg, 'bad_password', '所有登录方案都没通过（大概率密码不对）', 0);
   return false;
 }
 
@@ -349,9 +427,6 @@ function poll() {
   return polling;
 }
 async function doPoll() {
-  /* 连续失败退避（2026-11-21）：连续 15 次拉不下来（≈15 分钟）就放缓到 5 分钟一次，
-     别每分钟去敲平台接口把账号触发风控；期间 /risen/* 继续吐最后一次成功快照 */
-  if ((state.failStreak || 0) >= 15 && Date.now() - (state.lastFailAt || 0) < 300000) return;
   state.polls++;
   const now = Date.now();
   /* 慢轮询：电站/统计/收益/曲线这些变化慢的，每 5 分钟拉一次；
@@ -441,7 +516,6 @@ async function doPoll() {
 
     state.last = new Date().toISOString();
     state.lastError = null;
-    state.failStreak = 0;
     log('拉取成功：SOC ' + (state.snap ? state.snap.totalSoc : '--') + '%　' +
       statusText(state.snap ? state.snap.energyStorageStatus : null) +
       '　PCS ' + (state.pcs ? state.pcs.totalActivePower + 'kW' : '--') +
@@ -449,10 +523,8 @@ async function doPoll() {
       (slow ? '　[慢轮询 第' + state.slowRuns + '轮]' : ''));
   } catch (e) {
     state.errors++;
-    state.lastError = e.message;
-    state.failStreak = (state.failStreak || 0) + 1;
-    state.lastFailAt = Date.now();
-    log('拉取失败（连续第 ' + state.failStreak + ' 次）：' + e.message);
+    state.lastError = blockMessage(loadCfg()) || e.message;
+    log('拉取失败：' + state.lastError);
   }
 }
 
@@ -706,12 +778,15 @@ const server = http.createServer(async function (req, res) {
   };
   try {
     if (u.pathname === '/risen/healthz') {
+      const blk = activeBlock(loadCfg());
       return json({
         ok: !state.lastError,          /* 刚重启时还没拉过，但也没出错 —— 也算健康 */
         base: OPT.base, plant_id: state.plant ? state.plant.id : (loadCfg().plantId || null),
         device_sn: state.binding ? state.binding.deviceCode : null,
         polls: state.polls, errors: state.errors, slow_runs: state.slowRuns,
         last_poll: state.last, last_error: state.lastError, poll_seconds: OPT.poll,
+        auth_blocked: !!blk,
+        auth_block: blk ? { reason: blk.reason, msg: blk.msg, retry_after: blk.retryAfter ? new Date(blk.retryAfter).toISOString() : null } : null,
         dir: OPT.dir
       });
     }
@@ -787,8 +862,14 @@ const server = http.createServer(async function (req, res) {
     }
     if (u.pathname === '/risen/raw') return json({ ok: true, data: state.raw });
     if (u.pathname === '/risen/poll') { await poll(); return json({ ok: !state.lastError, last_error: state.lastError }); }
+    /* 手动重试登录：清除「密码错误」阻塞并完整试一遍（更新密码后也可用它立即恢复） */
+    if (u.pathname === '/risen/relogin' && req.method === 'POST') {
+      const ok = await login(true);
+      if (ok) poll().catch(function () {});
+      return json({ ok: ok, last_error: state.lastError });
+    }
     res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
-    res.end('risen cloud service\n  GET /risen/summary\n  GET /risen/pcs\n  GET /risen/battery\n  GET /risen/devices\n  GET /risen/full\n  GET /risen/trend?range=today|yesterday|days3\n  GET /risen/revenue-trend?days=7\n  GET /risen/power-trend?days=7\n  GET /risen/raw\n  GET /risen/healthz\n  GET /risen/poll\n');
+    res.end('risen cloud service\n  GET /risen/summary\n  GET /risen/pcs\n  GET /risen/battery\n  GET /risen/devices\n  GET /risen/full\n  GET /risen/trend?range=today|yesterday|days3\n  GET /risen/revenue-trend?days=7\n  GET /risen/power-trend?days=7\n  GET /risen/raw\n  GET /risen/healthz\n  GET /risen/poll\n  POST /risen/relogin\n');
   } catch (e) {
     json({ ok: false, error: e.message }, 500);
   }
@@ -800,8 +881,8 @@ if (argv.indexOf('--probe') >= 0) {
   probe().then(function () { process.exit(0); })
     .catch(function (e) { console.error('探测失败：' + e.message); process.exit(1); });
 } else if (argv.indexOf('--login') >= 0) {
-  /* 只测一次自动登录，不启服务：node tools/risen-cloud-service.js --login */
-  login().then(function (ok) {
+  /* 只测一次自动登录，不启服务：node tools/risen-cloud-service.js --login（强制试，忽略阻塞） */
+  login(true).then(function (ok) {
     console.log(ok ? '自动登录可用' : '自动登录失败');
     process.exit(ok ? 0 : 1);
   });
