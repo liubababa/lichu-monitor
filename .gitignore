@@ -71,3 +71,4 @@ tools/solar.config.server.json
 # 东方日升日升云接入凭据（accessToken / refreshToken）
 tools/risen.config.json
 tools/risen.config.server.json
+risen-b.config.json

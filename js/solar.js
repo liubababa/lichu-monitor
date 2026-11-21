@@ -46,6 +46,7 @@ window.SolarUI = (function () {
   }
   let stor = null, storDevs = [], storTrend = [], revTrend = [], powTrend = [];
   let storErr = null;                     /* 日升云最近一次拉取失败原因：储能页停更提示用 */
+  let storFromB = false;                  /* 当前数据来自热备实例 /risen-b/（第二账号） */
   let storChart = null, revChart = null, powChart = null;
   /* ---------------- 小工具 ---------------- */
   const num = v => (v === null || v === undefined || v === '' || isNaN(Number(v))) ? null : Number(v);
@@ -211,6 +212,7 @@ window.SolarUI = (function () {
           if (Array.isArray(b.data.devices)) storDevs = b.data.devices;
           /* 接入服务的 last_error 一并透出：日升云那路挂了要在页面上看得见（2026-11-21） */
           storErr = b.last_error ? String(b.last_error) : null;
+          storFromB = false;
         }
         const st = await getJSON('trend?range=today', API_STOR + '/risen/');
         if (st && Array.isArray(st.points)) storTrend = st.points;
@@ -218,9 +220,23 @@ window.SolarUI = (function () {
         if (rt && Array.isArray(rt.points)) revTrend = rt.points;
         const pt = await getJSON('power-trend?days=7', API_STOR + '/risen/');
         if (pt && Array.isArray(pt.points)) powTrend = pt.points;
-      } catch (e) {
-        /* 此前这里是 catch (_) {} 静默吞错：日升云挂了页面照常挂旧数，谁也看不出为什么 */
-        storErr = String((e && e.message) || e);
+      } catch (ePrimary) {
+        /* 主实例失败 → 试热备实例 /risen-b/（第二账号，2026-11-21）；都失败才标停更 */
+        try {
+          const b2 = await getJSON('full', API_STOR + '/risen-b/');
+          if (b2 && b2.data) {
+            stor = b2.data;
+            if (Array.isArray(b2.data.devices)) storDevs = b2.data.devices;
+            storFromB = true;
+            storErr = null;
+          } else {
+            storErr = '主实例：' + String((ePrimary && ePrimary.message) || ePrimary) + '；备实例无数据';
+          }
+        } catch (eBackup) {
+          /* 此前这里是 catch (_) {} 静默吞错：日升云挂了页面照常挂旧数，谁也看不出为什么 */
+          storErr = '主：' + String((ePrimary && ePrimary.message) || ePrimary)
+            + '；备：' + String((eBackup && eBackup.message) || eBackup);
+        }
       }
       render();
       if (src) paintSrc(src, srcState(sum, s && s.last_error));
@@ -373,7 +389,10 @@ window.SolarUI = (function () {
       metaStale = true;
       metaTxt = '日升云拉取失败：' + storErr.slice(0, 90) + '（图上仍是 ' + String(r.time || '--').slice(11, 16) + ' 的数据）';
     }
-    if (meta) { meta.textContent = metaTxt; meta.className = metaStale ? 'stale' : ''; }
+    if (meta) {
+      meta.textContent = (storFromB ? '【热备】' : '') + metaTxt;
+      meta.className = metaStale ? 'stale' : '';
+    }
     const row = (k, v) => '<div class="sl-wx-row"><span>' + k + '</span><b>' + v + '</b></div>';
     const big = (label, v, u) => '<div class="sl-green-row"><b>' + v + '</b><u>' + u + '</u><span>' + label + '</span></div>';
     const arrRow = (label, arr, unit, d) => row(label, Array.isArray(arr) ? (arr.map(v => fmt(v, d)).join(' / ') + ' ' + unit) : '--');
