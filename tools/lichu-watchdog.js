@@ -89,7 +89,7 @@ const CHECKS = [
   {
     name: '峻涌阳光云',
     probe: async function () {
-      const j = await getJson('http://127.0.0.1:8098/junyong/pv/summary');
+      const j = await getJson('http://127.0.0.1:8098/solar/summary');
       const d = j.data || {};
       const a = ageMin(d.updated_at);
       if (!j.ok) return { ok: false, why: 'summary ok=false' + (j.last_error ? '（' + j.last_error + '）' : '') };
