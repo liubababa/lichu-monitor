@@ -37,14 +37,14 @@ window.GaoteDetail = (function () {
     }
     return 'https://mqtt.ykdesign.top';
   })();
-  const RANGE_TITLE = { live: '本次会话实时曲线', today: '今日历史曲线', yesterday: '昨日历史曲线', days3: '近 3 天历史曲线' };
+  const RANGE_TITLE = { live: '本次会话实时曲线', today: '今日历史曲线', yesterday: '昨日历史曲线', days3: '近 3 天历史曲线', days30: '近 30 天历史曲线', days90: '近 90 天历史曲线' };
 
   /* ---------------- 每日收益（服务端按天汇总电量 → 页面按电价折算） ---------------- */
   let dailyCache = { at: 0, list: null };
   function loadDaily() {
     if (Date.now() - dailyCache.at < 60000 && dailyCache.list) return;
     dailyCache.at = Date.now();
-    fetch(HIST_BASE + '/daily?days=3')
+    fetch(HIST_BASE + '/daily?days=90')
       .then(function (r) { return r.json(); })
       .then(function (j) { dailyCache.list = (j && j.list) || []; render(true); })
       .catch(function () { if (!dailyCache.list) dailyCache.list = null; });
@@ -84,7 +84,8 @@ window.GaoteDetail = (function () {
           labels: pts.map(function (p) {
             const d = new Date(p.t * 1000);
             const hm = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
-            return (range === 'days3') ? (String(d.getMonth() + 1) + '-' + String(d.getDate()) + ' ' + hm) : hm;
+            return (range === 'days3' || range === 'days30' || range === 'days90')
+              ? (String(d.getMonth() + 1) + '-' + String(d.getDate()) + ' ' + hm) : hm;
           }),
           soc: pts.map(function (p) { return p.soc; }),
           p: pts.map(function (p) { return p.p; })
@@ -258,12 +259,12 @@ window.GaoteDetail = (function () {
     /* 左列：两条曲线（充放电曲线可切实时 / 历史） */
     const colL = el('div', 'dt-col');
     const chipHtml = '<div class="dt-chips">'
-      + [['live', '实时'], ['today', '今日'], ['yesterday', '昨日'], ['days3', '近3天']].map(function (c) {
+      + [['live', '实时'], ['today', '今日'], ['yesterday', '昨日'], ['days3', '近3天'], ['days30', '近30天'], ['days90', '近90天']].map(function (c) {
         return '<button data-range="' + c[0] + '"' + (histMode === c[0] ? ' class="on"' : '') + '>' + c[1] + '</button>';
       }).join('') + '</div>';
     const histNote = (histMode === 'live')
       ? RANGE_TITLE.live
-      : (RANGE_TITLE[histMode] + '（服务端保留 3 天）'
+      : (RANGE_TITLE[histMode] + '（服务端保留 90 天）'
         + (histLoading ? '　加载中…' : (histData && histData.labels.length === 0 ? '　暂无数据' : '')));
     const pChart1 = panel('充放电曲线', 'SOC(%) · 储能功率(kW)', 'dtChart1', histNote, chipHtml);
     pChart1.querySelectorAll('.dt-chips button').forEach(function (b) {

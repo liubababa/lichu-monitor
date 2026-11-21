@@ -323,7 +323,7 @@ window.DataService = (function () {
         gridToday:   Math.round(M.acc.grid)
       },
       dir: M.dir,
-      soc: M.soc === null ? 0 : M.soc,
+      soc: M.soc === null ? null : M.soc,   /* 没上报就显 --，别把"没有测"画成 0%（2026-11-21） */
       pcs:   { labels: chart.labels, actual: chart.actual, rated: chart.rated },
       load:  { labels: chart.labels, user: chart.user, storage: chart.storage },
       devices: M.devices || {},

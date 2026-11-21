@@ -1260,16 +1260,23 @@ window.JunyongUI = (function () {
   }
 
   /* 把数据推给三维场景：光伏只有全站合计（阳光云）→ setStationPv 驱动三栋屋面；
-     分群光伏保持 --（不编分群数字）；储能 / SOC / 关口来自高特 CCU（正=放电；关口正=取电）。 */
+     分群光伏缺报时若"全站光伏实测 = 0"则按 0 兜底（2026-11-21）：全站发电为 0 时每一群
+     必然也是 0，这是物理事实不是编数——夜里六工况的三量才算得齐，"受电数据不全"不再整晚挂着；
+     储能 / SOC / 关口来自高特 CCU（正=放电；关口正=取电）。 */
   function pushScene() {
     if (!window.JunyongScene || !JunyongScene.ready()) return;
     var pvG = pvGroups();
+    var s0 = st();
+    var stationPvZero = (s0.power_kw != null) && (+s0.power_kw) === 0;
     for (var i = 0; i < 3; i++) {
       var g = (stor && stor.groups && stor.groups[i]) || {};
       var pv = pvG ? pvG[i] : null;
+      var pvKw = pv && pv.kw != null ? pv.kw : null;
+      var pvSeen = !!(pv && pv.kw != null);
+      if (!pvSeen && stationPvZero) { pvKw = 0; pvSeen = true; }
       JunyongScene.setGroup(i, {
-        pv: pv && pv.kw != null ? pv.kw : null,
-        pvSeen: !!(pv && pv.kw != null),
+        pv: pvKw,
+        pvSeen: pvSeen,
         pvToday: pv && pv.today != null ? pv.today : null,
         pvCount: pv ? pv.n : null,
         st: g.power == null ? null : +g.power,

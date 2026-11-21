@@ -1847,7 +1847,9 @@ window.SolarScene = (function () {
       if (dis) its.push(['6', '储能→卫生院']);
       pMode = its.map(function (x) { return x[0]; }).join('+');
       pModeTxt = its.length ? its.map(function (x) { return x[1]; }).join(' + ') : '全站待机';
-      pModeNote = surplus > .3 ? ('关口送出 ' + surplus.toFixed(1) + ' kW')
+      /* 送电时说明余量是谁的（2026-11-21）：放电（6）在送电时段亮着时注明"含储能余量上送"，
+         免得"储能→卫生院"的文案和送电方向打架；光伏/储能同时上送时不做精确拆分（画面 2+6 本来就并列） */
+      pModeNote = surplus > .3 ? ('关口送出 ' + surplus.toFixed(1) + ' kW' + (dis ? '（含储能余量上送）' : ''))
         : surplus < -.3 ? ('缺口 ' + Math.abs(surplus).toFixed(1) + ' kW 由电网补')
           : '关口基本不交换';
     }

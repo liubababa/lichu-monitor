@@ -135,10 +135,17 @@
       tweenNum(loadEl, lv);
     }
     tweenNum(byId('kpiGridVal'), d.kpis.gridToday);
-    tweenNum(byId('socVal'), Math.round(d.soc), v => String(Math.round(v)));
-    const c = 2 * Math.PI * 33, ring = byId('socRing');
-    ring.style.strokeDasharray = c;
-    ring.style.strokeDashoffset = c * (1 - d.soc / 100);
+    /* SOC：没上报显 --、光圈留空，别把"没有测"画成 0%（与负载 KPI 同口径，2026-11-21） */
+    const socEl = byId('socVal'), ring = byId('socRing');
+    if (d.soc === null || d.soc === undefined) {
+      socEl.textContent = '--';
+      ring.style.strokeDashoffset = 2 * Math.PI * 33;
+    } else {
+      tweenNum(socEl, Math.round(d.soc), v => String(Math.round(v)));
+      const c = 2 * Math.PI * 33;
+      ring.style.strokeDasharray = c;
+      ring.style.strokeDashoffset = c * (1 - d.soc / 100);
+    }
   }
   function renderAlarm(list) {
     const bar = byId('alarmBar'), txt = byId('alarmText');

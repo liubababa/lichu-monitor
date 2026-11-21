@@ -32,7 +32,7 @@ const OPT = {
   user: arg('user', process.env.HIST_MQTT_USER || ''),
   pass: arg('pass', process.env.HIST_MQTT_PASS || ''),
   dir: arg('dir', process.env.HIST_DIR || path.join(__dirname, '..', 'logs', 'history')),
-  days: parseInt(arg('days', process.env.HIST_DAYS || '3'), 10),
+  days: parseInt(arg('days', process.env.HIST_DAYS || '90'), 10),
   listen: parseInt(arg('listen', process.env.HIST_PORT || '8095'), 10),
   step: parseInt(arg('step', '300'), 10),        // 默认降采样粒度（秒）
   sampleGap: parseInt(arg('gap', '20'), 10),     // 同一设备两次采样最小间隔（秒）
@@ -241,6 +241,8 @@ function rangeOf(name) {
   if (name === 'today') return [today, now];
   if (name === 'yesterday') return [today - 86400000, today - 1];
   if (name === 'days3' || name === 'history') return [today - 2 * 86400000, now];
+  if (name === 'days30') return [today - 29 * 86400000, now];
+  if (name === 'days90') return [today - 89 * 86400000, now];
   return [now - OPT.days * 86400000, now];
 }
 
